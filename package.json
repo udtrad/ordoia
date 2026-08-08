@@ -1,0 +1,22 @@
+{
+  "name": "ordoia-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ordoia — third-party assurance for LLM and agent systems. Static site, and the check suite that keeps its claims about itself true.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "eleventy",
+    "serve": "eleventy --serve",
+    "test": "node --test --test-reporter=spec tests/checks/",
+    "test:handover": "ORDOIA_TARGET=. node --test --test-reporter=spec tests/checks/",
+    "check": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "3.1.2",
+    "playwright": "1.56.1"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "Overrides for the check suite. BRIEF.md §3: an override must be an explicit,",
+    "dated, one-line-reason allowance in a committed file — the same shape as a",
+    "deviation log in a working paper. Never a silenced rule.",
+    "",
+    "A check may consult this file. No check may be disabled by it. An allowance",
+    "narrows one named violation on one named page; it cannot turn a check off,",
+    "and tests/lib/allowances.js fails the suite if an entry is malformed or if",
+    "it no longer matches anything (a stale deviation log is its own defect).",
+    "",
+    "Fields: id, check, page, match, reason (one line), dated, addedBy."
+  ],
+  "allowances": [
+    {
+      "id": "c03-independent-the-word-we-do-not-use",
+      "check": 3,
+      "page": "/independence",
+      "match": "independent",
+      "reason": "'Independent is a word for a practice with apparatus behind it' — the section named 'The word we do not use' must say the word to disclaim it, and the sentence is affirmative in form so the negation rule cannot reach it.",
+      "dated": "2026-08-08",
+      "addedBy": "engineering, pass 1"
+    }
+  ]
+}
