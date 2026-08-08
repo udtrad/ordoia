@@ -1,0 +1,50 @@
+{#
+  The coverage × depth grid — BRIEF.md §10: "Products, prices, durations, coverage and
+  depth in one data file. The coverage × depth grid renders from it, including the
+  not offered cells."
+
+  Rendered on both Home and Services. The two hand-authored copies in the handover had
+  already drifted by one cell (CHANGES.md #3), which is the argument for this macro in
+  one line.
+#}
+
+{% macro grid(products) %}
+{%- set path = products.products | product("top-up") %}
+<div class="scroller" tabindex="0">
+  <table class="grid">
+    <caption>{{ products.grid.caption }}</caption>
+    <thead>
+      <tr>
+        <th scope="col"><span class="skip">{{ products.grid.coverageHeading }}</span></th>
+        {%- for column in products.grid.columns %}
+        <th scope="col">{{ column }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in products.grid.rows %}
+      {%- if row.type == "coverage" %}
+      <tr>
+        <th scope="row" class="rowhead">{{ row.head }}</th>
+        {%- for key in row.cells %}
+        {%- if key %}
+        {%- set p = products.products | product(key) %}
+        <td><span class="prod">{{ p.name }}</span><span class="scope">{{ p.price }} &middot; {{ p.duration }}</span></td>
+        {%- else %}
+        <td class="none">{{ products.grid.notOffered }}</td>
+        {%- endif %}
+        {%- endfor %}
+      </tr>
+      {%- else %}
+      <tr>
+        <th scope="row" class="rowhead"><span class="path">&darr; {{ path.name }} &middot; {{ path.price }} &middot; {{ path.duration }}</span></th>
+        <td class="path">{{ row.note }}</td>
+        <td></td>
+        <td></td>
+      </tr>
+      {%- endif %}
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}

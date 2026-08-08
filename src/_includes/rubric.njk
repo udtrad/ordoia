@@ -1,0 +1,241 @@
+{#
+  The rubric, as a body. Included by /oal/ and by every frozen version snapshot, so
+  that the current page and the permanent address cannot say different things.
+
+  Everything numbered comes from oal.json (§6). The prose around it comes from
+  copy/oal.md (§8). Nothing on this page is typed twice.
+#}
+{% from "measure.njk" import measure %}
+{% set c = copy.oal %}
+{% set d1 = oal.dimensions[0] %}
+
+<div class="sheet">
+  <aside class="rail">
+    <dl>
+      <dt>Methodology</dt>
+      <dd>OAL v{{ oal.current }}</dd>
+      <dt>Published</dt>
+      <dd>{{ site.publicationDate }}</dd>
+      <dt>Licence</dt>
+      <dd>{{ oal.licence.short }}</dd>
+      <dt>Permanent address</dt>
+      <dd class="mono">/oal/v{{ oal.current }}</dd>
+    </dl>
+    <dl>
+      <dt>{{ c | frag("rail.contents") }}</dt>
+    </dl>
+    <ol>
+      {%- for item in c | frag("rail.toc") | rows %}
+      <li><a href="{{ item.label }}">{{ item.value }}</a></li>
+      {%- endfor %}
+    </ol>
+  </aside>
+
+  <div class="body">
+    <div class="block">
+      <h1>{{ oal.name }}</h1>
+      <p class="sub" style="font-size:1.06rem">{{ oal.subtitle }}</p>
+      <p class="note">{{ c | frag("note") | mdi | safe }}</p>
+      {{ c | frag("intro") | md | safe }}
+    </div>
+  </div>
+</div>
+
+{# The measure. The only full-bleed element on the site. #}
+<div class="band">
+  <div class="sheet">
+    <aside class="rail">
+      <dl><dt>Scale</dt><dd>OAL {{ oal.scale.from }}&ndash;{{ oal.scale.to }}</dd><dt>Version</dt><dd>v{{ oal.current }}</dd></dl>
+    </aside>
+    {{ measure({
+      variant: "scale",
+      size: "q",
+      ariaLabel: "The OAL scale, showing the distance from asserted to enforced",
+      caption: c | frag("scale.caption"),
+      captionPair: c | frag("scale.pair"),
+      tag: c | frag("scale.tag"),
+      question: c | frag("scale.question"),
+      stamp: c | frag("scale.stamp")
+    }) }}
+  </div>
+</div>
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section id="levels" class="block">
+      <h2>{{ c | frag("levels.heading") }}</h2>
+      <dl class="levels">
+        {%- for level in oal.levels %}
+        <dt>OAL {{ level.n }} &middot; {{ level.name }}</dt>
+        <dd>{{ level.body }}</dd>
+        {%- endfor %}
+      </dl>
+    </section>
+
+    <section class="block">
+      <h3>{{ c | frag("ladder.heading") }}</h3>
+      {{ c | frag("ladder.body") | md | safe }}
+    </section>
+
+    <section id="dimensions" class="block">
+      <h2>{{ c | frag("dimensions.heading") }}</h2>
+      {{ c | frag("dimensions.body") | md | safe }}
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("dimensions.caption") }}</caption>
+          <tbody>
+            {%- for pair in oal.pairs %}
+            <tr>
+              <td class="lv">{{ pair.name }}</td>
+              <td>{% for d in oal.dimensions | dims(pair.dimensions) %}{% if not loop.first %} &middot; {% endif %}{{ d.name if loop.first else (d.name | lower) }}{% endfor %}</td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {%- for pair in oal.pairs %}
+    <p class="pairhead">{{ pair.name }}</p>
+    {%- for d in oal.dimensions | dims(pair.dimensions) %}
+
+    <section class="dimension block" id="d{{ d.number }}">
+      <h3><span class="n">{{ d.number }} &middot;</span> {{ d.name }}</h3>
+      <p class="buyerq">{{ d.buyerQuestion }}</p>
+      <dl class="levels">
+        {%- for level in oal.levels %}
+        <dt>OAL {{ level.n }}</dt>
+        <dd>{{ d.levels[loop.index0] }}</dd>
+        {%- endfor %}
+      </dl>
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("evidence.caption") }}</caption>
+          <thead><tr><th scope="col">Level</th><th scope="col">{{ c | frag("evidence.column") }}</th></tr></thead>
+          <tbody>
+            {%- for e in d.evidence %}
+            <tr><td class="lv">OAL {{ e.level }}</td><td>{{ e.what }}</td></tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">{{ d.inspectedCap }}</p>
+      <p class="selfcheck"><span class="eyebrow">{{ c | frag("selfcheck.label") }}</span>{{ d.selfCheck }}</p>
+    </section>
+    {%- endfor %}
+    {%- endfor %}
+
+    <section id="depth" class="block">
+      <h2>{{ c | frag("depth.heading") }}</h2>
+      {{ c | frag("depth.intro") | md | safe }}
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("depth.caption") }}</caption>
+          <tbody>
+            {%- for depth in oal.depths %}
+            <tr><td class="lv">{{ depth.name }}</td><td>{{ depth.body }}</td></tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      {{ c | frag("depth.body") | md | safe }}
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("depth.gridcaption") }}</caption>
+          <thead><tr><th scope="col">Dimension</th><th scope="col">Inspected</th><th scope="col">Tested</th></tr></thead>
+          <tbody>
+            {%- for d in oal.dimensions %}
+            <tr>
+              <td>{{ d.number }} &middot; {{ d.name }}</td>
+              <td class="lv">OAL {{ d.inspectedMax }}</td>
+              <td class="lv">OAL {{ d.testedMax }}</td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">{{ c | frag("depth.note") }}</p>
+    </section>
+
+    <section id="reading" class="block">
+      <h2>{{ c | frag("reading.heading") }}</h2>
+      {{ c | frag("reading.body") | md | safe }}
+      <dl class="levels">
+        {%- for item in c | frag("reading.grammar") | rows %}
+        <dt>{{ item.label }}</dt>
+        <dd>{{ item.value | mdi | safe }}</dd>
+        {%- endfor %}
+      </dl>
+      {{ c | frag("reading.close") | md | safe }}
+      <p>{{ c | frag("reading.link") | mdi | safe }}</p>
+    </section>
+
+    <section id="no-total" class="block">
+      <h2>{{ c | frag("nototal.heading") }}</h2>
+      {{ c | frag("nototal.body") | md | safe }}
+    </section>
+
+  </div>
+</div>
+
+<div class="band">
+  <div class="sheet">
+    <aside class="rail">
+      <dl><dt>Question</dt><dd>1 of 8</dd><dt>Dimension</dt><dd>{{ d1.number }} &middot; {{ d1.shortName }}</dd></dl>
+    </aside>
+    {{ measure({
+      variant: "reader",
+      size: "q",
+      ariaLabel: "Where most systems in production sit on the scale",
+      caption: c | frag("reader.caption"),
+      captionPair: c | frag("reader.pair"),
+      tag: c | frag("reader.tag"),
+      question: d1.selfCheck,
+      stamp: c | frag("reader.stamp")
+    }) }}
+  </div>
+</div>
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section id="score-yourself" class="block">
+      <h2>{{ c | frag("scoreyourself.heading") }}</h2>
+      {{ c | frag("scoreyourself.body") | md | safe }}
+      <ol class="q-list">
+        {%- for d in oal.dimensions %}
+        <li>{{ d.selfCheck }} <span class="dim">{{ d.number }} &middot; {{ d.name | lower }}</span></li>
+        {%- endfor %}
+      </ol>
+    </section>
+
+    <section id="limits" class="block">
+      <h2>{{ c | frag("limits.heading") }}</h2>
+      {{ c | frag("limits.body") | md | safe }}
+    </section>
+
+    <section id="why" class="block">
+      <h2>{{ c | frag("why.heading") }}</h2>
+      {{ c | frag("why.body") | md | safe }}
+    </section>
+
+    <section id="use" class="block">
+      <h2>{{ c | frag("use.heading") }}</h2>
+      {{ c | frag("use.body") | md | safe }}
+      <p class="note">{{ c | frag("use.note") | mdi | safe }}
+        <a href="/changelog/">Changelog</a> &middot;
+        <a href="/scorecard/">Blank scorecard</a> &middot;
+        <a href="{{ scorecardMarkdown }}">Blank scorecard as markdown</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("changes.heading") }}</h2>
+      {{ c | frag("changes.body") | md | safe }}
+      <p><a href="/changelog/">{{ c | frag("changes.link") }}</a></p>
+    </section>
+
+  </div>
+</div>

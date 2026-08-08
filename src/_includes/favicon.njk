@@ -1,0 +1,25 @@
+{#
+  §7 listed the favicon's hardcoded #E6EAE7 as a latent defect: the frame was painted
+  in a literal that happened to equal --ground, so changing the ground colour would
+  have left the tab icon behind. Both values are now read straight out of styles.css
+  by eleventy.config.js, which is one source rather than two that agree.
+
+  The mark itself is unchanged from the handover: the wordmark's 'o', set expanded so
+  it is a wide ellipse rather than a circle, cropped left and right by the frame.
+#}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="{{ site.name }}">
+  <rect width="32" height="32" fill="{{ tokens.ground }}"/>
+  <path fill="{{ tokens.ink }}" fill-rule="evenodd" d="
+    M16 3.5
+    C 28.2 3.5 38 9.1 38 16
+    C 38 22.9 28.2 28.5 16 28.5
+    C 3.8 28.5 -6 22.9 -6 16
+    C -6 9.1 3.8 3.5 16 3.5
+    Z
+    M16 10
+    C 8.3 10 2.5 12.7 2.5 16
+    C 2.5 19.3 8.3 22 16 22
+    C 23.7 22 29.5 19.3 29.5 16
+    C 29.5 12.7 23.7 10 16 10
+    Z"/>
+</svg>

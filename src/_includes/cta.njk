@@ -1,0 +1,17 @@
+{#
+  The call to action — four fields, one component, used twice today.
+
+  RATIONALE.md and BRIEF.md §2: never a coloured button, never a price alone. The
+  product, the coverage, the duration and the price arrive together or not at all,
+  because a price without its scope is the shape of a quote rather than a published
+  rate. All four are read from products.json (§10), so a price change is one edit.
+#}
+
+{% macro cta(href, product) %}
+<a class="cta" href="{{ href }}">
+  <span class="f f--product">{{ product.name }}</span>
+  <span class="f">{{ product.dimensions }} dimensions</span>
+  <span class="f">{{ product.duration }}</span>
+  <span class="f">{{ product.price }}</span>
+</a>
+{% endmacro %}

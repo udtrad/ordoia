@@ -1,0 +1,17 @@
+{
+  "$comment": [
+    "BRIEF.md §2: 'No individual is named or pictured on marketing surfaces. Assessment",
+    "artifacts do carry a named assessor, by design. Build the assessor field as a list",
+    "that renders one entry today and three later, everywhere it appears.'",
+    "",
+    "`assessors` is empty and that is not a placeholder: the blank scorecard names",
+    "nobody because no assessment has been performed on it. When it is filled in, each",
+    "entry gets a row. Until then the form prints `blankSlots` empty rows to write in.",
+    "",
+    "Either way the scorecard renders a LIST. Adding a second assessor is a data change,",
+    "not a layout change, which is the whole point of building it this way at one."
+  ],
+
+  "blankSlots": 3,
+  "assessors": []
+}

@@ -63,21 +63,38 @@ test('check 6 — no off-origin references in the markup either', async () => {
   // A request that never fires because the resource 404s is still a disclosure
   // of intent, and a preconnect fires a DNS lookup and a TLS handshake without
   // ever appearing as a resource request.
+  //
+  // Read tag by tag rather than attribute by attribute, because two kinds of
+  // off-origin reference are not subresource requests and must be told apart from
+  // the ones that are:
+  //
+  //   <a href>              a link a human clicks. Nothing is fetched until they do.
+  //   <link rel="canonical"> metadata. It is required to be absolute, §5 requires
+  //                         /oal to carry one, and no browser fetches it.
+  //
+  // Everything else carrying an off-origin URL is a subresource, and a subresource
+  // is a visitor's IP address handed to somebody else on page load.
   const { withSource } = await import('../lib/harness.js');
   const ledger = await ledgerFor(6);
   const violations = [];
 
+  const METADATA_RELS = /^(canonical|alternate|author|license|me)$/i;
+
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
-      const attrs = [...html.matchAll(/\b(?:href|src|srcset|action|data-src)\s*=\s*["']([^"']+)["']/gi)];
-      for (const m of attrs) {
-        const value = m[1].trim();
-        if (!/^(https?:)?\/\//i.test(value)) continue;
-        // A link a human clicks is not a runtime request.
-        const isAnchorHref = new RegExp(`<a\\b[^>]*${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i').test(html);
-        if (isAnchorHref) continue;
-        if (ledger.allows(url, value)) continue;
-        violations.push(`${url}: ${value}`);
+      for (const [, rawTag, attrs] of html.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+        const tag = rawTag.toLowerCase();
+        if (tag === 'a') continue;
+
+        const rel = attrs.match(/\brel\s*=\s*["']?([^"'\s>]+)/i);
+        if (tag === 'link' && rel && METADATA_RELS.test(rel[1])) continue;
+
+        for (const m of attrs.matchAll(/\b(?:href|src|srcset|action|data-src)\s*=\s*["']([^"']+)["']/gi)) {
+          const value = m[1].trim();
+          if (!/^(https?:)?\/\//i.test(value)) continue;
+          if (ledger.allows(url, value)) continue;
+          violations.push(`${url}: <${tag}> ${value}`);
+        }
       }
     }
   });

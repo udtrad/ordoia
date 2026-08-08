@@ -1,0 +1,76 @@
+{#
+  The one layout. Masthead, footer, and nothing else — every page's structure is its
+  own, because seven pages do not need an abstraction and a partial that exists to be
+  reused twice is harder to read than the two copies it replaced.
+
+  `assetBase` is what makes the frozen version self-contained (§5). Live pages leave it
+  empty and link `/styles.css`; the /oal/v1.0 snapshot sets it to its own directory and
+  links `/oal/v1.0/styles.css`, which is a byte-identical copy taken at publication. A
+  colour change in 2028 therefore cannot reach a methodology document that scorecards
+  have already been issued against.
+#}
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<meta name="description" content="{{ description }}">
+{%- if canonical %}
+<link rel="canonical" href="https://{{ site.domain }}{{ canonical }}">
+{%- endif %}
+<link rel="icon" href="{{ assetBase | default('') }}/favicon.svg" type="image/svg+xml">
+{#
+  Archivo is font-display: optional, so a cold visit either has it inside the
+  browser's block period or spends the whole page load in Arial Narrow and never
+  swaps. Preloading it makes the first outcome the likely one — which matters
+  because the wordmark and the measure's labels are Archivo, and §13 item 4 says
+  the hero measure is one of two things holding a sceptical reader past forty
+  seconds. Same origin, so check 6 is untouched.
+#}
+<link rel="preload" href="{{ assetBase | default('') }}/fonts/archivo-subset.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ assetBase | default('') }}/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="sheet">
+    <a class="wordmark" href="/"{% if nav == "home" %} aria-current="page"{% endif %}>ordoia</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="/oal/"{% if nav == "oal" %} aria-current="page"{% endif %}>the rubric</a></li>
+        <li><a href="/services/"{% if nav == "services" %} aria-current="page"{% endif %}>services</a></li>
+        <li><a href="/independence/"{% if nav == "independence" %} aria-current="page"{% endif %}>independence</a></li>
+        <li><a href="/about/"{% if nav == "about" %} aria-current="page"{% endif %}>about</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+{{ content | safe }}
+</main>
+
+<footer>
+  <div class="sheet">
+    <aside class="rail"></aside>
+    <div class="foot">
+      <ul>
+        <li><a href="/oal/">The rubric</a></li>
+        <li><a href="/services/">Services</a></li>
+        <li><a href="/independence/">Independence</a></li>
+        <li><a href="/about/">About</a></li>
+        {%- if nav != "scorecard" %}
+        <li><a href="/scorecard/">Blank scorecard</a></li>
+        {%- endif %}
+        {%- if nav != "changelog" %}
+        <li><a href="/changelog/">Changelog</a></li>
+        {%- endif %}
+      </ul>
+      <p>{{ site.name }} &middot; {{ terminology.partyWord }} {{ site.tagline }} &middot; {{ site.country }}</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

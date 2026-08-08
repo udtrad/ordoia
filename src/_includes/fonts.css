@@ -47,10 +47,6 @@
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;
-  size-adjust: 96.33%;
-  ascent-override: 95.19%;
-  descent-override: 22.75%;
-  line-gap-override: 0%;
 }
 
 /* Source Serif 4 Italic — .buyerq in oal.html and the inline <em> runs.
@@ -69,10 +65,24 @@
   font-weight: 400 700;
   font-style: italic;
   font-display: swap;
-  size-adjust: 96.33%;
-  ascent-override: 95.19%;
-  descent-override: 22.75%;
-  line-gap-override: 0%;
+}
+
+/* The fallback, adjusted to the webfont — not the webfont adjusted to the
+   fallback. Both directions remove the swap shift; only this one leaves the
+   design intact. Putting size-adjust on the real face shrinks Source Serif to
+   Georgia's width, which renders styles.css's 17px body at an effective
+   16.38px permanently, on every visit, forever — paying for a one-off
+   loading artifact with the type size of the whole site.
+
+   103.81% is the reciprocal of the 96.33% measured the other way (Source
+   Serif's rendered width / Georgia's, over the longest real body paragraph at
+   its real 17px). No ascent/descent overrides: every line-height in styles.css
+   is unitless, so the line box is font-size x line-height and font metrics
+   cannot move it. Measured after the change, not assumed — see FONTS.md. */
+@font-face {
+  font-family: "Source Serif Fallback";
+  src: local("Georgia");
+  size-adjust: 103.81%;
 }
 
 /* IBM Plex Mono — hashes, references and addresses only, at 0.85em.

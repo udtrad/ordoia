@@ -1,0 +1,77 @@
+{#
+  The measure — one component, four uses.
+
+  RATIONALE.md: "a fixed scale from OAL 0 to OAL 3 drawn as a physical distance, with
+  the span from asserted to enforced drawn two and a half times either neighbour". The
+  ratio is fixed in styles.css as --p0..--p3 and is never passed in, because a
+  data-driven width is an invented datum and the first step toward a bar whose length
+  can be summed (check 4).
+
+  Two variants, as RATIONALE.md states them, plus two shapes of the second:
+
+    scale         no stamp obligation, no mark. Wherever no assessment exists.
+    reader        scale plus the reader's own open mark. Not a score: there is no
+                  system, depth or working paper behind it, so demanding a
+                  four-qualifier stamp would force the site to fabricate exactly the
+                  thing the invariant prevents. Exempt in check 2 by construction.
+    score         the stamp is MANDATORY and carries level, depth, version and
+                  working paper. `requireQualifiers` throws at build time if any is
+                  missing — this is where RATIONALE.md's "the component does not
+                  render without them" stops being a convention (BRIEF.md §3).
+    notAssessed   a full-length unmarked track with the sentence printed ON it at the
+                  position a mark would occupy. The sentence is the mark.
+
+  §7 authorises adding markup for accessibility without asking. The scorecard variants
+  carry a visually hidden table so that a screen-reader user obtains the four
+  qualifiers as NAMED values per dimension rather than as a run-on stamp line.
+#}
+
+{% macro measure(m) %}
+<figure class="measure measure--{{ m.size | default('plain') }}" role="group" aria-label="{{ m.ariaLabel }}">
+  <figcaption class="measure__dim">{{ m.caption }}{% if m.captionPair %} <span class="pair">&middot; {{ m.captionPair }}</span>{% endif %}</figcaption>
+  <div class="measure__rule">
+    {%- set tickClass = "tick" if m.variant == "notAssessed" else "tick tick--major" %}
+    <span class="{{ tickClass }}" style="--p:var(--p0)"></span>
+    <span class="{{ tickClass }}" style="--p:var(--p1)"></span>
+    <span class="{{ tickClass }}" style="--p:var(--p2)"></span>
+    <span class="{{ tickClass }}" style="--p:var(--p3)"></span>
+    {%- if m.variant == "notAssessed" %}
+    <span class="label label--first" style="--p:var(--p0)"><span class="n">OAL 0</span>undefined</span>
+    <span class="label label--last" style="--p:var(--p3)"><span class="n">OAL 3</span>evidenced</span>
+    <span class="na"><span class="na__t">{{ m.naLabel }}</span></span>
+    {%- else %}
+    <span class="label label--first" style="--p:var(--p0)"><span class="n">OAL 0</span>undefined</span>
+    <span class="label" style="--p:var(--p1)"><span class="n">OAL 1</span>asserted</span>
+    <span class="label" style="--p:var(--p2)"><span class="n">OAL 2</span>enforced</span>
+    <span class="label label--last" style="--p:var(--p3)"><span class="n">OAL 3</span>evidenced</span>
+    {%- endif %}
+    {%- if m.variant == "reader" %}
+    <span class="mark mark--reader" style="--p:var(--p1)" aria-hidden="true"></span>
+    {%- endif %}
+    {%- if m.question %}
+    <span class="span" style="--from:var(--p1);--to:var(--p2)">
+      <span class="span__tag">{{ m.tag }}</span>
+      <span class="span__q">{{ m.question }}</span>
+    </span>
+    {%- endif %}
+  </div>
+  {%- if m.variant == "score" %}
+  <p class="stamp">{{ m.stamp | requireQualifiers(m.ariaLabel) | safe }}</p>
+  {%- elif m.stamp %}
+  <p class="stamp">{{ m.stamp | safe }}</p>
+  {%- endif %}
+  {%- if m.qualifiers %}
+  {#
+    A description list rather than a table: these are name/value pairs, not a grid,
+    and a one-pixel visually-hidden <table> is laid out at its min-content width no
+    matter what you set, which puts it past the A4 content box in print (check 11).
+  #}
+  <dl class="vh">
+    {%- for q in m.qualifiers %}
+    <dt>{{ q[0] }}</dt>
+    <dd>{{ q[1] }}</dd>
+    {%- endfor %}
+  </dl>
+  {%- endif %}
+</figure>
+{% endmacro %}

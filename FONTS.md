@@ -303,3 +303,53 @@ I have not added it — the HTML pages and templates are outside this task's sco
   62 to 100 would save a further 13.8 KB (measured: 45,800 B against 32,020 B on an
   earlier build) and nothing on the site sets `wdth` below 100 — but BRIEF.md §4 fixes
   the range at 62–125, so it was left alone.
+
+---
+
+## Integration note — the metric adjustment was reversed
+
+Added when `fonts.css` was inlined into `styles.css`.
+
+The measurement above put `size-adjust: 96.33%` on the **Source Serif 4** face,
+scaling the webfont down to Georgia's width. That removes the swap shift, and it
+was correctly measured — but it is permanent. `styles.css` sets the body at 17px,
+and a 96.33% size-adjust renders it at an effective 16.38px on every visit,
+forever, to pay for a one-off loading artifact.
+
+The adjustment now sits on the fallback instead:
+
+```css
+@font-face { font-family: "Source Serif 4"; src: url("fonts/source-serif-4-subset.woff2") format("woff2"); font-display: swap; }
+@font-face { font-family: "Source Serif Fallback"; src: local("Georgia"); size-adjust: 103.81%; }
+```
+
+`--body` becomes `"Source Serif 4", "Source Serif Fallback", Georgia, …`, so
+Georgia is scaled up to Source Serif rather than Source Serif scaled down to
+Georgia. 103.81% is the reciprocal of the measured 96.33%.
+
+No `ascent-override` / `descent-override` on the fallback: every `line-height` in
+`styles.css` is unitless, so the line box is `font-size × line-height` and font
+metrics cannot move it — which the original measurement had already established
+as a 0.000% height delta.
+
+**Re-measured after the change**, `/about/` in Chromium at 1280×900, comparing a
+normal load against one with `**/*.woff2` aborted so the fallback face renders:
+
+```
+webfont   probe width: 622.344   para heights: 82,109,54,163,109,163
+fallback  probe width: 626.156   para heights: 82,109,54,163,109,163
+
+width delta on swap:  0.613%
+per-paragraph height delta: 0, 0, 0, 0, 0, 0 px
+```
+
+Same match quality as the original direction (0.611% there, 0.613% here — the
+difference is rounding on the reciprocal), with the design's 17px intact.
+
+A `<link rel="preload">` for `archivo-subset.woff2` was added to the page layout,
+as recommended, scoped to `assetBase` so the frozen `/oal/v1.0/` snapshot
+preloads its own copy.
+
+**Not verified:** Chromium only, as above. `local("Georgia")` resolving on Linux
+hosts without Georgia installed falls through to the unadjusted `Georgia`,
+`"Times New Roman"`, `serif` stack, which is the pre-existing behaviour.

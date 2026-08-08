@@ -1,0 +1,15 @@
+---
+layout: layout.njk
+permalink: /oal/
+nav: oal
+description: The Ordoia Assurance Levels rubric, v1.0. Eight dimensions, four levels, published in full under CC BY 4.0.
+eleventyComputed:
+  title: "{{ oal.name }} — v{{ oal.current }} | Ordoia"
+  canonical: "/oal/v{{ oal.current }}/"
+---
+{#
+  /oal serves the current version and carries a canonical link to the versioned
+  address (§5). The two render the same body from the same data; the difference is
+  that this one moves when a new version is published and the other one never does.
+#}
+{% include "rubric.njk" %}

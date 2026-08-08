@@ -1,0 +1,62 @@
+---
+layout: layout.njk
+permalink: /about/
+nav: about
+title: About the practice | Ordoia
+eleventyComputed:
+  description: "Ordoia is a {{ terminology.partyWord }} AI assurance practice. The method is published, versioned and dated."
+---
+{% set c = copy.about %}
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>{{ c | frag("heading") }}</h1>
+      {{ c | frag("intro") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("category.heading") }}</h2>
+      {{ c | frag("category.body") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("method.heading") }}</h2>
+      {{ c | frag("method.body") | md | safe }}
+      <p><a href="/oal/">{{ c | frag("method.link") }}</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("record.heading") }}</h2>
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("record.caption") }}</caption>
+          <tbody>
+            {%- for row in c | frag("record.rows") | rows %}
+            <tr><td class="lv">{{ row.label }}</td><td>{{ row.value | mdi | safe }}</td></tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("who.heading") }}</h2>
+      {{ c | frag("who.body") | md | safe }}
+      <p><a href="/scorecard/">{{ c | frag("who.link") }}</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("elsewhere.heading") }}</h2>
+      {{ c | frag("elsewhere.body") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("pronunciation.heading") }}</h2>
+      <p class="note">{{ c | frag("pronunciation.body") | mdi | safe }}</p>
+    </section>
+
+  </div>
+</div>

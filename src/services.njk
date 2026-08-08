@@ -1,0 +1,85 @@
+---
+layout: layout.njk
+permalink: /services/
+nav: services
+title: Services — audit, review, retainer | Ordoia
+description: Three engagements, published prices. Coverage and depth are two separate axes.
+---
+{% from "cta.njk" import cta %}
+{% from "grid.njk" import grid %}
+{% set c = copy.services %}
+{% set audit = products.products | product("audit") %}
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>{{ c | frag("heading") }}</h1>
+      <p class="sub" style="font-size:1.06rem">{{ c | frag("sub") }}</p>
+      {#
+        New copy, and the reason it exists: check 10 found that this page states four
+        depths, three readiness thresholds and eight dimension names against no version
+        at all. It is the page a buyer reads before spending £2,500, and a level means
+        nothing without a version. CHANGES.md #2.
+      #}
+      <p class="note">{{ c | frag("version") | mdi | safe }}</p>
+    </section>
+
+    <section class="block" id="grid">
+      <h2>{{ c | frag("grid.heading") }}</h2>
+      {{ c | frag("grid.body") | md | safe }}
+      {{ grid(products) }}
+      <p class="note">{{ c | frag("grid.note") | mdi | safe }}</p>
+      {{ c | frag("grid.paths") | md | safe }}
+    </section>
+
+    <section class="block" id="audit">
+      <h2>{{ c | frag("audit.heading") }}</h2>
+      <p class="note">{{ c | frag("audit.terms") }}</p>
+      {{ c | frag("audit.lede") | md | safe }}
+      {{ c | frag("audit.scope") | md | safe }}
+      {{ c | frag("audit.outofscope") | md | safe }}
+      <p class="cap">{{ c | frag("audit.method") | mdi | safe }}</p>
+      {{ c | frag("audit.receive") | md | safe }}
+      <p class="note">{{ c | frag("audit.harness") | mdi | safe }}</p>
+      <p><a href="/scorecard/">{{ c | frag("audit.link") }}</a></p>
+    </section>
+
+    <section class="block" id="review">
+      <h2>{{ c | frag("review.heading") }}</h2>
+      <p class="note">{{ c | frag("review.terms") }}</p>
+      {{ c | frag("review.lede") | md | safe }}
+      {{ c | frag("review.body") | md | safe }}
+      {{ c | frag("review.threshold") | md | safe }}
+      <p class="cap">{{ c | frag("review.method") | mdi | safe }}</p>
+      {{ c | frag("review.receive") | md | safe }}
+      <p class="note">{{ c | frag("review.addressed") | mdi | safe }}</p>
+    </section>
+
+    <section class="block" id="retainer">
+      <h2>{{ c | frag("retainer.heading") }}</h2>
+      <p class="note">{{ c | frag("retainer.terms") }}</p>
+      {{ c | frag("retainer.lede") | md | safe }}
+      {{ c | frag("retainer.body") | md | safe }}
+      {{ c | frag("retainer.lead") | md | safe }}
+      <p class="note">{{ c | frag("retainer.baseline") | mdi | safe }}</p>
+      {{ c | frag("retainer.receive") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("how.heading") }}</h2>
+      {{ c | frag("how.body") | md | safe }}
+      <h3>{{ c | frag("how.subheading") }}</h3>
+      {{ c | frag("how.yourselves") | md | safe }}
+      <p><a href="/independence/">{{ c | frag("how.link") }}</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("start.heading") }}</h2>
+      {{ cta("mailto:" + site.email + "?subject=" + (products.cta.enquirySubject | urlencode), audit) }}
+      <p class="note" style="margin-top:1.2rem">{{ c | frag("start.note") | mdi | safe }}</p>
+    </section>
+
+  </div>
+</div>

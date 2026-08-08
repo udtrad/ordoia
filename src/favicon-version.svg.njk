@@ -1,0 +1,9 @@
+---
+pagination:
+  data: oal.versions
+  size: 1
+  alias: v
+eleventyComputed:
+  permalink: "/oal/v{{ v.version }}/favicon.svg"
+---
+{% include "favicon.njk" %}

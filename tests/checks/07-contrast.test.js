@@ -50,13 +50,35 @@ import { contrastRatio, requiredRatio, AA_NON_TEXT } from '../lib/contrast.js';
  */
 const LOAD_BEARING_GRAPHICS = ['.measure__rule', '.measure__rule .tick'];
 
-/** Collect every text node's colour against its effective background. */
+/**
+ * The painted background behind an element.
+ *
+ * Walks ancestors, but only accepts one whose box actually COVERS the element. The
+ * measure is the reason: its labels, its span and its ticks are absolutely positioned
+ * inside `.measure__rule`, which is a one-pixel-high strip carrying a background of
+ * its own. They are drawn nowhere near it — the labels sit 2.5rem above — so treating
+ * the rule as their background measures the DOM rather than what a reader sees. It is
+ * the same correction check 8 already carries for inherited colour.
+ *
+ * Containment is required rather than overlap, so this only ever skips an ancestor the
+ * element genuinely does not sit on. It cannot excuse a background that is really there.
+ *
+ * Inlined into both collectors rather than shared, because these run inside the page
+ * via `page.evaluate` and only see their own body.
+ */
 function collectText() {
   const effectiveBg = (el) => {
+    const box = el.getBoundingClientRect();
     let node = el;
     while (node && node !== document.documentElement) {
       const bg = getComputedStyle(node).backgroundColor;
-      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        const r = node.getBoundingClientRect();
+        if (
+          r.left <= box.left + 0.5 && r.right >= box.right - 0.5 &&
+          r.top <= box.top + 0.5 && r.bottom >= box.bottom - 0.5
+        ) return bg;
+      }
       node = node.parentElement;
     }
     return getComputedStyle(document.documentElement).backgroundColor || 'rgb(255, 255, 255)';
@@ -87,11 +109,19 @@ function collectText() {
 }
 
 function collectGraphics(selectors) {
+  // Same containment rule as collectText — see the note there.
   const effectiveBg = (el) => {
+    const box = el.getBoundingClientRect();
     let node = el.parentElement;
     while (node && node !== document.documentElement) {
       const bg = getComputedStyle(node).backgroundColor;
-      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        const r = node.getBoundingClientRect();
+        if (
+          r.left <= box.left + 0.5 && r.right >= box.right - 0.5 &&
+          r.top <= box.top + 0.5 && r.bottom >= box.bottom - 0.5
+        ) return bg;
+      }
       node = node.parentElement;
     }
     return getComputedStyle(document.documentElement).backgroundColor || 'rgb(255, 255, 255)';

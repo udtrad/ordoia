@@ -1,0 +1,25 @@
+{
+  "$comment": [
+    "BRIEF.md §12.2: the publication date becomes a permanent address and a version",
+    "stamp on every scorecard ever issued. It is NOT settled — it needs confirming",
+    "before launch. It is held here, in one place, so that confirming it is one edit.",
+    "",
+    "Every page that prints the date reads it from here. A rubric version that is later",
+    "superseded gains its own `published` field on its record in oal.json, and that",
+    "field wins; this value is the current version's date."
+  ],
+
+  "name": "Ordoia",
+  "tagline": "assurance for LLM and agent systems",
+  "country": "United Kingdom",
+
+  "domain": "ordoia.co.uk",
+  "email": "hello@ordoia.co.uk",
+
+  "publicationDate": "2026-08-07",
+
+  "elsewhere": {
+    "label": "infrasights.net",
+    "url": "https://infrasights.net"
+  }
+}

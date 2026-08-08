@@ -1,0 +1,42 @@
+---
+layout: layout.njk
+permalink: /independence/
+nav: independence
+eleventyComputed:
+  title: "What {{ terminology.partyWord }} means here | Ordoia"
+description: The constraints Ordoia accepts, stated as constraints.
+---
+{% set c = copy.independence %}
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>{{ c | frag("heading") }}</h1>
+      <p class="sub" style="font-size:1.06rem">{{ c | frag("sub") }}</p>
+      {{ c | frag("intro") | md | safe }}
+    </section>
+
+    <section class="block">
+      {{ c | frag("constraints") | mdList("constraints") | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("papers.heading") }}</h2>
+      {{ c | frag("papers.body") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("word.heading") }}</h2>
+      {{ c | frag("word.body") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("cannot.heading") }}</h2>
+      {{ c | frag("cannot.body") | md | safe }}
+      <p><a href="/oal/#limits">{{ c | frag("cannot.link") }}</a></p>
+    </section>
+
+  </div>
+</div>

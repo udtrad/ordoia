@@ -1,0 +1,88 @@
+{
+  "$comment": [
+    "BRIEF.md §10: 'Products, prices, durations, coverage and depth in one data file.",
+    "The coverage × depth grid renders from it, including the not offered cells.'",
+    "",
+    "The grid is rendered twice — home and services — and the two hand-authored copies",
+    "in the handover had drifted by one cell (see CHANGES.md #3). One record now feeds",
+    "both, which is the only way they stay identical.",
+    "",
+    "`notOffered` cells are data, not absence. RATIONALE.md: absence is always labelled",
+    "and always legible, and that includes the commercial ladder."
+  ],
+
+  "products": [
+    {
+      "key": "audit",
+      "name": "Audit",
+      "dimensions": 4,
+      "depth": "inspected",
+      "price": "£2,500",
+      "duration": "1 week"
+    },
+    {
+      "key": "top-up",
+      "name": "baseline top-up",
+      "dimensions": 4,
+      "depth": "inspected",
+      "price": "£2,500",
+      "duration": "~1 week"
+    },
+    {
+      "key": "baseline",
+      "name": "Baseline",
+      "dimensions": 8,
+      "depth": "inspected",
+      "price": "£5,000",
+      "duration": "2 weeks"
+    },
+    {
+      "key": "review",
+      "name": "Review",
+      "dimensions": 8,
+      "depth": "tested",
+      "price": "from £9,000",
+      "duration": "3 weeks"
+    },
+    {
+      "key": "retainer",
+      "name": "Retainer",
+      "dimensions": 8,
+      "depth": "sustained",
+      "price": "from £3,000/month",
+      "duration": "6-month minimum"
+    }
+  ],
+
+  "grid": {
+    "caption": "Coverage × depth",
+    "coverageHeading": "Coverage",
+    "columns": ["Inspected", "Tested", "Sustained"],
+    "notOffered": "not offered",
+    "rows": [
+      {
+        "type": "coverage",
+        "head": "Four dimensions",
+        "cells": ["audit", null, null]
+      },
+      {
+        "type": "path",
+        "product": "top-up",
+        "note": "audit plus top-up reaches exactly the same place as a baseline taken directly"
+      },
+      {
+        "type": "coverage",
+        "head": "All eight dimensions",
+        "cells": ["baseline", "review", "retainer"]
+      }
+    ]
+  },
+
+  "cta": {
+    "product": "audit",
+    "homeHref": "/services/#audit",
+    "enquirySubject": "Audit enquiry"
+  },
+
+  "auditCoverage": [1, 2, 5, 7]
+}

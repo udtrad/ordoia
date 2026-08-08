@@ -1,0 +1,90 @@
+---
+layout: layout.njk
+permalink: /
+nav: home
+description: Ordoia assesses LLM and agent systems for grounding, reliability and production readiness. Published rubric, published prices.
+eleventyComputed:
+  title: "{{ site.name }} — {{ terminology.partyWord }} {{ site.tagline }}"
+---
+{% from "measure.njk" import measure %}
+{% from "cta.njk" import cta %}
+{% from "grid.njk" import grid %}
+{% set c = copy.home %}
+{% set audit = products.products | product("audit") %}
+{% set d1 = oal.dimensions[0] %}
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+    <section class="hero">
+      <h1>{{ c | frag("hero.heading") }}</h1>
+      <p class="sub">{{ c | frag("hero.sub") | mdi | safe }}</p>
+      {{ cta(products.cta.homeHref, audit) }}
+    </section>
+  </div>
+</div>
+
+{#
+  The measure. The only full-bleed element on the site. Scale variant: no assessment
+  exists here, so no stamp obligation and no mark.
+#}
+<div class="band">
+  <div class="sheet">
+    <aside class="rail">
+      <dl><dt>Question</dt><dd>1 of 8</dd><dt>Scale</dt><dd>OAL v{{ oal.current }}</dd></dl>
+    </aside>
+    {{ measure({
+      variant: "scale",
+      size: "q",
+      ariaLabel: "The OAL scale, with the first self-scoring question in the span between asserted and enforced",
+      caption: d1.name,
+      captionPair: c | frag("measure.caption"),
+      tag: c | frag("measure.tag"),
+      question: d1.selfCheck,
+      stamp: (c | frag("measure.stamp")) + ' <a href="/oal/">' + (c | frag("measure.link")) + '</a>'
+    }) }}
+  </div>
+</div>
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h2>{{ c | frag("failures.heading") }}</h2>
+      {{ c | frag("failures.intro") | md | safe }}
+      {{ c | frag("failures.body") | md | safe }}
+      <p class="eyebrow">{{ c | frag("failures.eyebrow") }}</p>
+      {{ c | frag("failures.list") | mdList("fails") | safe }}
+      {{ c | frag("failures.ordinary") | md | safe }}
+      {{ c | frag("failures.instrument") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("scoreyourself.heading") }}</h2>
+      {{ c | frag("scoreyourself.body") | md | safe }}
+      <p><a href="/oal/#score-yourself">{{ c | frag("scoreyourself.link") }}</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("instrument.heading") }}</h2>
+      {{ c | frag("instrument.body") | md | safe }}
+      <p><a href="/oal/">{{ c | frag("instrument.link") }}</a></p>
+    </section>
+
+    <section class="block" id="prices">
+      <h2>{{ c | frag("prices.heading") }}</h2>
+      {{ c | frag("prices.body") | md | safe }}
+      {{ grid(products) }}
+      <p class="note">{{ c | frag("prices.note") | mdi | safe }}</p>
+      <p><a href="/services/">{{ c | frag("prices.link") }}</a></p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("standing.heading") }}</h2>
+      {{ c | frag("standing.body") | md | safe }}
+      <p><a href="/independence/">{{ c | frag("standing.link") }}</a></p>
+    </section>
+
+  </div>
+</div>

@@ -1,0 +1,18 @@
+{
+  "$comment": [
+    "BRIEF.md §10: phase 2 replaces 'third-party' with 'independent' in the hero. The",
+    "seam is this file — one line plus a CHANGES.md entry, not a seven-file search.",
+    "",
+    "The independence page's section 'The word we do not use' is deliberately literal",
+    "and does not read from here. That passage is a discussion ABOUT the two words, so",
+    "substituting one for the other would turn it into nonsense. Phase 2 rewrites that",
+    "section rather than flipping a token in it.",
+    "",
+    "Note also that check 3 bans claim-shaped uses of 'independent'. Flipping this value",
+    "will turn check 3 red, and that is correct: the change is only honest once the",
+    "apparatus exists, and the suite should require someone to say so on the record."
+  ],
+
+  "partyWord": "third-party",
+  "partyWordCap": "Third-party"
+}

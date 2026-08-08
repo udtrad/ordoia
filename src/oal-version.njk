@@ -1,0 +1,32 @@
+---
+layout: layout.njk
+nav: oal
+pagination:
+  data: oal.versions
+  size: 1
+  alias: v
+eleventyComputed:
+  permalink: "/oal/v{{ v.version | requirePublishableVersion }}/"
+  assetBase: "/oal/v{{ v.version }}"
+  title: "{{ oal.name }} — v{{ v.version }} | Ordoia"
+  description: "The Ordoia Assurance Levels rubric, v{{ v.version }}, at its permanent address. Eight dimensions, four levels, published in full under CC BY 4.0."
+---
+{#
+  The permanent address.
+
+  §5: "/oal/v1.0 is a permanent address. It is printed on scorecards, in the changelog,
+  and in the licence line. It must resolve, unchanged, indefinitely." §13 judges the
+  build on whether it "renders identically in 2032, styled by 2026's stylesheet".
+
+  So this page is self-contained: `assetBase` points its stylesheet, fonts and favicon
+  at version-scoped copies taken at publication, and a colour change on the live site
+  in 2028 cannot reach it. Font URLs inside styles.css are relative, so the same file
+  is correct at both paths without being edited.
+
+  Paginating over oal.versions is what makes §10's "additive by construction" true:
+  publishing v1.1 adds a record to oal.json and a directory appears. What is NOT yet
+  built is content immutability — see `requirePublishableVersion` in eleventy.config.js,
+  which stops the build rather than let a superseded version be regenerated from a
+  newer rubric.
+#}
+{% include "rubric.njk" %}

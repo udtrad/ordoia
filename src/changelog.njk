@@ -1,0 +1,61 @@
+---
+layout: layout.njk
+permalink: /changelog/
+nav: changelog
+title: Changelog and version index — OAL | Ordoia
+description: Every change to the Ordoia Assurance Levels, classified as clarifying or breaking. Superseded versions stay published.
+---
+{% set c = copy.changelog %}
+
+<div class="sheet">
+  <aside class="rail">
+    <dl>
+      <dt>Current</dt><dd>OAL v{{ oal.current }}</dd>
+      <dt>Published</dt><dd>{{ site.publicationDate }}</dd>
+      <dt>Superseded</dt><dd>{{ c | frag("rail.superseded") }}</dd>
+    </dl>
+  </aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>{{ c | frag("heading") }}</h1>
+      {{ c | frag("intro") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("entries.heading") }}</h2>
+      <ul class="changelog">
+        {%- for v in oal.versions %}
+        {%- set published = v.published | default(site.publicationDate) %}
+        <li>
+          <p class="class class--{{ v.classification }}">{{ published }} &middot; v{{ v.version }} &middot; {{ v.title }}</p>
+          <p>{{ v.body }} {{ c | frag("entries.address", { entryVersion: v.version }) | mdi | safe }}</p>
+        </li>
+        {%- endfor %}
+      </ul>
+      <p class="note">{{ c | frag("entries.note") }}</p>
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("index.heading") }}</h2>
+      <div class="scroller" tabindex="0">
+        <table>
+          <caption>{{ c | frag("index.caption") }}</caption>
+          <thead><tr><th scope="col">Version</th><th scope="col">Published</th><th scope="col">Status</th><th scope="col">Address</th></tr></thead>
+          <tbody>
+            {%- for v in oal.versions %}
+            <tr>
+              <td class="lv">v{{ v.version }}</td>
+              <td>{{ v.published | default(site.publicationDate) }}</td>
+              <td>{{ v.status }}</td>
+              <td><a href="/oal/v{{ v.version }}/" class="mono">/oal/v{{ v.version }}</a></td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">{{ c | frag("index.note") }}</p>
+    </section>
+
+  </div>
+</div>

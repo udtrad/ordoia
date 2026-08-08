@@ -79,10 +79,13 @@ better ruled, and the discipline is worth more than the two pages.
 ## Contrast
 
 `floor` on `ground` is 5.65:1, `slate` on `ground` 6.2:1, `ink` on `ground`
-14.7:1. All pass AA at body size, including the level scale and the stamp lines.
-`untravelled` is used for rules and fills only and never carries text — the
+14.42:1. All pass AA at body size, including the level scale and the stamp lines.
+`untravelled` is used for borders and fills only and never carries text — the
 *not offered* cells in the price grid are set in `slate`, because a labelled
-absence that is hard to read is not a labelled absence.
+absence that is hard to read is not a labelled absence. The measure's own rule
+and its minor ticks are drawn in `track` `#7A827E` — 3.25:1 on `ground`, 3.57:1
+on `raised` — and not in `untravelled`: a scale line is a load-bearing graphic
+under WCAG 1.4.11, not decoration. Both corrections are logged in `CHANGES.md`.
 
 ## Type
 

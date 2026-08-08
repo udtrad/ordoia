@@ -1,0 +1,95 @@
+---
+eleventyComputed:
+  permalink: "{{ scorecardMarkdown }}"
+---
+{%- set c = copy.scorecard -%}
+{%- set inScope = products.auditCoverage -%}
+# Assurance scorecard — blank, audit scope
+
+Scored against the **{{ oal.name }}, v{{ oal.current }}** (published {{ site.publicationDate }},
+`{{ site.domain }}/oal/v{{ oal.current }}`, {{ oal.licence.short }}).
+
+{{ c | frag("md.intro") }}
+
+---
+
+## Engagement
+
+| Field | Value |
+|---|---|
+{% for field in c | frag("fields") | rows -%}
+| {{ field.label }} | {{ field.value }} |
+{% endfor %}
+---
+
+## Levels
+
+{{ c | frag("md.levels.note") }}
+{% for pair in oal.pairs %}
+### {{ pair.name }}
+
+| # | Dimension | Level | Depth | Basis | Working paper | Inspected max |
+|---|---|---|---|---|---|---|
+{% for d in oal.dimensions | dims(pair.dimensions) -%}
+{% if d.number in inScope -%}
+| {{ d.number }} | {{ d.name }} | | inspected | finding | WP— | OAL {{ d.inspectedMax }} |
+{% else -%}
+| {{ d.number }} | {{ d.name }} | {{ c | frag("na.label") }} | — | — | — | OAL {{ d.inspectedMax }} |
+{% endif -%}
+{% endfor %}
+{% endfor -%}
+---
+
+## Lowest level assessed
+
+**OAL —— on ————————** {{ c | frag("floor.hint") }}
+
+{{ c | frag("md.floor.note") }}
+
+---
+
+## Lowest levels first
+
+{{ c | frag("md.lowest.note") }}
+
+1.
+2.
+3.
+
+## Threshold position
+
+{{ c | frag("md.threshold.note") }}
+
+| Threshold | Position |
+|---|---|
+{% for row in c | frag("threshold.rows") | rows -%}
+{% if row.label != "Reason" -%}
+| {{ row.label }} | {{ row.value }} |
+{% endif -%}
+{% endfor %}
+{{ c | frag("md.threshold.close") }}
+
+## Limitations
+
+{{ c | frag("limitations.note") }}
+
+{{ c | frag("limitations.address") }}
+
+## Defect register
+
+{{ c | frag("md.defects.note") }}
+
+## Assessors
+
+{{ c | frag("md.assessors.note") }}
+
+| Assessor | Signature | Date |
+|---|---|---|
+{% for i in range(0, assessors.blankSlots) -%}
+| | | |
+{% endfor %}
+{{ c | frag("assessors.papers") }}
+
+---
+
+{{ c | frag("footline") }} · `{{ site.domain }}/scorecard`

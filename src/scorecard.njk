@@ -1,0 +1,147 @@
+---
+layout: layout.njk
+permalink: /scorecard/
+nav: scorecard
+description: The blank Ordoia scorecard for an audit-scope engagement, under OAL v1.0. Printable.
+eleventyComputed:
+  title: "Blank scorecard — audit scope, OAL v{{ oal.current }} | Ordoia"
+---
+{% from "measure.njk" import measure %}
+{% set c = copy.scorecard %}
+{% set inScope = products.auditCoverage %}
+
+<article class="paper sheetpaper">
+
+  <p class="eyebrow">{{ c | frag("eyebrow") }}</p>
+  <h1>{{ c | frag("heading") }}</h1>
+  <p class="note" style="margin-top:0.8rem">{{ c | frag("note") | mdi | safe }}</p>
+
+  <section class="fields" aria-label="{{ c | frag('fields.label') }}">
+    <dl>
+      {%- for field in c | frag("fields") | rows %}
+      <dt>{{ field.label }}</dt><dd{% if field.value %} class="filled"{% endif %}>{{ field.value }}</dd>
+      {%- endfor %}
+    </dl>
+  </section>
+
+  <div class="rowset">
+  {%- for pair in oal.pairs %}
+
+  <p class="pairhead">{{ pair.name }}</p>
+  {%- for d in oal.dimensions | dims(pair.dimensions) %}
+  {%- set scored = d.number in inScope %}
+
+  <section class="row">
+    {%- if scored %}
+    {%- set stamp = c | frag("stamp.scored", { max: d.inspectedMax }) | mdi %}
+    {{ measure({
+      variant: "score",
+      size: "plain",
+      ariaLabel: "Dimension " + d.number + ", " + (d.name | lower) + " — level to be entered",
+      caption: d.number + " · " + d.name,
+      stamp: stamp,
+      qualifiers: [
+        ["Dimension", d.number + " · " + d.name],
+        ["Level", c | frag("vh.pending")],
+        ["Depth", "Inspected"],
+        ["Basis", "Finding"],
+        ["Methodology version", "OAL v" + oal.current],
+        ["Working paper", c | frag("vh.pending")],
+        ["Maximum obtainable at inspected depth", "OAL " + d.inspectedMax]
+      ]
+    }) }}
+    {%- else %}
+    {#- The top-up sentence is said once, on the first row that carries a gap. -#}
+    {%- set stamp %}{{ c | frag("stamp.notassessed", { max: d.inspectedMax }) }}{% if d.number == auditGaps[0] %} {{ c | frag("stamp.available") }}{% endif %}{% endset %}
+    {{ measure({
+      variant: "notAssessed",
+      size: "plain",
+      ariaLabel: "Dimension " + d.number + ", " + (d.name | lower) + " — not assessed",
+      caption: d.number + " · " + d.name,
+      naLabel: c | frag("na.label"),
+      stamp: stamp,
+      qualifiers: [
+        ["Dimension", d.number + " · " + d.name],
+        ["Level", c | frag("na.label")],
+        ["Maximum obtainable at inspected depth had it been in scope", "OAL " + d.inspectedMax]
+      ]
+    }) }}
+    {%- endif %}
+  </section>
+  {%- endfor %}
+  {%- endfor %}
+
+  </div>
+
+  <section class="legend">
+    <p class="floor-line">{{ c | frag("floor.line") | mdi | safe }}</p>
+    <p class="note">{{ c | frag("floor.note") | mdi | safe }}</p>
+  </section>
+
+  <section class="legend">
+    <h3>{{ c | frag("lowest.heading") }}</h3>
+    <p class="note">{{ c | frag("lowest.note") }}</p>
+    <div class="fields"><dl><dt>1</dt><dd></dd><dt>2</dt><dd></dd><dt>3</dt><dd></dd></dl></div>
+  </section>
+
+  <section class="legend">
+    <h3>{{ c | frag("threshold.heading") }}</h3>
+    <p class="note">{{ c | frag("threshold.note") | mdi | safe }}</p>
+    <div class="fields">
+      <dl>
+        {%- for row in c | frag("threshold.rows") | rows %}
+        <dt>{{ row.label }}</dt><dd{% if row.value %} class="filled"{% endif %}>{{ row.value }}</dd>
+        {%- endfor %}
+      </dl>
+    </div>
+  </section>
+
+  <section class="legend">
+    <h3>{{ c | frag("limitations.heading") }}</h3>
+    <p class="note">{{ c | frag("limitations.note") }} {{ c | frag("limitations.address") | mdi | safe }}</p>
+  </section>
+
+  <section class="legend">
+    <h3>{{ c | frag("defects.heading") }}</h3>
+    <p class="note">{{ c | frag("defects.note") }}</p>
+  </section>
+
+  {#
+    Assessors as a list, everywhere it appears (§2). It renders blank slots today
+    because no assessment has been performed on a blank form — not because the site
+    was built for one person. Adding a second assessor is a data change.
+  #}
+  <section class="legend">
+    <h3>{{ c | frag("assessors.heading") }}</h3>
+    <p class="note">{{ c | frag("assessors.note") }}</p>
+    <div class="sig">
+      {%- if assessors.assessors.length %}
+      {%- for a in assessors.assessors %}
+      <div class="slot filled">{{ a.name }}<span>{{ c | frag("assessors.slotname") }}</span></div>
+      <div class="slot"><span>{{ c | frag("assessors.slotsig") }}</span></div>
+      {%- endfor %}
+      {%- else %}
+      {%- for i in range(0, assessors.blankSlots) %}
+      <div class="slot"><span>{{ c | frag("assessors.slotname") }}</span></div>
+      <div class="slot"><span>{{ c | frag("assessors.slotsig") }}</span></div>
+      {%- endfor %}
+      {%- endif %}
+    </div>
+    <p class="note" style="margin-top:1.4rem">{{ c | frag("assessors.papers") }}</p>
+  </section>
+
+  <p class="note" style="margin-top:2.4rem">{{ c | frag("footline") }} &middot; <span class="mono">{{ site.domain }}/scorecard</span></p>
+
+</article>
+
+<div class="sheet" style="margin-top:3rem">
+  <aside class="rail"></aside>
+  <div class="body">
+    <section class="block">
+      <h2>{{ c | frag("about.heading") }}</h2>
+      {{ c | frag("about.body") | md | safe }}
+      <p><a href="/oal/#score-yourself">{{ c | frag("about.link") }}</a></p>
+      <p><a href="{{ scorecardMarkdown }}">Blank scorecard as markdown</a></p>
+    </section>
+  </div>
+</div>
