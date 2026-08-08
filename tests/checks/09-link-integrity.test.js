@@ -15,12 +15,13 @@
  *
  * EXPECTED RED ON THE HANDOVER: oal.html links to `scorecard.md`, which the
  * handover ships but which no route serves, and the version address
- * `ordoia.co.uk/oal/v1.0` printed in three places has nothing behind it.
+ * `ordoia.co.uk/oal/v1.0` printed in three places has nothing behind it. (The
+ * handover is frozen at the old domain; see `formerDomains` in src/_data/site.json.)
  */
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { withSource, withSite } from '../lib/harness.js';
+import { withSource, withSite, printedAddresses } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
 
 test('check 9 — every internal href resolves', async () => {
@@ -90,18 +91,14 @@ test('check 9 — every internal href resolves', async () => {
 test('check 9 — every printed version address resolves', async () => {
   // Addresses appear as printed text, not only as hrefs: the licence line, the
   // changelog's permanent-address column, the scorecard footer. A scorecard
-  // issued today prints `ordoia.co.uk/oal/v1.0` on its face; in six years
+  // issued today prints `ordoia.com/oal/v1.0` on its face; in six years
   // somebody will type it in.
   const ledger = await ledgerFor(9);
   const printed = new Set();
   const unresolved = [];
 
   await withSource(({ sources }) => {
-    for (const { html } of sources) {
-      for (const m of html.matchAll(/ordoia\.co\.uk(\/[A-Za-z0-9._~\-/]*)/g)) {
-        printed.add(m[1].replace(/[.,;)]$/, ''));
-      }
-    }
+    for (const { html } of sources) printedAddresses(html, printed);
   });
 
   await withSite(async ({ origin, browser }) => {
@@ -110,7 +107,10 @@ test('check 9 — every printed version address resolves', async () => {
       const bare = path.split('#')[0];
       const res = await page.request.get(origin + bare).catch(() => null);
       if (!(res && res.ok()) && !ledger.allows(bare, bare)) {
-        unresolved.push(`printed address ordoia.co.uk${path} does not resolve`);
+        // The path, not the domain: the match may have come from a former domain on the
+        // frozen handover, and naming the current one here would be a claim about which
+        // address was printed that this check did not actually establish.
+        unresolved.push(`printed address ${path} does not resolve`);
       }
     }
     await page.close();

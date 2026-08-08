@@ -13,8 +13,20 @@
   "tagline": "assurance for LLM and agent systems",
   "country": "United Kingdom",
 
-  "domain": "ordoia.co.uk",
-  "email": "hello@ordoia.co.uk",
+  "domain": "ordoia.com",
+  "email": "hello@ordoia.com",
+
+  "$formerDomainsComment": [
+    "Domains this practice has previously published against. Nothing in the build",
+    "reads this; the checks do. The designer handover at commit 3b93f1b is frozen",
+    "byte-identical and carries `ordoia.co.uk`, so a matcher that only knew the",
+    "current domain would find nothing there and report the handover red for the",
+    "wrong reason — a check measuring something other than what it claims.",
+    "",
+    "If a former domain is ever acquired and pointed here, it also belongs in",
+    "_redirects. Nothing on this list is currently owned."
+  ],
+  "formerDomains": ["ordoia.co.uk"],
 
   "publicationDate": "2026-09-19",
 

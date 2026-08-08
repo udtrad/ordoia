@@ -3,7 +3,7 @@
 # Both Netlify and Cloudflare Pages will usually do this on their own from the
 # directory structure. These rules are written out anyway, because §9 names a
 # published version returning 404 as the most serious operational failure this
-# site can have, and `ordoia.co.uk/oal/v1.0` is printed on the face of every
+# site can have, and `ordoia.com/oal/v1.0` is printed on the face of every
 # scorecard ever issued. That address resolving is not something to leave to a
 # host's default behaviour, or to survive a host migration by luck.
 

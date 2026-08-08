@@ -1,0 +1,70 @@
+# Build, gate, deploy, then check what the host actually returned.
+#
+# BRIEF.md §9 asks for a build reproducible from a clean checkout. The build needs
+# Chromium — §6 requires the scorecard PDF generated rather than exported by hand —
+# so it runs here rather than on the host: building on the host adds a minute per
+# deploy and puts the artifact at the mercy of their build image. More importantly,
+# this is the only shape in which `npm test` genuinely gates the deploy.
+#
+# The Pages project is Direct Upload, not Git integration, for the same reason.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SITE_URL: https://ordoia.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Pinned by package-lock, so the browser matches the Playwright the build expects
+      # rather than whatever the runner image happens to carry.
+      - run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      # The gate. 45 checks against the build; check 15 skips because ORDOIA_LIVE is
+      # unset here, which is deliberate — nothing that needs the network may block a build.
+      - name: Check the build
+        run: npm test
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy _site --project-name=ordoia
+
+      # Check 15. This is the half check 14 cannot do: it reads the files the build
+      # emits, not the responses a host returns. Byte-compares every page against the
+      # build, so an edge feature that rewrites HTML — Cloudflare's Email Address
+      # Obfuscation is on by default and would break the services CTA — fails here
+      # rather than in front of a client.
+      - name: Check the deploy
+        run: npm test
+        env:
+          ORDOIA_LIVE: ${{ env.SITE_URL }}

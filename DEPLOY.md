@@ -17,10 +17,10 @@ Everything below either is a command or is a decision with its trade-off stated.
 | `sitemap.xml`, `robots.txt`, `404.html` | built | §5 |
 | check 14 | `npm test` | parses both files and fails the build if a directive is missing or widened |
 
-Both files use the syntax **Netlify and Cloudflare Pages read natively and
-identically**, which is why this repo does not pick one. Nothing has to be rewritten
-to move between them, and that is deliberate: §9 asks for permanence to survive the
-host.
+Both files use a syntax **Netlify, Cloudflare Pages and Cloudflare Workers static assets
+all read natively and identically**. Nothing has to be rewritten to move between them,
+and that is deliberate: §9 asks for permanence to survive the host. The host below is a
+choice, not a dependency — which is what makes it safe to have made one.
 
 ---
 
@@ -36,18 +36,19 @@ node tools/build-pdf.mjs     # the scorecard PDF, rendered from the built site
 The second needs Chromium, because §6 requires the PDF to be *generated in the build,
 not exported by hand*. That shapes the deploy choice more than anything else here.
 
-**Recommended: build in CI, deploy the artifact.**
+**Build in CI, deploy the artifact.** This is committed, not a sketch:
+`.github/workflows/deploy.yml` on push to `main`, and `.github/workflows/canary.yml`
+weekly. The shape is:
 
-```yaml
-# .github/workflows/deploy.yml — sketch, not yet committed
-- uses: actions/setup-node@v4
-  with: { node-version: '22' }
-- run: npm ci
-- run: npx playwright install --with-deps chromium
-- run: npm run build
-- run: npm test                      # the gate. 45 checks. Do not deploy on red.
-- # then publish _site/ to the host
+```text
+npm ci → playwright install chromium → npm run build
+       → npm test                      the gate. Do not deploy on red.
+       → wrangler pages deploy _site
+       → ORDOIA_LIVE=… npm test        check 15, against what the host returned
 ```
+
+Secrets it needs: `CLOUDFLARE_API_TOKEN` (scope: Account → Cloudflare Pages → Edit) and
+`CLOUDFLARE_ACCOUNT_ID`.
 
 This keeps the host as a dumb file server, makes the build reproducible from a clean
 checkout on a machine you control, and means a host changing its build image cannot
@@ -63,54 +64,114 @@ formats §6 requires, and check 14 will tell you so.
 
 ---
 
-## Cloudflare Pages
+## The host: Cloudflare Pages
 
-1. Connect the repository, or `npx wrangler pages deploy _site`.
-2. Build output directory: `_site`.
-3. Custom domain → `ordoia.co.uk`. TLS is issued automatically; set SSL/TLS mode to
-   **Full (strict)**.
-4. `_headers` and `_redirects` are picked up from the output directory with no further
-   configuration.
+Decided 2026-08-08. The reasoning, because §9 asks for permanence to survive the host
+and a choice with no recorded reason cannot be reviewed later:
 
-## Netlify
+**Netlify's current Free plan cannot hold the guarantee this site makes.** New accounts
+are on credit-based pricing: **300 credits/month, a hard cap with no auto-recharge**, and
+a **production deploy costs 15 credits**. Twenty deploys exhausts the month at zero
+traffic. On exhaustion Netlify's docs are explicit — *"all of your web projects
+(sites/apps) are paused and visitors to your web projects will find a `Site not
+available` page"*, team-wide. That is §9's most serious operational failure, produced by
+the plan's own design, on the artifact whose resolution is the practice's permanence
+claim. It is closable only by paying.
 
-1. Connect the repository, or `npx netlify deploy --prod --dir=_site`.
-2. Publish directory: `_site`.
-3. Custom domain → `ordoia.co.uk`, then **Verify DNS configuration** and let it
-   provision the certificate.
-4. `_headers` and `_redirects` are picked up from the publish directory.
+**Cloudflare Pages: *"On both free and paid plans, requests to static assets are free and
+unlimited."*** This site has no Functions, so the metered path does not apply to it.
+Deploying prebuilt from CI consumes zero Pages builds. There is no overage that can take
+the site down.
 
-Either way, do **not** enable the host's analytics, form handling, or edge functions.
-§9 is explicit: no cookies, no client-side analytics, no tag manager, no pixel — which
-is what lets the site ship with no consent banner. A practice that publishes a
-redaction rule cannot run a tracker it has not disclosed.
+**The cost of choosing Cloudflare is that its edge rewrites HTML by default**, which is
+the wrong shape for a practice whose product is that what it published is what it
+published. Email Address Obfuscation is on by default on every new zone, rewrites
+`mailto:` links and injects `email-decode.min.js` — which this site's own
+`script-src 'none'` then blocks, leaving the services CTA dead. That risk is
+configuration, so it is closable and, unlike a billing cap, **testable**. Check 15 tests
+it on every deploy.
+
+### Setting it up
+
+Order matters: **harden the zone before pointing the domain at it**, so the mutating
+defaults never serve a single request.
+
+1. Add `ordoia.com` to Cloudflare as a zone and change the nameservers at Namecheap. An
+   apex domain requires this; a subdomain would not.
+2. **Before adding the custom domain** — Security → Settings → **Email Address
+   Obfuscation → Off**. Confirm **Rocket Loader off**, **Bot Fight Mode off**, and that
+   **Web Analytics is not enabled** (it injects a beacon; the zone's Traffic analytics is
+   server-side and needs no script). SSL/TLS → **Full (strict)**, Always Use HTTPS on.
+3. Any CAA records must permit `letsencrypt.org`, `pki.goog` and `ssl.com`, or
+   certificate issuance for the custom domain fails.
+4. Create the Pages project as **Direct Upload** — deploys come from CI, not from
+   Cloudflare's builder. **This is a one-way door**: a Direct Upload project cannot be
+   switched to Git integration later. It is the right door here, because the build needs
+   Chromium and because CI is the only shape in which `npm test` gates the deploy.
+5. Add `ordoia.com` as the custom domain. Build output directory `_site`; `_headers` and
+   `_redirects` are picked up from it with no further configuration.
+
+Do **not** enable the host's analytics beacons, form handling, or Functions. §9 is
+explicit: no cookies, no client-side analytics, no tag manager, no pixel — which is what
+lets the site ship with no consent banner. A practice that publishes a redaction rule
+cannot run a tracker it has not disclosed. Note also that `_headers` and `_redirects` are
+**not applied to Pages Functions responses**, so adding one would silently punch through
+the CSP.
+
+## The fallback: Netlify
+
+Kept here because the portability claim above is only worth something if the escape route
+stays written down.
+
+1. `npx netlify deploy --prod --dir=_site`, publish directory `_site`.
+2. Custom domain → `ordoia.com`, then **Verify DNS configuration** and let it provision
+   the certificate. Netlify recommends a subdomain as primary when using external DNS,
+   because an apex resolves to a single load-balancer address rather than routing on the
+   CDN.
+3. `_headers` and `_redirects` are picked up from the publish directory unchanged.
+4. Never enable Real User Monitoring — it injects JavaScript. Netlify's Web Analytics is
+   server-log based and does not.
+5. Budget the Personal plan at minimum, for the auto-recharge. On Free, see above.
+
+Cloudflare **Workers static assets** is the third door: it parses the same `_headers` and
+`_redirects`, so migrating is a `wrangler.jsonc` with `assets.directory` and
+`wrangler deploy` in place of `wrangler pages deploy`.
 
 ---
 
 ## Verify the deploy, not the build
 
-Check 14 reads the files the build emits. It cannot see what a host actually returns —
-a host that silently ignored `_headers` would pass every test here and fail in
-production. These four commands close that gap and belong to the deploy:
+Check 14 reads the files the build emits. It cannot see what a host actually returns — a
+host that silently ignored `_headers`, or an edge that rewrote the HTML on its way out,
+would pass every test in the suite and fail in production.
+
+**Check 15 is that gap, closed.** It used to be four `curl` commands in this file; they
+are gone, because one claim verified in one place beats two copies to keep in step.
 
 ```bash
-# 1. The headers are actually on the wire.
-curl -sI https://ordoia.co.uk/ | grep -iE 'content-security-policy|strict-transport|referrer-policy|permissions-policy|x-content-type'
-
-# 2. The printed permanent address resolves. This is the one that matters most.
-curl -sI https://ordoia.co.uk/oal/v1.0 | head -1     # expect 200, or 301 then 200
-curl -sIL https://ordoia.co.uk/oal/v1.0 | grep -E '^HTTP'
-
-# 3. The version path is cached immutably and the live one is not.
-curl -sI https://ordoia.co.uk/oal/v1.0/styles.css | grep -i cache-control   # immutable
-curl -sI https://ordoia.co.uk/styles.css          | grep -i cache-control   # short
-
-# 4. Nothing leaves the origin. Should print only ordoia.co.uk.
-curl -s https://ordoia.co.uk/oal/ | grep -oE 'https?://[a-z0-9.-]+' | sort -u
+ORDOIA_LIVE=https://ordoia.com npm test
 ```
 
-Run 2 again after **every** deploy, and after any DNS or host change. It is the single
-assertion this site's whole permanence argument rests on.
+Seven assertions, in order of what they defend:
+
+| | Asserts | Catches |
+|---|---|---|
+| 1 | every page's served bytes equal its built bytes | any edge rewrite at all, without having to enumerate them |
+| 2 | `/services/` still carries `mailto:hello@ordoia.com` and no `/cdn-cgi/l/email-protection` | Email Address Obfuscation, by name |
+| 3 | no `<script>` and no `/cdn-cgi/` on any page in the sitemap | injected beacons, Rocket Loader |
+| 4 | `/oal/v1.0` and every sitemap entry return 200 | §9's most serious failure |
+| 5 | the required headers are on the wire and the CSP is not wider than built | a host that drops `_headers`; Pages' default `Access-Control-Allow-Origin: *` |
+| 6 | a missing page returns **404** and still carries the CSP | Pages' SPA fallback turning every typo into a 200; an unprotected 404 |
+| 7 | the version path is immutable and the live one is not | a host overriding `Cache-Control` |
+
+It skips unless `ORDOIA_LIVE` is set, so `npm test` stays hermetic and a network outage
+can never block a build. It runs automatically after every deploy, and weekly on a
+schedule — see `.github/workflows/`. The weekly run is the only thing that would notice a
+Cloudflare zone setting being switched on years from now, long after anyone remembers why
+it was off.
+
+Assertion 4 is the one this site's whole permanence argument rests on. Run it after any
+DNS or host change, not only after a deploy.
 
 ---
 
@@ -130,7 +191,7 @@ side effect of a first deploy. Add the token and submit at
 
 ## Uptime and certificate monitoring
 
-§9 asks for both. Whatever you use, monitor **`https://ordoia.co.uk/oal/v1.0`**
+§9 asks for both. Whatever you use, monitor **`https://ordoia.com/oal/v1.0`**
 specifically, not just the apex. The home page being up tells you nothing about
 whether a six-year-old scorecard's printed address still resolves, and that is the
 failure with the longest tail.
@@ -150,3 +211,16 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
   there is ever a v1.1.
 - **Web-archive submission** on each published version, and the one-paragraph note on
   what happens to `/oal/v1.0` if the domain lapses (§5).
+- **A mailbox at `hello@ordoia.com`.** The services page CTA is a `mailto:` to it and it
+  is the only conversion path on the site. Stand it up and send a live test message
+  before launch: a CTA that opens a mail client addressed to a mailbox that does not
+  exist is worse than no CTA, and it is the one failure on this page that **no check in
+  this repo can detect** — check 15 verifies the link survives the edge intact, not that
+  anyone is reading what it sends. Set mail up *after* the nameserver migration, not
+  across it.
+- **Whether to also hold `ordoia.co.uk`.** The domain is printed on the face of every
+  scorecard and cannot be changed afterwards, only redirected. Ordoia is positioned as a
+  UK practice and `.co.uk` carries that signal where `.com` does not. Registering it and
+  301-ing it here costs about £10/yr and forecloses the regret; it is recorded in
+  `src/_data/site.json` under `formerDomains`, which is where its redirect would come
+  from. Cheap now, unavailable later.

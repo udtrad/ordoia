@@ -23,25 +23,11 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { TARGET, IS_HANDOVER, htmlFiles, urlFor } from '../lib/harness.js';
+import { TARGET, IS_HANDOVER, htmlFiles, urlFor, SITE, printedAddresses } from '../lib/harness.js';
 
 const read = (name) => readFile(path.join(TARGET, name), 'utf8');
 
-/** Directives that must be present, and the shape each must have. */
-const REQUIRED_HEADERS = [
-  { name: 'Content-Security-Policy', must: /default-src 'self'/ },
-  { name: 'Strict-Transport-Security', must: /max-age=\d{7,}/ },
-  { name: 'Referrer-Policy', must: /no-referrer|strict-origin/ },
-  { name: 'Permissions-Policy', must: /geolocation=\(\)/ },
-  { name: 'X-Content-Type-Options', must: /nosniff/ },
-];
-
-/** Widenings that would quietly undo the posture. */
-const FORBIDDEN_IN_CSP = [
-  { name: "script-src permitting inline or eval", re: /script-src[^;]*(?:'unsafe-inline'|'unsafe-eval')/ },
-  { name: 'a wildcard source', re: /(?:^|[\s;])(?:default|script|style|img|font|connect|frame)-src[^;]*\*/ },
-  { name: 'an off-origin host', re: /(?:https?:)?\/\/(?!')[a-z0-9.-]+\.[a-z]{2,}/i },
-];
+import { REQUIRED_HEADERS, FORBIDDEN_IN_CSP } from '../lib/posture.js';
 
 test('check 14 — the security headers exist and say what §9 requires', async (t) => {
   if (IS_HANDOVER) return t.skip('the handover ships no deploy configuration — that is the point');
@@ -138,12 +124,19 @@ test('check 14 — every printed permanent address has an extensionless redirect
   const printed = new Set();
   const { withSource } = await import('../lib/harness.js');
   await withSource(({ sources }) => {
-    for (const { html } of sources) {
-      for (const m of html.matchAll(/ordoia\.co\.uk(\/[A-Za-z0-9._~\-/]*)/g)) {
-        printed.add(m[1].replace(/[.,;)]$/, '').split('#')[0]);
-      }
-    }
+    for (const { html } of sources) printedAddresses(html, printed);
   });
+
+  // Without this, a domain change turns the matcher above into a no-op: `printed` goes
+  // empty, `unrouted` goes empty, and the assertion below passes while asserting nothing —
+  // on the one check that defends §9's worst-case failure. Check 9 has carried this guard
+  // since it was written; this check did not, and a domain change is what exposed it.
+  assert.ok(
+    printed.size > 0,
+    `no address on ${SITE.domain} is printed anywhere in the source, so this check has ` +
+      `nothing to verify. Either the printed addresses are gone, or the matcher no longer ` +
+      `matches the domain in src/_data/site.json.`
+  );
 
   const unrouted = [...printed]
     .filter((p) => p !== '/' && !p.endsWith('/'))

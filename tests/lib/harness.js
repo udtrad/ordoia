@@ -16,7 +16,7 @@
 
 import { createServer } from 'node:http';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,6 +32,40 @@ export function resolveTarget() {
 
 export const TARGET = resolveTarget();
 export const IS_HANDOVER = TARGET === REPO_ROOT;
+
+/**
+ * The site record — the same file the build reads.
+ *
+ * The domain lives here and nowhere else in the checks. A check that hardcodes it
+ * stops matching the day the domain changes, and a matcher that matches nothing
+ * makes its assertion vacuous rather than red. That is not hypothetical: check 14
+ * hardcoded `ordoia.co.uk` and passed silently when the domain became `ordoia.com`,
+ * while check 9 — which guards its match count — failed as it should have.
+ */
+export const SITE = JSON.parse(readFileSync(path.join(REPO_ROOT, 'src/_data/site.json'), 'utf8'));
+
+/** Escape a literal for interpolation into a RegExp. */
+export function escapeRe(literal) {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Every path printed as *text* against the site's own domain.
+ *
+ * These are the addresses a human types six years from now off a printed scorecard,
+ * as opposed to the ones a browser follows from an href. §9 names one of these
+ * returning 404 as the most serious operational failure this site can have.
+ */
+export function printedAddresses(html, into = new Set()) {
+  // Former domains are matched too, so the frozen handover — which predates the move
+  // to ordoia.com — is still read for what it actually says rather than reported empty.
+  const domains = [SITE.domain, ...(SITE.formerDomains ?? [])].map(escapeRe).join('|');
+  const re = new RegExp(`(?:${domains})(/[A-Za-z0-9._~\\-/]*)`, 'g');
+  for (const m of html.matchAll(re)) {
+    into.add(m[1].replace(/[.,;)]$/, '').split('#')[0]);
+  }
+  return into;
+}
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'graphify-out', '_site', 'tests']);
 

@@ -35,6 +35,8 @@ next person does not have to rediscover it.
 | 17 | Home, failure block | §12.3, released by the practice | The two missing failure-mode bullets — instructions arriving as data, unbounded execution — **written** | §12.3 said leave room and do not write them. That stop has been lifted deliberately. Until now the block's six named failures did not motivate dimensions 4 and 8, so the page argued for a rubric wider than the failures it described. New copy, in the established voice: a bold noun phrase naming the failure, then one concrete sentence. Not drawn from the vault — flagged here as authored. |
 | 18 | Print stylesheet | check 14 | `@page { margin: 16mm 14mm }` → `@page { size: A4; margin: 16mm 14mm }` | **Broken, fixed.** The rule declared a margin but no page size, so Chromium fell back to its locale default and the generated scorecard came out **US Letter (612×792pt)** — a UK assurance practice's travelling artifact on the wrong paper. Caught by reading the MediaBox out of the generated PDF rather than trusting the flag that asked for A4. Fixed in the stylesheet rather than the PDF tool, because File → Print from the page is how most readers will make a copy. |
 | 19 | Scorecard, About this form | §6 | The pointer to the other two formats moved into `copy/scorecard.md` | It was written into the template when the PDF link was added. Check 12 caught it within one build, which is the check working exactly as intended on its author. |
+| 20 | Everywhere the address appears | practice decision, 2026-08-08 | Domain `ordoia.co.uk` → **`ordoia.com`**, and `hello@ordoia.co.uk` → `hello@ordoia.com` | The registered domain is `ordoia.com`; the site had been built throughout against `ordoia.co.uk`. Like row 16 this was one edit in `src/_data/site.json`, which is what that file exists for. It is more permanent than the publication date: `ordoia.com/oal/v1.0` goes on the face of every scorecard ever issued under OAL v1.0, and after the first one is issued it cannot be changed, only redirected. Corrected before publication, which is the only time it is free. The old domain is recorded as `formerDomains` — see row 21. |
+| 21 | `src/_data/site.json` | check integrity | New `formerDomains: ["ordoia.co.uk"]` | Not copy, and nothing in the build reads it — the checks do. The designer handover at `3b93f1b` is frozen byte-identical and still says `ordoia.co.uk`, so a matcher that knew only the current domain found nothing there and reported baseline B red for the wrong reason. Recording the domain's history is also the honest form of the change in row 20: the practice published against one address and now publishes against another, and that is a fact about the practice rather than a detail of the build. |
 
 ## Flagged and left — nothing was changed
 
@@ -47,18 +49,22 @@ next person does not have to rediscover it.
 
 ## Still not ours to decide
 
-Unchanged from `BRIEF.md` §12 and `RATIONALE.md`. Restated because they are now one
-edit each rather than a search:
+From `BRIEF.md` §12 and `RATIONALE.md`. One item remains:
 
 1. **The entity.** Terms and Privacy stay unbuilt, and `_redirects` deliberately routes
    neither — a redirect to the home page would be a link resolving to the wrong thing,
    which is worse than one resolving to nothing.
-2. **The commit-or-deploy reference on the scorecard face.** Currently the second
-   header field in `copy/scorecard.md`. If it moves to working papers only, that line
-   comes off `fields` and the reproducibility sentence on About needs softening.
 
 ### Closed since
 
 - **The publication date** — decided 2026-08-08 as **`2026-09-19`**. See row 16.
 - **The two failure-mode bullets** — the §12.3 stop was lifted and they are written.
   See row 17.
+- **The domain** — decided 2026-08-08 as **`ordoia.com`**. See rows 20 and 21.
+- **The commit-or-deploy reference on the scorecard face** — it **stays**, and the
+  reproducibility sentence on About stands as written. The decision was contingent on
+  something that has now been settled: the repository is public. A commit hash printed
+  on a scorecard against a private repository is a provenance claim the reader cannot
+  check, which is the OAL 1 failure this practice sells against — a behaviour asserted
+  with nothing verifying it. Against a public one it is evidence. The two had to be
+  decided together, and were.
