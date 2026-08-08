@@ -1,0 +1,11 @@
+# graphify knowledge-graph output (generated)
+graphify-out/
+
+# build output
+_site/
+
+# node
+node_modules/
+
+# macOS
+.DS_Store

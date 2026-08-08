@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ordoia — third-party assurance for LLM and agent systems</title>
+<meta name="description" content="Ordoia assesses LLM and agent systems for grounding, reliability and production readiness. Published rubric, published prices.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&amp;family=IBM+Plex+Mono&amp;family=Source+Serif+4:opsz,wght@8..60,400..700&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="sheet">
+    <a class="wordmark" href="index.html" aria-current="page">ordoia</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="oal.html">the rubric</a></li>
+        <li><a href="services.html">services</a></li>
+        <li><a href="independence.html">independence</a></li>
+        <li><a href="about.html">about</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+    <section class="hero">
+      <h1>Your agent works in the demo. The question is what it does in front of a client.</h1>
+      <p class="sub">Third-party assurance for LLM and agent systems. We assess grounding, reliability and production readiness for UK financial services, private equity and professional services firms who have already built or bought one — and now have to put it in front of clients, auditors or regulators.</p>
+      <a class="cta" href="services.html#audit">
+        <span class="f f--product">Audit</span>
+        <span class="f">4 dimensions</span>
+        <span class="f">1 week</span>
+        <span class="f">&pound;2,500</span>
+      </a>
+    </section>
+  </div>
+</div>
+
+<!-- The measure. The only full-bleed element on the site. Scale variant:
+     no assessment exists here, so no stamp and no mark. -->
+<div class="band">
+  <div class="sheet">
+    <aside class="rail">
+      <dl><dt>Question</dt><dd>1 of 8</dd><dt>Scale</dt><dd>OAL v1.0</dd></dl>
+    </aside>
+    <figure class="measure measure--q" role="group" aria-label="The OAL scale, with the first self-scoring question in the span between asserted and enforced">
+      <figcaption class="measure__dim">Grounding and entailment <span class="pair">&middot; one of eight dimensions</span></figcaption>
+      <div class="measure__rule">
+        <span class="tick tick--major" style="--p:var(--p0)"></span>
+        <span class="tick tick--major" style="--p:var(--p1)"></span>
+        <span class="tick tick--major" style="--p:var(--p2)"></span>
+        <span class="tick tick--major" style="--p:var(--p3)"></span>
+        <span class="label label--first" style="--p:var(--p0)"><span class="n">OAL 0</span>undefined</span>
+        <span class="label" style="--p:var(--p1)"><span class="n">OAL 1</span>asserted</span>
+        <span class="label" style="--p:var(--p2)"><span class="n">OAL 2</span>enforced</span>
+        <span class="label label--last" style="--p:var(--p3)"><span class="n">OAL 3</span>evidenced</span>
+        <span class="span" style="--from:var(--p1);--to:var(--p2)">
+          <span class="span__tag">to cross this span, answer</span>
+          <span class="span__q">If you deleted the sentence in your system prompt that tells the model to use only retrieved content, what in the code would stop a fabricated answer reaching a user?</span>
+        </span>
+      </div>
+      <p class="stamp">A demo shows you OAL 1. A production incident shows you the difference. The gaps are drawn to difficulty, not to equal intervals — the span from asserted to enforced is the one where systems fail, and it is the same width on every dimension. <a href="oal.html">The full rubric</a></p>
+    </figure>
+  </div>
+</div>
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h2>The failures nobody demos</h2>
+      <p>Agent systems don't fail loudly. They fail quietly, correctly formatted, and confidently.</p>
+      <p>A code reviewer can read your codebase and find a bug on a line. What they can't tell you is that your agent is wrong on a meaningful fraction of real queries, that retrieval quietly stopped returning the right documents last Tuesday, or that it answered correctly in March and doesn't now because your vendor shipped a new model. Those failures aren't in the code. They only appear at runtime, across many samples, and over time — which is where we look.</p>
+      <p class="eyebrow">What that looks like in practice</p>
+      <ul class="fails">
+        <li><strong>Answers that aren't entailed by what reached the context window.</strong> Fluent, sourced-looking, and not supported by anything actually retrieved.</li>
+        <li><strong>Tool calls that fail and get narrated as success.</strong> The API returned an error; the agent told the user the booking was made.</li>
+        <li><strong>Retrieval that ignores who is asking.</strong> Access control is enforced at the application boundary, then bypassed by an index built without it.</li>
+        <li><strong>Refusal paths that hold in testing and fold under paraphrase.</strong> The guardrail was requested in a prompt rather than enforced in code — so it holds until someone rephrases.</li>
+        <li><strong>Non-determinism mistaken for a passing test.</strong> The same input passes on Tuesday and fails on Thursday. A single run tells you nothing.</li>
+        <li><strong>Silent regression on model upgrade.</strong> Your vendor deprecates a version, behaviour shifts, and nothing in your pipeline is watching the shape of the answers.</li>
+      </ul>
+      <p>The same instrumented pass finds the ordinary defects too. In a system Ordoia built, it surfaced an agent serving fabricated company records as live results because the offline fallback was instructed in the prompt rather than enforced in code — and, separately, a signup path where every account created would have been locked out around twenty-four hours later. Neither was reported by anyone. Both were found by looking.</p>
+      <p>We find these because we instrument systems to be found out: OpenTelemetry tracing through the full agent path into Langfuse and Grafana, evaluation harnesses that run each case many times and score the distribution rather than the sample, and alerting tuned to the shape of the answers rather than uptime. Instrumentation is how we gather evidence — it is not what we sell. What we sell is the assessment it makes possible.</p>
+    </section>
+
+    <section class="block">
+      <h2>Score yourself in five minutes</h2>
+      <p>Eight questions, one per dimension, written so that you recognise your own system. Answer them honestly and you will know roughly where you sit before anyone quotes you a price. If your answer to most of them is a sentence in a prompt, you are at OAL 1 — which is where most systems in production are, and is not a moral failing. It is a position you can now name.</p>
+      <p><a href="oal.html#score-yourself">The eight questions</a></p>
+    </section>
+
+    <section class="block">
+      <h2>The instrument is published</h2>
+      <p>Every engagement scores your system against the same eight dimensions, on the same four levels — from a behaviour that is merely asserted in a prompt, to one enforced in code, to one evidenced by continuous verification. The rubric is published in full, free, with no email wall, because a prospect recognising their own system at OAL 1 is the whole qualification mechanism and a gate blocks precisely that recognition.</p>
+      <p>We publish no aggregate score. An OAL 0 on authorisation is not offset by an OAL 3 on cost control, and a single number would invite exactly that trade. You get a level per dimension, the depth of evidence behind each one, and the reasoning. If you need one number for a board, take the lowest.</p>
+      <p><a href="oal.html">The Ordoia Assurance Levels, v1.0</a></p>
+    </section>
+
+    <section class="block" id="prices">
+      <h2>What it costs</h2>
+      <p>Coverage and depth are two separate axes: how many dimensions, and how far we go on each. Prices are fixed before we start and are never contingent on the score.</p>
+      <table class="grid">
+        <caption>Coverage &times; depth</caption>
+        <thead>
+          <tr><th scope="col"><span class="skip">Coverage</span></th><th scope="col">Inspected</th><th scope="col">Tested</th><th scope="col">Sustained</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" class="rowhead">Four dimensions</th>
+            <td><span class="prod">Audit</span><span class="scope">&pound;2,500 &middot; 1 week</span></td>
+            <td class="none">not offered</td>
+            <td class="none">not offered</td>
+          </tr>
+          <tr>
+            <th scope="row" class="rowhead"><span class="path">&darr; baseline top-up &middot; &pound;2,500 &middot; ~1 week</span></th>
+            <td class="path">the audit plus the top-up reaches exactly the same place as a baseline taken directly</td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <th scope="row" class="rowhead">All eight dimensions</th>
+            <td><span class="prod">Baseline</span><span class="scope">&pound;5,000 &middot; 2 weeks</span></td>
+            <td><span class="prod">Review</span><span class="scope">from &pound;9,000 &middot; 3 weeks</span></td>
+            <td><span class="prod">Retainer</span><span class="scope">from &pound;3,000/month &middot; 6-month minimum</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">There is no wrong entry point and no penalty for starting small. Every assessment can be followed by any other. What the audit does not cover appears on your scorecard as <em>not assessed</em>, with the maximum level that scope could have obtained printed next to it.</p>
+      <p><a href="services.html">What each engagement includes</a></p>
+    </section>
+
+    <section class="block">
+      <h2>What stands behind a score</h2>
+      <p>Not an accreditation, and not a badge. A published method, fixed before we look and versioned so that a score can be checked against the criteria it was awarded under. Working papers retained for six years, on the standard that a competent assessor given the same papers should reach the same level. And a named person on every assessment, printed on the face of the scorecard alongside the methodology version.</p>
+      <p>Your board, your client's procurement team and your regulator all apply the same discount to self-assessment, and they apply it for the same reason companies who can read their own accounts still pay to have them audited.</p>
+      <p><a href="independence.html">What third-party means here</a></p>
+    </section>
+
+  </div>
+</div>
+</main>
+
+<footer>
+  <div class="sheet">
+    <aside class="rail"></aside>
+    <div class="foot">
+      <ul>
+        <li><a href="oal.html">The rubric</a></li>
+        <li><a href="services.html">Services</a></li>
+        <li><a href="independence.html">Independence</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="scorecard.html">Blank scorecard</a></li>
+        <li><a href="changelog.html">Changelog</a></li>
+      </ul>
+      <p>Ordoia &middot; third-party assurance for LLM and agent systems &middot; United Kingdom</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

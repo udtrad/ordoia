@@ -1,0 +1,507 @@
+/* ===========================================================
+   Ordoia — phase 0
+   Tokens, layout, components, print.
+   Colour rule: --floor appears in exactly two situations —
+   the lowest level assessed on a scorecard, and a changelog
+   entry classified breaking. Nowhere else.
+   Rule rule: a horizontal rule is always a scale, never a divider.
+   =========================================================== */
+
+:root {
+  --ground: #E6EAE7;
+  --raised: #F2F4F2;
+  --ink: #171A1A;
+  --slate: #4E5654;
+  --untravelled: #C3CAC6;
+  --floor: #8A4A05;
+
+  /* The measure. Fixed ratio, identical on every dimension and
+     every page: segments 2 : 5 : 2. The asserted -> enforced span
+     is 2.5x either neighbour because that is where systems fail. */
+  --p0: 0%;
+  --p1: 22.222%;
+  --p2: 77.778%;
+  --p3: 100%;
+
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --util: "Archivo", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --rail: 9.5rem;
+  --gutter: 2.75rem;
+  --col: 40rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---------- type roles ---------- */
+
+.display, h1, h2, h3, h4 {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 125;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+
+h1 { font-size: 2.35rem; }
+h2 { font-size: 1.55rem; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 0.95rem; }
+
+.util, .stamp, .rail, caption, figcaption, th, .eyebrow, .note, .fields, nav, footer {
+  font-family: var(--util);
+  font-variation-settings: "wdth" 100;
+}
+
+.mono { font-family: var(--mono); font-size: 0.85em; }
+
+p { margin: 0 0 1.1em; max-width: 62ch; }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--ink); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+strong, b { font-weight: 600; }
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--slate);
+  font-weight: 500;
+  margin: 0 0 0.75rem;
+}
+
+.note { font-size: 0.82rem; color: var(--slate); line-height: 1.5; }
+
+/* ---------- layout ---------- */
+
+.sheet {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, var(--col));
+  column-gap: var(--gutter);
+  max-width: calc(var(--rail) + var(--gutter) + var(--col));
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* The rail is reserved on every page and carries real values or
+   nothing. On marketing pages it is empty; that is the argument. */
+.rail {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--slate);
+  padding-top: 0.5rem;
+}
+.rail dl { margin: 0; }
+.rail dt {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.66rem;
+  margin-top: 0.9rem;
+}
+.rail dd { margin: 0; color: var(--ink); }
+.rail ol { list-style: none; margin: 0; padding: 0; }
+.rail ol li { margin-top: 0.35rem; }
+.rail a { text-decoration: none; border-bottom: 1px solid var(--slate); }
+
+.body > * + * { margin-top: 2.6rem; }
+.block > * + * { margin-top: 1.1rem; }
+
+section { scroll-margin-top: 2rem; }
+
+/* ---------- masthead ---------- */
+
+.masthead { padding: 1.6rem 0 2.4rem; }
+.masthead .sheet { align-items: baseline; }
+.wordmark {
+  grid-column: 1;
+  font-family: var(--display);
+  font-variation-settings: "wdth" 125;
+  font-weight: 600;
+  font-size: 1.28rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  display: block;
+}
+.masthead nav { grid-column: 2; font-size: 0.85rem; }
+.masthead nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 1.4rem; margin: 0; padding: 0; }
+.masthead nav a { text-decoration: none; color: var(--slate); }
+.masthead nav a:hover, .masthead nav a[aria-current="page"] { color: var(--ink); }
+.masthead nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 0.3em; }
+
+/* ---------- hero ---------- */
+
+.hero h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); max-width: 19ch; }
+.hero .sub { font-size: 1.06rem; max-width: 54ch; margin-top: 1.2rem; }
+
+/* CTA: four fields, never a coloured button, never a price alone. */
+.cta {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: baseline;
+  gap: 0 1.15rem;
+  font-family: var(--util);
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: 1px solid var(--ink);
+  padding: 0.7rem 1.1rem;
+  margin-top: 1.6rem;
+  background: transparent;
+}
+.cta:hover { background: var(--raised); }
+.cta .f { display: block; }
+.cta .f--product { font-weight: 600; }
+.cta .f + .f { border-left: 1px solid var(--untravelled); padding-left: 1.15rem; }
+
+/* ---------- the measure ---------- */
+
+.measure { margin: 0; }
+.measure__dim {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 125;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 3rem;
+}
+.measure__dim .pair { color: var(--slate); font-weight: 400; }
+
+.measure__rule {
+  position: relative;
+  height: 1px;
+  background: var(--untravelled);
+  margin: 0 0 0.4rem;
+}
+
+.tick {
+  position: absolute;
+  top: -7px;
+  left: var(--p);
+  width: 1px;
+  height: 15px;
+  background: var(--untravelled);
+}
+.tick--major { background: var(--ink); top: -9px; height: 19px; }
+
+.label {
+  position: absolute;
+  top: -2.55rem;
+  left: var(--p);
+  transform: translateX(-50%);
+  font-family: var(--util);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.label--first { transform: translateX(0); }
+.label--last { transform: translateX(-100%); }
+.label .n {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  color: var(--slate);
+}
+
+/* the untravelled span carries the question that has to be answered
+   to cross it. It is not optional at any breakpoint. */
+.span {
+  position: absolute;
+  top: 1.05rem;
+  left: var(--from);
+  width: calc(var(--to) - var(--from));
+  border-left: 1px solid var(--untravelled);
+  border-right: 1px solid var(--untravelled);
+  padding: 0.55rem 0.85rem 0.1rem;
+}
+.span__q {
+  display: block;
+  font-family: var(--util);
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.span__tag {
+  display: block;
+  font-family: var(--util);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 0.3rem;
+}
+
+.measure--q { padding-bottom: 6.5rem; }
+.measure--plain { padding-bottom: 0.5rem; }
+
+/* mark and fill — score variant only */
+.fill { position: absolute; top: 0; left: 0; width: var(--to); height: 3px; background: var(--ink); margin-top: -1px; }
+.mark {
+  position: absolute;
+  top: -5px;
+  left: var(--p);
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--ink);
+  transform: translateX(-50%);
+}
+.mark--reader { background: var(--ground); border: 2px solid var(--ink); }
+
+/* floor: the only colour, and only on an assessed row */
+.floor-mark {
+  position: absolute;
+  top: -1.6rem;
+  left: var(--p);
+  transform: translateX(-50%);
+  color: var(--floor);
+  font-size: 0.7rem;
+  font-family: var(--util);
+}
+
+.stamp {
+  font-family: var(--util);
+  font-size: 0.74rem;
+  color: var(--slate);
+  letter-spacing: 0.02em;
+  margin: 0.9rem 0 0;
+  max-width: none;
+}
+.stamp b { color: var(--ink); font-weight: 500; }
+
+/* the full-bleed band — the only element allowed to break the column */
+.band {
+  padding: 3.4rem 0 3.2rem;
+  margin: 3.4rem 0;
+  border-top: 0;
+  background: var(--raised);
+}
+.band .sheet { align-items: start; }
+.band .measure { grid-column: 2; }
+.band .rail { grid-column: 1; }
+
+/* not assessed: full-length unmarked track, the sentence printed
+   on the track at the position a mark would occupy. */
+.na { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--raised); padding: 0 0.7rem; }
+.na__t {
+  font-family: var(--util);
+  font-size: 0.78rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.sheetpaper .na { background: var(--raised); }
+
+/* ---------- tables ---------- */
+
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; margin: 0; }
+caption {
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  padding-bottom: 0.6rem;
+}
+th, td { text-align: left; vertical-align: top; padding: 0.6rem 0.9rem 0.6rem 0; }
+th {
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  border-bottom: 1px solid var(--untravelled);
+}
+td { border-bottom: 1px solid var(--untravelled); font-family: var(--body); }
+td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
+
+/* coverage x depth grid */
+.grid { width: 100%; border-collapse: collapse; font-family: var(--util); font-size: 0.86rem; }
+.grid th { border-bottom: 1px solid var(--untravelled); }
+.grid th.rowhead { text-align: left; width: 9rem; border-bottom: 1px solid var(--untravelled); }
+.grid td { border-bottom: 1px solid var(--untravelled); padding: 1rem 1rem 1rem 0; }
+.grid .prod { display: block; font-weight: 600; font-size: 0.95rem; }
+.grid .scope { display: block; color: var(--slate); font-size: 0.8rem; margin-top: 0.2rem; }
+.grid .none { color: var(--slate); }
+.grid .path { color: var(--slate); font-size: 0.78rem; }
+
+/* ---------- scorecard ---------- */
+
+.paper {
+  background: var(--raised);
+  padding: 2.6rem 2.4rem 2.2rem;
+  max-width: 46rem;
+  margin: 0 auto;
+}
+.paper h1 { font-size: 1.5rem; }
+.fields { font-size: 0.78rem; color: var(--slate); }
+.fields dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem 1.8rem; margin: 1.6rem 0 0; }
+.fields dt { text-transform: uppercase; letter-spacing: 0.09em; font-size: 0.66rem; }
+.fields dd { margin: 0.15rem 0 0; border-bottom: 1px solid var(--untravelled); min-height: 1.35rem; color: var(--ink); }
+.fields dd.filled { border-bottom: 0; }
+
+.row { padding: 2.7rem 0 0.4rem; }
+.rowset { margin-top: 2rem; }
+.pairhead {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 125;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  margin: 2.8rem 0 0.4rem;
+  color: var(--slate);
+}
+
+.legend { margin-top: 2.4rem; font-family: var(--util); font-size: 0.8rem; }
+.legend .floor-line { color: var(--floor); }
+.sig { margin-top: 2.4rem; display: grid; gap: 1.4rem 2rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sig .slot { border-bottom: 1px solid var(--untravelled); min-height: 2.2rem; }
+.sig .slot span { font-family: var(--util); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--slate); }
+
+/* ---------- misc ---------- */
+
+.q-list { list-style: none; margin: 0; padding: 0; counter-reset: q; }
+.q-list li { counter-increment: q; padding: 0 0 1.7rem; }
+.q-list li::before {
+  content: counter(q) " of 8";
+  display: block;
+  font-family: var(--util);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 0.5rem;
+}
+.q-list .dim { font-family: var(--util); font-size: 0.78rem; color: var(--slate); display: block; margin-top: 0.5rem; }
+
+.dimension { padding-top: 2.6rem; }
+.dimension h3 .n { color: var(--slate); font-weight: 400; }
+.buyerq { font-style: italic; }
+.levels { margin: 1.2rem 0 0; }
+.levels dt { font-family: var(--util); font-weight: 600; font-size: 0.86rem; margin-top: 1rem; }
+.levels dd { margin: 0.25rem 0 0; }
+.cap { font-family: var(--util); font-size: 0.84rem; background: transparent; border-left: 2px solid var(--ink); padding-left: 0.9rem; }
+.selfcheck { font-family: var(--util); font-size: 0.9rem; border-left: 2px solid var(--untravelled); padding-left: 0.9rem; }
+.selfcheck .eyebrow { margin-bottom: 0.35rem; }
+
+.constraints { list-style: none; margin: 0; padding: 0; }
+.constraints li { padding: 0 0 1.5rem; }
+
+
+.changelog { list-style: none; margin: 0; padding: 0; }
+.changelog li { padding: 0 0 1.4rem; }
+.class { font-family: var(--util); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.class--clarifying { color: var(--slate); }
+.class--breaking { color: var(--floor); }
+
+footer { margin-top: 5rem; padding: 2.4rem 0 4rem; }
+footer .sheet { align-items: start; }
+footer .foot { grid-column: 2; font-size: 0.78rem; color: var(--slate); }
+footer .foot a { color: var(--slate); }
+footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 1.2rem; }
+
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 1rem; top: 1rem; background: var(--raised); padding: 0.6rem 1rem; z-index: 10; }
+
+/* ---------- mobile: the measure rotates, distance runs downward ---------- */
+
+@media (max-width: 46rem) {
+  .sheet {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 34rem;
+  }
+  .rail, .masthead nav, .band .measure, .band .rail, .body, footer .foot { grid-column: 1; }
+  .rail:empty { display: none; }
+  .rail { padding-bottom: 1.4rem; }
+  .masthead nav ul { gap: 1rem; }
+  .paper { padding: 1.6rem 1.1rem; }
+  .fields dl, .sig { grid-template-columns: minmax(0, 1fr); }
+
+  .measure--q, .measure--plain { padding-bottom: 0; }
+  .measure__dim { margin-bottom: 0.6rem; }
+  .label { font-size: 0.76rem; }
+  .measure__rule {
+    height: 20rem;
+    width: 1px;
+    margin: 1.2rem 0 0 6rem;
+  }
+  .tick { top: var(--p); left: -7px; width: 15px; height: 1px; }
+  .tick--major { left: -9px; width: 19px; height: 1px; }
+  .label {
+    top: var(--p);
+    left: auto;
+    right: calc(100% + 0.9rem);
+    transform: translateY(-50%);
+    text-align: right;
+  }
+  .label--first, .label--last { transform: translateY(-50%); }
+  .span {
+    top: var(--from);
+    left: 1.1rem;
+    width: calc(100vw - 9.75rem);
+    max-width: 22rem;
+    height: calc(var(--to) - var(--from));
+    border-left: 1px solid var(--untravelled);
+    border-right: 0;
+    border-top: 1px solid var(--untravelled);
+    border-bottom: 1px solid var(--untravelled);
+    padding: 0.7rem 0 0.5rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .fill { width: 3px; height: var(--to); top: 0; left: -1px; margin-top: 0; }
+  .mark { top: var(--p); left: 0; transform: translate(-50%, -50%); }
+  .floor-mark { top: var(--p); left: auto; right: calc(100% + 0.9rem); transform: translateY(-50%); }
+  .na { white-space: normal; }
+  .na__t { white-space: normal; }
+  .measure__rule + .stamp { margin-top: 1.6rem; }
+  table, .grid { font-size: 0.8rem; }
+  .cta { grid-auto-flow: row; gap: 0.35rem; }
+  .cta .f + .f { border-left: 0; padding-left: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fill { animation: draw 240ms ease-out both; }
+  @keyframes draw { from { transform: scaleX(0); transform-origin: left; } to { transform: scaleX(1); } }
+}
+
+/* ---------- print: the scorecard and the rubric are circulated ---------- */
+
+@media print {
+  :root { --ground: #fff; --raised: #fff; --untravelled: #9aa29e; }
+  body { background: #fff; font-size: 10.5pt; }
+  .masthead nav, .cta, .skip { display: none; }
+  .band { background: none; margin: 1.5rem 0; padding: 1rem 0; }
+  .sheet { grid-template-columns: minmax(0, 1fr) 8rem; max-width: none; padding: 0; }
+  .rail { grid-column: 2; grid-row: 1; }
+  .body, .band .measure, footer .foot { grid-column: 1; grid-row: 1; }
+  .paper { padding: 0; max-width: none; }
+  .row, .dimension, .measure { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+  .na { background: #fff; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
+  footer { margin-top: 2rem; }
+  @page { margin: 16mm 14mm; }
+}
+
+/* failure modes: a list, not a table — no rules, because a rule means a scale */
+.fails { list-style: none; margin: 0; padding: 0; }
+.fails li { padding: 0 0 1.1rem; max-width: 62ch; }
+.fails strong { display: block; }

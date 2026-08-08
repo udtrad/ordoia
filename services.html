@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Services — audit, review, retainer | Ordoia</title>
+<meta name="description" content="Three engagements, published prices. Coverage and depth are two separate axes.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&amp;family=IBM+Plex+Mono&amp;family=Source+Serif+4:opsz,wght@8..60,400..700&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="sheet">
+    <a class="wordmark" href="index.html">ordoia</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="oal.html">the rubric</a></li>
+        <li><a href="services.html" aria-current="page">services</a></li>
+        <li><a href="independence.html">independence</a></li>
+        <li><a href="about.html">about</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>Services</h1>
+      <p class="sub" style="font-size:1.06rem">Every engagement scores your system against the same eight dimensions, on the same four levels. What changes is coverage and depth.</p>
+    </section>
+
+    <section class="block" id="grid">
+      <h2>Where to start</h2>
+      <p>Coverage is how many dimensions. Depth is how far we go on each. They are two separate axes, and the price follows both.</p>
+      <table class="grid">
+        <caption>Coverage &times; depth</caption>
+        <thead>
+          <tr><th scope="col"><span class="skip">Coverage</span></th><th scope="col">Inspected</th><th scope="col">Tested</th><th scope="col">Sustained</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row" class="rowhead">Four dimensions</th>
+            <td><span class="prod">Audit</span><span class="scope">&pound;2,500 &middot; 1 week</span></td>
+            <td class="none">not offered</td>
+            <td class="none">not offered</td>
+          </tr>
+          <tr>
+            <th scope="row" class="rowhead"><span class="path">&darr; baseline top-up &middot; &pound;2,500 &middot; ~1 week</span></th>
+            <td class="path">audit plus top-up reaches exactly the same place as a baseline taken directly</td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <th scope="row" class="rowhead">All eight dimensions</th>
+            <td><span class="prod">Baseline</span><span class="scope">&pound;5,000 &middot; 2 weeks</span></td>
+            <td><span class="prod">Review</span><span class="scope">from &pound;9,000 &middot; 3 weeks</span></td>
+            <td><span class="prod">Retainer</span><span class="scope">from &pound;3,000/month &middot; 6-month minimum</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">The cells marked <em>not offered</em> are not gaps waiting to be filled. Tested and sustained depth are only sold across all eight dimensions, because a partial adversarial pass would produce a scorecard whose silences a reader could not interpret.</p>
+      <p>There is no wrong entry point and no penalty for starting small. The audit (&pound;2,500) plus a later top-up of the remaining four dimensions (&pound;2,500) reaches exactly the same place as a baseline taken directly (&pound;5,000). Every assessment can be followed by any other.</p>
+    </section>
+
+    <section class="block" id="audit">
+      <h2>1 &middot; Agent grounding and readiness audit</h2>
+      <p class="note">One week &middot; &pound;2,500 fixed &middot; four dimensions &middot; inspected depth</p>
+      <p>The fastest way to find out whether your agent is telling the truth.</p>
+      <p>We read the code and configuration, run a probe set against your system, and score four of the eight dimensions: grounding and entailment, tool-use integrity, evaluation discipline, and observability and failure detection.</p>
+      <p>The remaining four — authorisation, refusal robustness, upgrade control, execution bounds — appear on your scorecard as <strong>not assessed</strong>. They can't be established honestly in a week without adversarial testing, and we would rather name the gap than imply coverage. You can add them later at inspected depth for &pound;2,500, or take them at tested depth as part of a review.</p>
+      <p class="cap">Method note: we've built grounded retrieval against live public registers, including Companies House, using a verified-or-null discipline — a record is returned only when it can be traced to a source, never because it is plausible.</p>
+      <p><strong>You receive:</strong> a four-dimension scored assessment against our published rubric, a ranked defect register with reproduction steps, and a deterministic eval harness you own and keep.</p>
+      <p class="note">The harness is yours to run and extend. We don't score you with it — our findings come from a separate probe set that stays with us, because an assessor who grades your system using the instrument they handed you is grading their own work.</p>
+      <p><a href="scorecard.html">See the blank audit scorecard</a></p>
+    </section>
+
+    <section class="block" id="review">
+      <h2>2 &middot; Agent production readiness review</h2>
+      <p class="note">Three weeks &middot; from &pound;9,000, fixed before we start &middot; eight dimensions &middot; tested depth</p>
+      <p>All eight dimensions, established adversarially rather than by inspection.</p>
+      <p>Paraphrase sets run against your refusal paths. Deny-case scoring against real identities — testing that the system refuses correctly, not only that it answers correctly. Fault injection against every tool: forced errors, timeouts and malformed returns, with the user-visible behaviour asserted for each. Upgrade candidates compared against your eval set before promotion. Per-turn token economics and data egress mapped against your actual use cases.</p>
+      <p>This is the depth at which a readiness decision — internal use, client-facing, auditor-facing — can actually be evidenced rather than asserted.</p>
+      <p class="cap">Method note: our evaluation harness pattern scores the distribution across repeated runs rather than a single sample, because a test that passes once tells you nothing about a non-deterministic system.</p>
+      <p><strong>You receive:</strong> the full eight-dimension assessment at tested depth, a defect register with evidence, a prioritised remediation plan your own engineers can execute, a written readiness position against each threshold, and an eval suite wired for CI.</p>
+      <p class="note">Reports are addressed to you. If you need to put an assessment in front of a third party — your own client, an investor, a regulator — tell us at scoping, so it can be scoped and priced properly rather than assumed.</p>
+    </section>
+
+    <section class="block" id="retainer">
+      <h2>3 &middot; Agent reliability retainer</h2>
+      <p class="note">From &pound;3,000/month &middot; six-month minimum &middot; eight dimensions &middot; sustained depth</p>
+      <p>For systems already in front of users. The question is no longer what level you're at — it's whether you're still there.</p>
+      <p>Each month we re-establish your scores and report six measures: level movement with cause; eval-set currency, including cases added from real traffic and incidents and cases retired as obsolete; upgrade events and what moved when your vendor shipped; alert hygiene, including stale rules that no longer describe the system; <strong>detection lead</strong> — defects found by monitoring or regression run versus defects reported by your users; and open defect aging by severity.</p>
+      <p>Detection lead is the number to watch. It answers, in one ratio, whether the assurance is working.</p>
+      <p class="note">The retainer needs a baseline to trend against. It follows a review, or opens with a baseline month — all eight dimensions at inspected depth, &pound;5,000, delivered as month one. Take a review within three months of a baseline and we credit half the baseline fee against it.</p>
+      <p><strong>You receive:</strong> a monthly reliability report you can put in front of a risk committee, and the tenure disclosed on the face of every one — how long we've been engaged, because a long relationship is a thing a reader should be able to weigh.</p>
+    </section>
+
+    <section class="block">
+      <h2>How we work</h2>
+      <p>Fixed scope, fixed price, named deliverables, and a written go/no-go at the end of every engagement. Every engagement is led end-to-end by a named senior architect — no handoff to a delivery team you never met.</p>
+      <p>We don't sell day rates. We don't take greenfield "build us an agent" work where nobody owns the data governance. We don't price by volume of code.</p>
+      <h3>On doing this yourselves</h3>
+      <p>Your engineers can build this, and the good ones do. A team that knows the business can write a better eval set than an outsider can — they know what a correct answer looks like. Point an agent at your own repository and it will find missing mechanisms too: the fallback that lives in a prompt, the index built without an identity filter, the model version floating on an alias.</p>
+      <p>None of that produces an assessment anyone else can rely on.</p>
+      <p>What we sell is not the finding. It is that the finding came from somewhere other than the team that built the system, under a method that was fixed before we looked, retained in working papers, and signed by a named person who stands behind it. Your board, your client's procurement team and your regulator all apply the same discount to self-assessment, and they apply it for the same reason companies who can read their own accounts still pay to have them audited.</p>
+      <p>So the honest division is this. Build the harness — you will build a better one than we would, and we would rather assess a system that has one. Bring us in for the part you structurally cannot do for yourself.</p>
+      <p><a href="independence.html">What third-party means here</a></p>
+    </section>
+
+    <section class="block">
+      <h2>Start</h2>
+      <a class="cta" href="mailto:hello@ordoia.co.uk?subject=Audit%20enquiry">
+        <span class="f f--product">Audit</span>
+        <span class="f">4 dimensions</span>
+        <span class="f">1 week</span>
+        <span class="f">&pound;2,500</span>
+      </a>
+      <p class="note" style="margin-top:1.2rem">Or a 30-minute scoping call, at no charge, to establish whether the audit is the right entry point for your system. Read <a href="oal.html">the rubric</a> first — most people who read it will never contact us, and that is the intention.</p>
+    </section>
+
+  </div>
+</div>
+</main>
+
+<footer>
+  <div class="sheet">
+    <aside class="rail"></aside>
+    <div class="foot">
+      <ul>
+        <li><a href="oal.html">The rubric</a></li>
+        <li><a href="services.html">Services</a></li>
+        <li><a href="independence.html">Independence</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="scorecard.html">Blank scorecard</a></li>
+        <li><a href="changelog.html">Changelog</a></li>
+      </ul>
+      <p>Ordoia &middot; third-party assurance for LLM and agent systems &middot; United Kingdom</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
