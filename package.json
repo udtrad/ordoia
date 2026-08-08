@@ -11,8 +11,8 @@
   "scripts": {
     "build": "eleventy",
     "serve": "eleventy --serve",
-    "test": "node --test --test-reporter=spec tests/checks/",
-    "test:handover": "ORDOIA_TARGET=. node --test --test-reporter=spec tests/checks/",
+    "test": "node --test --test-reporter=spec \"tests/checks/*.test.js\"",
+    "test:handover": "ORDOIA_TARGET=. node --test --test-reporter=spec \"tests/checks/*.test.js\"",
     "check": "npm run build && npm test"
   },
   "devDependencies": {
