@@ -31,6 +31,10 @@ next person does not have to rediscover it.
 | 13 | Rubric page, every dimension | handover `oal.html` L156 and `styles.css` | `.selfcheck .eyebrow` gains `display: block` | **Broken markup, fixed.** The label was inline, so it ran straight into the question with no space: *"Self-checkIf you deleted the sentence…"*, on all eight dimensions. Its own `margin-bottom: 0.35rem` is inert on an inline element, which is the tell that a block was always intended. Measured on the handover before any build code. |
 | 14 | Every data table | `BRIEF.md` §7 | Tables wrapped in a focusable `.scroller` with `overflow-x: auto` | §7 asks for 320px and 200% zoom to be tested. At 320px the coverage × depth grid pushed the whole page 58–61px sideways on Home and Services, and the version index 7px on the changelog — so every paragraph on those pages needed horizontal scrolling to finish. WCAG 1.4.10 exempts data tables from reflow because they need two dimensions; it does not exempt the page. The table scrolls in its own box now and the page does not. Found by check 13. |
 | 15 | `RATIONALE.md` | measurement | "`untravelled` is used for rules and fills only" now records that the measure's rule and ticks are drawn in the new `--track` | The document described a token that no longer draws the instrument. Corrected in place, with the change logged here rather than made quietly — the same standard the table itself sets. |
+| 16 | Everywhere the date appears | practice decision, 2026-08-08 | Publication date `2026-08-07` → **`2026-09-19`** | §12.2 flagged this as not ours to decide, and it has now been decided. One edit in `src/_data/site.json`; it propagated to seven built files with no other change, which is what §12.2 asked the build to make possible. It is now a permanent address and a version stamp on every scorecard issued under OAL v1.0. |
+| 17 | Home, failure block | §12.3, released by the practice | The two missing failure-mode bullets — instructions arriving as data, unbounded execution — **written** | §12.3 said leave room and do not write them. That stop has been lifted deliberately. Until now the block's six named failures did not motivate dimensions 4 and 8, so the page argued for a rubric wider than the failures it described. New copy, in the established voice: a bold noun phrase naming the failure, then one concrete sentence. Not drawn from the vault — flagged here as authored. |
+| 18 | Print stylesheet | check 14 | `@page { margin: 16mm 14mm }` → `@page { size: A4; margin: 16mm 14mm }` | **Broken, fixed.** The rule declared a margin but no page size, so Chromium fell back to its locale default and the generated scorecard came out **US Letter (612×792pt)** — a UK assurance practice's travelling artifact on the wrong paper. Caught by reading the MediaBox out of the generated PDF rather than trusting the flag that asked for A4. Fixed in the stylesheet rather than the PDF tool, because File → Print from the page is how most readers will make a copy. |
+| 19 | Scorecard, About this form | §6 | The pointer to the other two formats moved into `copy/scorecard.md` | It was written into the template when the PDF link was added. Check 12 caught it within one build, which is the check working exactly as intended on its author. |
 
 ## Flagged and left — nothing was changed
 
@@ -46,14 +50,15 @@ next person does not have to rediscover it.
 Unchanged from `BRIEF.md` §12 and `RATIONALE.md`. Restated because they are now one
 edit each rather than a search:
 
-1. **The entity.** Terms and Privacy stay unbuilt.
-2. **The publication date `2026-08-07`.** It becomes a permanent address and a version
-   stamp on every scorecard ever issued. It is one value in
-   [`src/_data/site.json`](src/_data/site.json) and every page reads it from there.
-   **Confirm before launch.**
-3. **The two missing failure-mode bullets** on Home — instructions arriving as data,
-   unbounded execution. The list is a copy fragment and takes two more rows without a
-   layout change. Not written.
-4. **The commit-or-deploy reference on the scorecard face.** Currently the second
+1. **The entity.** Terms and Privacy stay unbuilt, and `_redirects` deliberately routes
+   neither — a redirect to the home page would be a link resolving to the wrong thing,
+   which is worse than one resolving to nothing.
+2. **The commit-or-deploy reference on the scorecard face.** Currently the second
    header field in `copy/scorecard.md`. If it moves to working papers only, that line
    comes off `fields` and the reproducibility sentence on About needs softening.
+
+### Closed since
+
+- **The publication date** — decided 2026-08-08 as **`2026-09-19`**. See row 16.
+- **The two failure-mode bullets** — the §12.3 stop was lifted and they are written.
+  See row 17.

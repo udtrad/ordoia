@@ -641,7 +641,12 @@ footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-
   h1, h2, h3 { break-after: avoid; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
   footer { margin-top: 2rem; }
-  @page { margin: 16mm 14mm; }
+  /* size, not only margin. Without it the page box falls back to the browser's
+     locale default — US Letter in Chromium — which is what the generated PDF
+     came out as until check 14 read the MediaBox. Fixing it here rather than in
+     the PDF tool keeps one source: File > Print from the page itself is how most
+     readers will produce a copy. */
+  @page { size: A4; margin: 16mm 14mm; }
 }
 
 /* failure modes: a list, not a table — no rules, because a rule means a scale */

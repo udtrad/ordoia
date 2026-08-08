@@ -1,0 +1,15 @@
+---
+permalink: /sitemap.xml
+eleventyExcludeFromCollections: true
+---
+{#- A list of what exists. The 404 is excluded because it does not. -#}
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{%- for item in collections.all %}
+{%- if item.outputPath and item.outputPath.endsWith(".html") and item.url != "/404.html" %}
+  <url>
+    <loc>https://{{ site.domain }}{{ item.url }}</loc>
+  </url>
+{%- endif %}
+{%- endfor %}
+</urlset>

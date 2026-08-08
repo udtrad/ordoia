@@ -1,0 +1,32 @@
+---
+layout: layout.njk
+permalink: /404.html
+title: That address does not resolve | Ordoia
+description: The page you asked for is not published here. The rubric, its permanent version addresses and the blank scorecard are.
+---
+{#
+  §5: "a 404 that is a page rather than a host default." It is served by the host's
+  not-found rule (see _headers / DEPLOY.md), which is why it lives at a real path
+  rather than a clean URL — a directory named /404/ would itself be a resolvable
+  address, which is the opposite of what this page is for.
+
+  Deliberately excluded from sitemap.xml: a sitemap is a list of what exists.
+#}
+{% set c = copy.notfound %}
+
+<div class="sheet">
+  <aside class="rail"></aside>
+  <div class="body">
+
+    <section class="block">
+      <h1>{{ c | frag("heading") }}</h1>
+      {{ c | frag("body") | md | safe }}
+    </section>
+
+    <section class="block">
+      <h2>{{ c | frag("where.heading") }}</h2>
+      {{ c | frag("where.list") | mdList("constraints") | safe }}
+    </section>
+
+  </div>
+</div>

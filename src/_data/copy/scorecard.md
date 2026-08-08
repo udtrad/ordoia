@@ -117,6 +117,9 @@ Print it, circulate it, or use it to score yourself against [the published rubri
 @@ about.link
 The eight self-scoring questions
 
+@@ about.formats
+Also as [a print-clean PDF]({pdf}) and [markdown]({markdown}), both ungated, both carrying the methodology version in the filename.
+
 @@ md.intro
 A score is a statement about a named system, under a named rubric version, on a date, at a named depth. Dropping any of the four makes it something else.
 

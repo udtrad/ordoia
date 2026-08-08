@@ -242,6 +242,10 @@ export default function (eleventyConfig) {
     'scorecardMarkdown',
     `/scorecard/ordoia-scorecard-audit-oal-v${oal.current}.md`
   );
+  eleventyConfig.addGlobalData(
+    'scorecardPdf',
+    `/scorecard/ordoia-scorecard-audit-oal-v${oal.current}.pdf`
+  );
 
   // The dimensions an audit-scope engagement does not reach, in order. The scorecard
   // prints all eight and marks these four; the services page names them. Derived, so
@@ -400,6 +404,12 @@ export default function (eleventyConfig) {
   // 2032 (§13 item 1).
   eleventyConfig.addPassthroughCopy({ 'src/styles.css': 'styles.css' });
   eleventyConfig.addPassthroughCopy({ 'src/fonts': 'fonts' });
+
+  // Deploy posture, as files the host reads. Both Netlify and Cloudflare Pages
+  // consume this exact syntax, so the repo does not have to pick one. §9, and
+  // check 14 parses them so they cannot rot into decoration.
+  eleventyConfig.addPassthroughCopy({ 'src/_headers': '_headers' });
+  eleventyConfig.addPassthroughCopy({ 'src/_redirects': '_redirects' });
 
   /**
    * The frozen version is self-contained: its own stylesheet, its own fonts, its own

@@ -141,7 +141,8 @@ eleventyComputed:
       <h2>{{ c | frag("about.heading") }}</h2>
       {{ c | frag("about.body") | md | safe }}
       <p><a href="/oal/#score-yourself">{{ c | frag("about.link") }}</a></p>
-      <p><a href="{{ scorecardMarkdown }}">Blank scorecard as markdown</a></p>
+      {#- §6: three formats, ungated, stable filenames carrying the methodology version. #}
+      <p>{{ c | frag("about.formats", { pdf: scorecardPdf, markdown: scorecardMarkdown }) | mdi | safe }}</p>
     </section>
   </div>
 </div>

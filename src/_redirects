@@ -1,0 +1,21 @@
+# Extensionless forms of every clean URL.
+#
+# Both Netlify and Cloudflare Pages will usually do this on their own from the
+# directory structure. These rules are written out anyway, because §9 names a
+# published version returning 404 as the most serious operational failure this
+# site can have, and `ordoia.co.uk/oal/v1.0` is printed on the face of every
+# scorecard ever issued. That address resolving is not something to leave to a
+# host's default behaviour, or to survive a host migration by luck.
+
+/oal/v1.0       /oal/v1.0/        301
+/oal            /oal/             301
+/scorecard      /scorecard/       301
+/services       /services/        301
+/independence   /independence/    301
+/about          /about/           301
+/changelog      /changelog/       301
+
+# Terms and Privacy are deliberately not built (§10, §12.1). They are not
+# redirected anywhere either: a redirect to the home page would be a link that
+# resolves to the wrong thing, which is worse than one that resolves to nothing.
+# They will exist when the entity does.

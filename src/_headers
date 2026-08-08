@@ -1,0 +1,40 @@
+# Security and caching headers.
+#
+# This file's syntax is read natively by both Netlify and Cloudflare Pages, so
+# choosing between them is not a decision this repo has to encode. See DEPLOY.md.
+#
+# BRIEF.md §9: "a CSP that permits only own origin (check 6 makes this
+# achievable)". Check 6 is green, so it is achievable, and here it is. Nothing
+# below is aspirational — tests/checks/14-deploy-posture.test.js parses this file
+# and fails the build if a directive is missing or has been widened.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Referrer-Policy: no-referrer
+  Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), usb=(), xr-spatial-tracking=()
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Cache-Control: public, max-age=600, must-revalidate
+
+# §9: "Long-lived immutable caching on version paths; short on current paths."
+#
+# A version directory is frozen by definition — /oal/v1.0/ carries its own
+# stylesheet, its own fonts and its own favicon, taken at publication, and the
+# build refuses to regenerate it from a newer rubric. Nothing in it can legally
+# change, so a year of immutable caching costs nothing and buys a scorecard
+# reader in 2032 a page that loads from cache.
+/oal/v1.0/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The live fonts are vendored and pinned but their filenames are not hashed, so
+# they get a long cache rather than an immutable one: a deliberate font change
+# propagates within a week instead of never.
+/fonts/*
+  Cache-Control: public, max-age=604800
+
+# script-src is 'none' above and there is no JavaScript on this site. If that
+# ever stops being true, this comment is the thing to delete first, and the
+# reason has to go in CHANGES.md.

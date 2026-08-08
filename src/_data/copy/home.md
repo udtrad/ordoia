@@ -41,7 +41,9 @@ What that looks like in practice
 - **Retrieval that ignores who is asking.** Access control is enforced at the application boundary, then bypassed by an index built without it.
 - **Refusal paths that hold in testing and fold under paraphrase.** The guardrail was requested in a prompt rather than enforced in code — so it holds until someone rephrases.
 - **Non-determinism mistaken for a passing test.** The same input passes on Tuesday and fails on Thursday. A single run tells you nothing.
+- **Instructions that arrive as data and get followed anyway.** A page in your knowledge base contains the sentence "ignore your previous instructions", and nothing between the index and the model tells it apart from something your user asked for.
 - **Silent regression on model upgrade.** Your vendor deprecates a version, behaviour shifts, and nothing in your pipeline is watching the shape of the answers.
+- **Execution that runs until something else stops it.** One message sends the agent round a tool loop nobody put a ceiling on, and the first report anyone reads is the invoice.
 
 @@ failures.ordinary
 The same instrumented pass finds the ordinary defects too. In a system Ordoia built, it surfaced an agent serving fabricated company records as live results because the offline fallback was instructed in the prompt rather than enforced in code — and, separately, a signup path where every account created would have been locked out around twenty-four hours later. Neither was reported by anyone. Both were found by looking.
