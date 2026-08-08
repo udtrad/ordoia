@@ -1,0 +1,305 @@
+# Fonts
+
+Self-hosted, subset webfaces. This file is the record of where each byte came from,
+what was done to it, and how every number in `src/_includes/fonts.css` was derived.
+
+Regenerate with `tools/build-fonts.sh`. Nothing here needs npm.
+
+Why this exists: BRIEF.md §4 requires zero third-party runtime requests, and calls it
+"a performance decision and a data-protection one: no request to a US font CDN means no
+third-party personal-data transfer, which is part of why this site can ship without a
+consent banner." Before this change all seven pages carried two preconnects and a
+stylesheet link to `fonts.googleapis.com` / `fonts.gstatic.com`, and
+`tests/checks/06-third-party-requests.test.js` was red because of it.
+
+## Provenance
+
+| Family | Upstream | Pin | File taken |
+|---|---|---|---|
+| Archivo | [`google/fonts`](https://github.com/google/fonts) `ofl/archivo` | commit `95f4904fc8bcf26d3420fe315560c96417c6dec7` | `Archivo[wdth,wght].ttf` (658,596 B, sha256 `0e094a7d…b05053`) |
+| Source Serif 4 | [`adobe-fonts/source-serif`](https://github.com/adobe-fonts/source-serif) | release tag **`4.005R`** | `source-serif-4.005_Desktop.zip` (sha256 `549fdb8f…a0c425`) → `VAR/SourceSerif4Variable-Roman.ttf`, `VAR/SourceSerif4Variable-Italic.ttf` |
+| IBM Plex Mono | [`IBM/plex`](https://github.com/IBM/plex) | release tag **`@ibm/plex-mono@2.5.0`** | `ibm-plex-mono.zip` (sha256 `6d23f012…bc481c`) → `fonts/complete/ttf/IBMPlexMono-Regular.ttf` |
+
+Every URL and SHA-256 is in `tools/build-fonts.sh`, which fails loudly on a hash
+mismatch. If an upstream URL rots, the hashes remain the contract.
+
+**One correction to the brief.** BRIEF.md Part E names the repo `googlefonts/archivo`.
+That repo does not exist — `https://api.github.com/repos/googlefonts/archivo` returns 404.
+The design source is `Omnibus-Type/Archivo`; the *shipping binary*, and the exact file
+`fonts.gstatic.com` was serving these pages, is `google/fonts` `ofl/archivo`. We vendor
+the shipping binary so the subset is a drop-in for what the pages already rendered with.
+
+Licences are committed beside the fonts, unmodified: `src/fonts/OFL-Archivo.txt`,
+`OFL-SourceSerif4.md`, `OFL-IBMPlexMono.txt`. All three families are SIL OFL 1.1.
+
+## What was built
+
+| File | Bytes | Axes retained |
+|---|---:|---|
+| `src/fonts/archivo-subset.woff2` | 48,564 | `wght` 400–700, **`wdth` 62–125** |
+| `src/fonts/source-serif-4-subset.woff2` | 54,368 | `wght` 400–700, `opsz` 8–60 |
+| `src/fonts/source-serif-4-italic-subset.woff2` | 23,428 | `wght` 400–700, `opsz` pinned to 20 |
+| `src/fonts/ibm-plex-mono-400-subset.woff2` | 9,308 | static, 400 only |
+| **total woff2** | **135,668** (132.5 KB) | |
+
+sha256 of the committed subsets:
+
+```
+50c5dae0510d0cbe9b8872ade8513d4a4be681225e202e1bd1dfa8825283d04d  archivo-subset.woff2
+f697e17543bda18a79f3a1fb6ef31bf773bf4f94dbb7c4696228417c01064600  ibm-plex-mono-400-subset.woff2
+84374cb60f35fc48926b0fb8426027341bbf67d0b73ce23710ec9ac0a731c11c  source-serif-4-italic-subset.woff2
+0bff0ef9f59b411088336eb83109186c007900421dd224b60883279fbae9b8a0  source-serif-4-subset.woff2
+```
+
+Worst-case page is `oal.html`, which uses all four faces: 132.5 KB of font plus the page
+and stylesheet, inside the 150 KB budget but not by much. The italic is the reason it
+fits — see below.
+
+### The commands
+
+Two stages per family. `pyftsubset` cannot narrow an axis range, so `varLib.instancer`
+runs first:
+
+```sh
+fonttools varLib.instancer -q -o Archivo-limited.ttf 'Archivo[wdth,wght].ttf' wght=400:700
+# Source Serif roman:  wght=400:700          (opsz left whole)
+# Source Serif italic: wght=400:700 opsz=20
+# IBM Plex Mono:       static, no instancer stage
+
+pyftsubset Archivo-limited.ttf \
+  --output-file=src/fonts/archivo-subset.woff2 \
+  --flavor=woff2 \
+  --unicodes="U+0020-007E,U+00A0,U+00A3,U+00B7,U+00D7,U+2013,U+2014,U+2018-201A,U+201C-201D,U+2026,U+2193,U+2265" \
+  --layout-features+=tnum,lnum \
+  --name-IDs='*' --notdef-outline --drop-tables+=DSIG
+```
+
+Toolchain pinned to `fonttools[woff]==4.63.0` via `uvx`.
+
+### The character set, derived not guessed
+
+Taken from the rendered text of the seven pages (tags stripped, entities unescaped),
+plus `scorecard.md` and the `content:` strings in `styles.css`. The sample is 57,007
+characters, 78 distinct. Non-ASCII actually used, with counts:
+
+| Codepoint | Char | Uses | Where |
+|---|---|---:|---|
+| U+00A0 | NBSP | 1 | scorecard.html |
+| U+00A3 | £ | 20 | index.html, services.html (`&pound;`) |
+| U+00B7 | · | 117 | all seven pages (`&middot;`) |
+| U+00D7 | × | 2 | index.html, services.html (`&times;`) |
+| U+2013 | – | 1 | oal.html (`&ndash;`) |
+| U+2014 | — | 156 | all seven pages (`&mdash;`) |
+| U+2193 | ↓ | 2 | index.html, services.html (`&darr;`) |
+
+Everything else in the subset is headroom: full printable ASCII (the pages use 86 of the
+95), the curly quotes, the ellipsis, and `≥`.
+
+**A second correction to the brief.** Part E states the site uses `‘ ’ “ ”` and `≥`. It
+does not — no page contains any of them; `≥` appears once, in `CHECKS.md`, which is not
+shipped. They are in the subset anyway because the brief names them and because one
+apostrophe typed into new copy would otherwise fall back mid-paragraph. `U+201B` is
+deliberately absent: no upstream family here has the glyph.
+
+### Italic: a real face, and why it is pinned to one optical size
+
+A real italic is needed, not a synthesised oblique. `.buyerq` (`styles.css:395`) is
+`font-style: italic` and appears five times in `oal.html` as full-paragraph pull-quotes,
+plus four inline `<em>` runs across index/about/services/scorecard. All of them resolve
+to `--body`, i.e. Source Serif 4. Source Serif's italic is a separate alphabet — a
+single-storey *a*, a written *g* — and shearing the roman gets none of that. Those five
+questions are a designed feature of the rubric page, not incidental emphasis.
+
+`opsz` is pinned to 20 on the italic. Italic on this site is only ever set at body size,
+so one optical size is the correct design answer, and keeping the axis variable measured
+**61,436 B against 23,412 B** — 38 KB for a range nothing renders. That 38 KB is the
+difference between `oal.html` fitting the 150 KB budget and busting it. `wght` stays
+400–700 so `<strong>` inside an italic run is a real semibold italic.
+
+Archivo and IBM Plex Mono are roman-only: `font-style: italic` appears exactly once in
+`styles.css`, and no `<i>`, `<cite>`, `<address>`, `<var>` or `<dfn>` appears in any page,
+so no italic ever resolves to those two families.
+
+## Tabular figures
+
+BRIEF.md requires the `tnum`/`lnum` features to survive because `body` sets
+`font-variant-numeric: tabular-nums lining-nums`. What actually survives differs per
+family, and the feature tag is the wrong thing to check. What matters is whether digits
+end up the same width. Verified from the subsets:
+
+| Family | `tnum` in subset GSUB | Digit advances | Verdict |
+|---|---|---|---|
+| Archivo | **yes** | default 575/576/577 (uneven) → `tnum` substitutes → **all 579** | tnum is doing real work and was retained |
+| Source Serif 4 roman | no | **all 500** by default | already tabular |
+| Source Serif 4 italic | no | **all 511** by default | already tabular |
+| IBM Plex Mono | no | **all 600** | monospace; tabular by construction |
+
+Source Serif 4's default figures *are* tabular lining. Its `tnum` and `lnum` lookups
+contain no substitutions for the default digits at all — they only map the `.lf` and
+`.tosf` alternates back. Once those alternates are subsetted away the lookups are empty
+and `pyftsubset` prunes them, correctly. `font-variant-numeric: tabular-nums lining-nums`
+still renders tabular lining figures because that is what the cmap points at.
+
+IBM Plex Mono has no `tnum` upstream — it never did. It cannot be "retained".
+
+Confirmed in the browser as well as in the tables: in the Archivo utility role,
+`"1111111111"` and `"0000000000"` both render **104.766 px**.
+
+## Metric matching
+
+The goal is BRIEF.md's "no layout shift from webfont swap". Two things had to be
+established before any number was written.
+
+**First: every `line-height` in `styles.css` is unitless and explicit** — `body` 1.6
+(line 46), `.display, h1-h4` 1.15 (line 56), `.note` 1.5 (line 92). A unitless
+line-height makes the line box height `number × font-size`, independent of the font's
+ascent and descent. So no ascent/descent override can change a block's height here, and
+the swap cannot shift layout that way. The real risk is **horizontal**: if the fallback
+sets text wider or narrower, lines wrap differently, line counts change, and everything
+below moves. `size-adjust` is the lever that matters.
+
+**Second: Chromium scales the metric overrides by `size-adjust`.** Measured, not assumed
+— a face declaring `ascent-override:100% descent-override:0% line-gap-override:0%` gives
+a `line-height:normal` strut of 100.000 px at `size-adjust:100%` and 50.000 px at
+`size-adjust:50%`, a ratio of exactly 0.5000. So a target ascent `A` must be written as
+`A / size-adjust`.
+
+A methodology note, because it bit us: measuring at a large font size gives wrong answers
+for Source Serif 4. At 100px the browser drives `opsz` to its 60 ceiling, where the
+letterforms are 14% narrower than at text sizes. All widths below are measured at the
+real 17px body size, over the longest real body paragraph on the site
+(`services.html:79`).
+
+### Source Serif 4 — matched, `font-display: swap`
+
+The only family with a stable target. Its first fallback is Georgia, which ships on both
+macOS and Windows with identical metrics, so the match holds cross-platform.
+
+```
+size-adjust  = Georgia width / Source Serif width = 2753.188 px / 2858.063 px = 0.96331
+             -> size-adjust: 96.33%
+
+Georgia hhea (unitsPerEm 2048, USE_TYPO_METRICS off, so hhea is what Chromium uses):
+  ascender 1878/2048 = 0.9170 em      descender 449/2048 = 0.2192 em      lineGap 0
+Overrides are scaled by size-adjust, so divide by it:
+  ascent-override   = 0.9170 / 0.96331 = 0.9519  -> 95.19%
+  descent-override  = 0.2192 / 0.96331 = 0.2275  -> 22.75%
+  line-gap-override = 0      / 0.96331 = 0       -> 0%
+```
+
+Verified after applying, in Chromium:
+
+| | width of the test paragraph | vs Georgia |
+|---|---:|---:|
+| Georgia | 2753.188 px | — |
+| Source Serif 4 unadjusted | 2858.063 px | +3.809% |
+| **Source Serif 4 adjusted** | 2770.016 px | **+0.611%** |
+
+| | strut height at 1000px, `line-height:normal` | vs Georgia |
+|---|---:|---:|
+| Georgia | 1136 px | — |
+| Source Serif 4 unadjusted | 1371 px | +20.7% |
+| **Source Serif 4 adjusted** | 1136 px | **0.000%** |
+
+Vertical is exact. The 0.611% horizontal residual is irreducible with a single scalar:
+`size-adjust: 96.33%` makes the used size 16.38px, which moves `opsz` off 17 and widens
+the glyphs slightly — a feedback loop between the two adjustments. 0.611% is under one
+character across a 62ch measure.
+
+**The italic carries the roman's descriptors verbatim, not its own.** Matched to Georgia
+Italic independently it wants `size-adjust: 111.96%`, which would render an inline `<em>`
+12% larger than the roman around it — a visible bug, and a 12% distortion of a face
+chosen for its drawing. Staying in proportion with the roman is the binding constraint.
+The cost is that the nine short italic runs can reflow on swap.
+
+**Flagging a design consequence, per BRIEF.md §12.** `size-adjust: 96.33%` is permanent,
+not swap-only: body prose renders at an effective 16.38px rather than the 17px set on
+line 45, about 3.7% smaller than drawn. That is inherent to matching the webfont to the
+fallback rather than the fallback to the webfont. The other direction — an
+`@font-face { font-family: "Georgia"; src: local("Georgia"); size-adjust: 103.8% }` that
+shadows the system font and leaves Source Serif at its designed size — is strictly better
+for the design and would still be nothing but `@font-face` rules. It was not taken here
+because Part E asks for the overrides on the webfaces and because shadowing a system font
+name is a decision about the type, which is not mine. **This is worth a second opinion
+before ship.**
+
+### Archivo — not matchable, `font-display: optional`
+
+Stated plainly: there is no honest metric match for Archivo, so none was written.
+
+One `@font-face` carries one `size-adjust`, and Archivo serves two roles with two
+different fallbacks at two different widths. Measured against the real page text at
+100px:
+
+| Role | wdth | First fallback | Fallback width | Archivo width | Off by |
+|---|---|---|---:|---:|---:|
+| `--util` | 100 | `system-ui` | 3169.594 px | 3350.609 px | **+5.71%** |
+| `--display` | 125 | `Arial Narrow` | 2813.047 px | 4507.203 px | **+60.22%** |
+
+From the font tables the same conflict is 94.6% versus 62.3% — **32.3 percentage points
+apart**. No single value reconciles them. `system-ui` is also platform-dependent, so even
+the utility figure is not a fixed target.
+
+`font-display: optional` removes the shift rather than hiding it: the browser either has
+the font inside its ~100 ms block period or renders that whole page load in the fallback
+and never swaps. Zero layout shift either way, which is what the budget asks for.
+
+### IBM Plex Mono — no stable target, `font-display: optional`
+
+Same conclusion, different cause. The stack is `ui-monospace, "SFMono-Regular",
+monospace`, all of which resolve to a different font with a different character cell on
+every platform: SF Mono 0.618 em, Consolas 0.550 em, Courier New 0.600 em. There is no
+single fallback to measure against, so there is no honest `size-adjust`. Mono is confined
+to short inline `.mono` spans (hashes, references, addresses) at `0.85em`.
+
+### Recommendation for whoever integrates this
+
+`font-display: optional` means a cold first visit can render the wordmark and every
+heading in Arial Narrow. RATIONALE.md makes the wordmark in Archivo Expanded the whole of
+the brand mark. Adding a preload to the head of each page makes the ~100 ms block period
+very likely to be met, since the file is same-origin and 48 KB:
+
+```html
+<link rel="preload" href="fonts/archivo-subset.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+I have not added it — the HTML pages and templates are outside this task's scope.
+
+## Verification actually run
+
+- `document.fonts.check()` in headless Chromium 1.56.1 against the real
+  `src/_includes/fonts.css` and the real font files over HTTP: **7/7 pass** —
+  `700 1rem Archivo`, `600 1rem Archivo`, `400 1rem Archivo`, `1rem "Source Serif 4"`,
+  `600 1rem "Source Serif 4"`, `italic 1rem "Source Serif 4"`, `1rem "IBM Plex Mono"`.
+  All four woff2 responses 200, no failed or 4xx requests.
+- Axis ranges read back from the built subsets with `TTFont(...)['fvar']`: Archivo
+  `wght` 400–700 and **`wdth` 62–125**; Source Serif roman `wght` 400–700, `opsz` 8–60;
+  italic `wght` 400–700 with no `opsz` axis; Plex Mono no `fvar`.
+- Digit advances read from `hmtx` in each subset, plus a browser check that two
+  ten-digit strings render identically wide.
+- All 110 subset codepoints present in all four faces; `£ · × — – ↓ ≥ ’` spot-checked.
+
+## Not verified, and known rough edges
+
+- **Only Chromium was tested.** No Safari or Firefox run. The `size-adjust`/override
+  interaction was verified empirically in Chromium only; the spec wording is ambiguous
+  enough that it was worth measuring, and it is worth measuring again in Gecko/WebKit
+  before ship.
+- **Fallback metrics were read from this machine's macOS copies** of Georgia and Arial
+  Narrow. Georgia is metrically identical on Windows; Arial Narrow is not universally
+  present, but nothing depends on its numbers since Archivo is `optional`.
+- **`system-ui` and `ui-monospace` do not resolve to SF Pro / SF Mono in headless
+  Chromium here** — both measured as the same proportional fallback. Their numbers above
+  come from the font tables, not the browser. This does not change any conclusion: both
+  are platform-dependent by definition, which is the reason those two families are
+  `optional`.
+- **`fonttools varLib.instancer` is not byte-deterministic across runs** (two runs on the
+  same input produced different SHA-256s and a ~50 byte size difference downstream);
+  `pyftsubset` is deterministic. The shipped bytes are fixed regardless because the
+  `.woff2` files are committed, but a rebuild will not reproduce them byte for byte.
+- `pyftsubset` drops IBM Plex Mono's `meta` table with a warning: `meta NOT subset; don't
+  know how to subset; dropped`. `meta` carries script/language design tags only.
+- The 150 KB budget is met but tight on `oal.html`. Dropping Archivo's `wdth` floor from
+  62 to 100 would save a further 13.8 KB (measured: 45,800 B against 32,020 B on an
+  earlier build) and nothing on the site sets `wdth` below 100 — but BRIEF.md §4 fixes
+  the range at 62–125, so it was left alone.
