@@ -5,14 +5,34 @@
 # scorecard's printed address still resolves, and that is the failure with the longest
 # tail. This turns that sentence into a job.
 #
-# It is also the only mechanism that would catch a Cloudflare zone setting being
-# switched on years from now, long after anyone remembers why it was off. Email
-# Address Obfuscation is on by default; if it is ever re-enabled, the services CTA
-# breaks silently and nothing else in this repo would notice.
+# It is also the only mechanism in this repository that would catch a Cloudflare zone
+# setting being switched on years from now, long after anyone remembers why it was off.
+# Email Address Obfuscation is on by default; if it is ever re-enabled, the services CTA
+# breaks silently and nothing else here would notice.
 #
 # It builds first because check 15 byte-compares the live site against the build. A
 # mismatch therefore means one of two things, both worth a red: the host mutated what
 # it was given, or production is behind `main`.
+#
+# ── The limitation, stated because it cannot be fixed here ──────────────────────────
+#
+# GitHub disables scheduled workflows in a repository with no activity for 60 days. This
+# site is finished by design: a rubric that changes quarterly is not a standard. So the
+# quiet period that disables this canary is the *expected* state, and the canary stops
+# exactly when it becomes the only thing watching.
+#
+# There is no honest in-repo fix. A keepalive bot commit pollutes the history that is
+# itself the provenance evidence — a repository whose commits are cited on a scorecard
+# cannot carry commits that mean nothing. A second workflow that re-enables this one has
+# to be triggered by something, and that something is the same problem again.
+#
+# So liveness moves out: an external monitor on `/oal/v1.0` and `/services/`, asserting
+# `mailto:` present and `/cdn-cgi/l/email-protection` absent. Those two keywords catch
+# precisely the Email Address Obfuscation failure, and they are the same pair
+# tools/probe-live.mjs uses. DEPLOY.md holds the setup.
+#
+# **If the external monitor lapses too, nothing notices.** That is the residual risk and
+# it is accepted knowingly rather than papered over.
 
 name: canary
 
@@ -30,18 +50,24 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
 
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+
+      # Read, not written. See the same step in deploy.yml, and check 19.
+      - name: Read the site record
+        id: site
+        run: node tools/site-origin.mjs >> "$GITHUB_OUTPUT"
+
       - run: npm run build
 
       - name: Check the live site
         run: npm test
         env:
-          ORDOIA_LIVE: https://ordoia.com
+          ORDOIA_LIVE: ${{ steps.site.outputs.origin }}

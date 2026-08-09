@@ -17,7 +17,7 @@
  *
  * MEASURED STATE OF THE HANDOVER, before any build code was written:
  *
- *   ink   on ground  14.42:1   pass   (RATIONALE.md says 14.7 — see below)
+ *   ink   on ground  14.42:1   pass   (RATIONALE.md said 14.7 — see below)
  *   ink   on raised  15.84:1   pass
  *   slate on ground   6.21:1   pass
  *   slate on raised   6.83:1   pass
@@ -25,11 +25,13 @@
  *   floor on raised   6.20:1   pass
  *   untravelled on ground  1.37:1  FAIL
  *
- * RATIONALE.md's contrast section is accurate on the three pairs it names except
- * for one rounding: it claims `ink` on `ground` is 14.7:1 and the sRGB
- * computation gives 14.42:1. Both pass AA by a mile, so nothing shipped is
- * wrong; the number in the document is. Flagged in CHANGES.md rather than
- * silently corrected.
+ * RATIONALE.md's contrast section was accurate on the three pairs it names except
+ * for one rounding: it claimed `ink` on `ground` was 14.7:1 where the sRGB
+ * computation gives 14.42:1. Both pass AA by a mile, so nothing shipped was ever
+ * wrong; the number in the document was. Flagged as CHANGES.md row 9 rather than
+ * silently corrected, and **`RATIONALE.md:82` now reads 14.42:1** — the tense here
+ * was left in the present for a day after the fix landed, which sent a reader
+ * looking for an error that was no longer there. Logged as row 30.
  *
  * The real finding is `--untravelled`. RATIONALE.md's fix moved *text* off it —
  * `.grid .none` is set in `--slate`, and that is genuinely fixed — but the token

@@ -65,8 +65,15 @@ import {
 
 const CHECKS_DIR = path.join(REPO_ROOT, 'tests', 'checks');
 
-/** Calling any of these means the test is looking at the built site. */
-const REACHES_SITE = ['withSite(', 'withSource(', 'htmlFiles('];
+/**
+ * Calling any of these means the test is looking at the built site.
+ *
+ * `serve(` was added when check 20 became the first test to boot an origin without going
+ * through `withSite`. It is the same reach by a shorter route, and a rule that covered the
+ * wrapper but not the thing it wraps would have let the recovery check — the one code path
+ * here that only ever runs in an emergency — sit outside the population rule.
+ */
+const REACHES_SITE = ['withSite(', 'withSource(', 'htmlFiles(', 'serve('];
 
 /**
  * Shapes this scanner does not understand. Their presence is a failure, not a skip.

@@ -42,13 +42,49 @@ weekly. The shape is:
 
 ```text
 npm ci → playwright install chromium → npm run build
-       → npm test                      the gate. Do not deploy on red.
-       → wrangler pages deploy _site
-       → ORDOIA_LIVE=… npm test        check 15, against what the host returned
+       → npm test                        the gate. Do not deploy on red.
+       → pages deploy --branch=ci-preview
+       → ORDOIA_LIVE=<preview> npm test  check 15, before the domain moves
+       → note the deployment in production now
+       → pages deploy --branch=main
+       → ORDOIA_LIVE=<domain> npm test   check 15, against the custom domain
+       → on failure: roll back, then probe
 ```
 
+**Why two deploys of the same artifact.** The preview stage catches everything that is a
+property of the artifact and the project — `_headers` not applied, the soft-404 fallback,
+the cache split, byte mutation by Pages, the default `Access-Control-Allow-Origin` — and
+it catches them *before* `ordoia.com` changes. The production stage catches only what is
+zone-scoped and therefore invisible on `*.pages.dev`: Email Address Obfuscation rewriting
+the `mailto:` CTA, Rocket Loader, anything attached to the zone.
+
+There is no promote-a-preview operation on Pages, so the artifact uploads twice. Pages
+de-duplicates unchanged files by hash, so the second upload is cheap.
+
+Byte-equality against a preview URL works **only because every URL in the artifact is
+absolute against `src/_data/site.json`** — `rel="canonical"`, the sitemap and the printed
+addresses are all fixed at build time, so the bytes served at `*.pages.dev` are the bytes
+that will be served at the custom domain. If a page ever derived a URL from its request
+host, the preview stage would go red, and it would be right to.
+
+**`--branch` is not optional.** Measured against wrangler 4.120.0, not assumed:
+`pages deploy` infers its branch from `git rev-parse --abbrev-ref HEAD`, and the Pages code
+path — unlike the Workers one — has no CI fallback to `GITHUB_REF_NAME`. `actions/checkout`
+leaves a detached HEAD, where that command returns the literal string `HEAD`. Without the
+flag the upload is tagged with a branch that is not the production branch, so it lands as a
+*preview*, `ordoia.com` never changes, and check 15 then fails with a byte mismatch that
+reads as "the host mutated our bytes" when the truth is "we never deployed". Check 19 fails
+the suite if a `pages deploy` line loses its `--branch`.
+
 Secrets it needs: `CLOUDFLARE_API_TOKEN` (scope: Account → Cloudflare Pages → Edit) and
-`CLOUDFLARE_ACCOUNT_ID`.
+`CLOUDFLARE_ACCOUNT_ID`. Both are read from the environment by every script here and are
+never written to a file, a log line or a URL.
+
+**Everything is pinned to a commit.** The actions are SHA-pinned and wrangler is pinned to
+an exact release, with the tag each SHA stood for in a trailing comment — that comment is
+how a pin gets renewed deliberately rather than drifting. This repository pins Eleventy to
+`3.1.2` and subsets its fonts from a SHA-pinned Adobe release; the deploy path was the one
+unpinned thing in it, and it is the part that touches production. Check 19 enforces it.
 
 This keeps the host as a dumb file server, makes the build reproducible from a clean
 checkout on a machine you control, and means a host changing its build image cannot
@@ -108,6 +144,16 @@ defaults never serve a single request.
    Cloudflare's builder. **This is a one-way door**: a Direct Upload project cannot be
    switched to Git integration later. It is the right door here, because the build needs
    Chromium and because CI is the only shape in which `npm test` gates the deploy.
+
+   ```bash
+   npx wrangler@4.120.0 pages project create ordoia --production-branch=main
+   ```
+
+   **The production branch must be `main`,** because that is what `deploy.yml` passes to
+   `--branch` when it promotes. If the two ever disagree, every "production" deploy lands
+   as a preview and the custom domain silently stops updating. On a Direct Upload project
+   the production branch **cannot be changed from the dashboard** — it takes a call to the
+   Update Project API — so it is worth getting right at creation.
 5. Add `ordoia.com` as the custom domain. Build output directory `_site`; `_headers` and
    `_redirects` are picked up from it with no further configuration.
 
@@ -175,6 +221,73 @@ DNS or host change, not only after a deploy.
 
 ---
 
+## Rollback — what it answers, and what it cannot
+
+If check 15 fails against the custom domain, `deploy.yml` rolls production back to the
+deployment that was serving before the promotion, then runs a **narrow probe**.
+
+```bash
+node tools/pages-api.mjs current-production      # deployment=<id>, captured pre-promotion
+node tools/pages-api.mjs rollback <id>
+node tools/probe-live.mjs https://ordoia.com
+```
+
+**wrangler has no Pages rollback.** Measured against 4.120.0: `wrangler rollback` is a
+Workers command by its own help text, and `wrangler pages deployment` offers `list`,
+`create`, `tail` and `delete`. Rollback is REST only:
+
+```text
+GET  /accounts/{account_id}/pages/projects/{project}/deployments?env=production
+POST /accounts/{account_id}/pages/projects/{project}/deployments/{id}/rollback
+```
+
+Three details that are easy to get wrong and are handled in `tools/pages-api.mjs`:
+
+- **Only a successful *production* deployment is a valid rollback target.** A preview is
+  not one — and this pipeline uploads a preview immediately before promoting, so "the most
+  recent deployment" is reliably the wrong answer.
+- **The target is captured before the promotion,** because afterwards the thing we want to
+  return to is no longer the one in production.
+- **The newest-first ordering of the listing is asserted, not trusted.** Rolling back to
+  the wrong deployment is worse than not rolling back at all: it looks like a recovery.
+
+**The probe is deliberately not check 15.** After a rollback the runner's `_site` holds the
+build we just rolled *away from*, so byte-equality would fail on every successful recovery.
+The probe asserts only what must be true of any good deployment: `/services/` returns 200,
+carries `mailto:hello@ordoia.com`, and carries no `/cdn-cgi/`.
+
+> **Rollback answers one question: *we shipped bad bytes.*** It does **not** fix the
+> failure this practice fears most. If Email Address Obfuscation is switched on at the
+> zone, rolling back republishes older bytes into the same zone and they are rewritten
+> identically. The preview gate is what actually prevents that class, one stage earlier.
+>
+> The two are told apart by the probe: **green** means the bytes were the problem and
+> production is healthy again; **red on `/cdn-cgi/`** means the zone is the problem, and no
+> rollback can help — turn Email Address Obfuscation off under Security → Settings and
+> re-run the workflow. `deploy.yml` writes exactly this into the job summary.
+
+### The drill, which has not been run
+
+**Nothing here has met the real Cloudflare API.** There is no account yet. Check 20 proves
+that *given a listing* the right deployment is chosen, and that the probe catches a dead
+CTA and a rewriting edge — it cannot prove a listing comes back in that shape, or that the
+rollback POST does what its documentation says.
+
+Before this path is trusted, run it once on a throwaway Pages project:
+
+1. `wrangler pages project create ordoia-drill --production-branch=main`
+2. Deploy a page, note the deployment id, deploy a visibly different one.
+3. `CLOUDFLARE_PAGES_PROJECT=ordoia-drill node tools/pages-api.mjs current-production` —
+   it must name the second deployment.
+4. Roll back to the first; confirm the first is being served.
+5. Point `tools/probe-live.mjs` at it and confirm the probe's verdict matches.
+6. Delete the project.
+
+Until step 6 is done and recorded in `CHECKS.md`, the rollback claim in this file is
+documentation, in exactly the sense §13 item 6 uses the word.
+
+---
+
 ## HSTS preload — deliberately not enabled
 
 `_headers` sets `Strict-Transport-Security: max-age=63072000; includeSubDomains` and
@@ -207,12 +320,75 @@ surprise.
 
 ---
 
-## Uptime and certificate monitoring
+## Uptime and certificate monitoring — and why it has to be external
 
 §9 asks for both. Whatever you use, monitor **`https://ordoia.com/oal/v1.0`**
 specifically, not just the apex. The home page being up tells you nothing about
 whether a six-year-old scorecard's printed address still resolves, and that is the
 failure with the longest tail.
+
+**The weekly canary cannot be the answer, and pretending otherwise would be the defect.**
+GitHub disables scheduled workflows in a repository with no activity for 60 days. This
+site is finished by design — a rubric that changes quarterly is not a standard — so the
+quiet period that switches the canary off is the *expected* state, and it switches off
+exactly when it becomes the only thing watching.
+
+There is no honest in-repo fix. A keepalive bot commit pollutes the history that is itself
+the provenance evidence: a repository whose commits are cited on the face of a scorecard
+cannot carry commits that mean nothing. A second workflow that re-enables the first has to
+be triggered by something, and that something is the same problem one level up.
+
+So liveness lives outside the repository. Two endpoints, two keyword assertions each:
+
+| URL | Must contain | Must not contain |
+|---|---|---|
+| `https://ordoia.com/oal/v1.0` | `Ordoia Assurance Levels` | `/cdn-cgi/l/email-protection` |
+| `https://ordoia.com/services/` | `mailto:hello@ordoia.com` | `/cdn-cgi/l/email-protection` |
+
+Those keywords are not decoration. The pair catches precisely the Email Address
+Obfuscation failure — the one zone setting that breaks the only conversion path on the
+site — and they are the same pair `tools/probe-live.mjs` uses, deliberately: one failure
+mode, one pair of strings, three places that look for it. Certificate expiry monitoring
+comes free with almost any such service and closes the second half of §9's ask.
+
+**If the external monitor lapses too, nothing notices.** That is the residual risk, and it
+is accepted knowingly rather than papered over. It is also recorded in `canary.yml`'s own
+header, where the next person to read that file will find it.
+
+---
+
+## Publishing a rubric version
+
+§5: *"Snapshot directories are immutable: the build refuses to write to a version
+directory that already exists."*
+
+Taken literally that is unimplementable — `_site/oal/v1.0/` exists after the first build,
+so a build refusing to write to an existing version directory would refuse the second
+build and every one after it. The sentence is about **published bytes**, not about a
+directory entry in an output folder, so the enforceable form is byte identity against a
+manifest taken at publication:
+
+```bash
+npm run build
+node tools/freeze-version.mjs 1.0     # writes versions/v1.0.json
+npm test                              # check 21 now holds the build to it
+git add versions/v1.0.json
+```
+
+Check 21 then fails on any later build that changes, adds or removes a single file under
+`/oal/v1.0/`, and fails separately if a *superseded* version has no manifest at all.
+`requirePublishableVersion` in `eleventy.config.js` guards the other direction — it stops
+the build outright rather than regenerate a superseded version's page from a newer rubric.
+
+**Do this at publication, not before.** Nothing is frozen today, and that is correct: v1.0
+has not been published, and freezing a draft would claim a publication that has not
+happened. The italic re-subset of 2026-08-09 — which took the rubric pages from 151.5 KiB
+to 139.1 KiB — is exactly the kind of correction that has to stay free to land right up
+until the first production deploy, and would have been unrecoverable one commit later.
+
+Once frozen, `tools/freeze-version.mjs` refuses to re-freeze. Deleting the manifest by hand
+is the deliberate act that overrides it, and it should appear in `CHANGES.md` with a reason
+if it ever happens.
 
 ---
 
@@ -222,11 +398,9 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
 
 - **The entity.** Terms and Privacy stay unbuilt until it exists, and `_redirects`
   deliberately routes neither.
-- **Version content immutability.** `/oal/v1.0/` has its own frozen stylesheet, fonts
-  and favicon, but its *content* still generates from the live `oal.json`. The build
-  refuses outright the moment a second version is published, so this cannot ship wrong
-  quietly — but freeze it, and write the v1.1 publishing process document, before
-  there is ever a v1.1.
+- **Freeze `/oal/v1.0/` on the day it publishes.** The mechanism exists and is checked;
+  the act has not been performed, because it must not be — see *Publishing a rubric
+  version* below. The v1.1 publishing-process document (§11.3) is still unwritten.
 - **Web-archive submission** on each published version, and the one-paragraph note on
   what happens to `/oal/v1.0` if the domain lapses (§5).
 - **A mailbox at `hello@ordoia.com`.** The services page CTA is a `mailto:` to it and it

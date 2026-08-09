@@ -1,8 +1,11 @@
 {
   "$comment": [
     "BRIEF.md §12.2: the publication date becomes a permanent address and a version",
-    "stamp on every scorecard ever issued. It is NOT settled — it needs confirming",
-    "before launch. It is held here, in one place, so that confirming it is one edit.",
+    "stamp on every scorecard ever issued. It is held here, in one place, so that",
+    "settling it was one edit — and it was: decided 2026-09-19 on 2026-08-08, recorded",
+    "as row 16 in CHANGES.md. This comment said 'It is NOT settled' for a day after it",
+    "was, which made the one file that exists to be the single source of truth disagree",
+    "with itself. Logged as row 28 rather than quietly fixed.",
     "",
     "Every page that prints the date reads it from here. A rubric version that is later",
     "superseded gains its own `published` field on its record in oal.json, and that",

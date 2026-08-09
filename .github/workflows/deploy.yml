@@ -1,4 +1,4 @@
-# Build, gate, deploy, then check what the host actually returned.
+# Build, gate, deploy to a preview, check it, promote, check that, roll back if it is wrong.
 #
 # BRIEF.md §9 asks for a build reproducible from a clean checkout. The build needs
 # Chromium — §6 requires the scorecard PDF generated rather than exported by hand —
@@ -7,6 +7,32 @@
 # this is the only shape in which `npm test` genuinely gates the deploy.
 #
 # The Pages project is Direct Upload, not Git integration, for the same reason.
+#
+# ── Two stages, and which failures each one catches ─────────────────────────────────
+#
+# The preview stage catches everything that is a property of the artifact and the
+# project: `_headers` not applied, the soft-404 fallback, the cache split, byte
+# mutation by Pages, the default Access-Control-Allow-Origin. All of it before the
+# custom domain changes. This is the stage that earns its keep.
+#
+# Byte-equality against a preview works only because every URL in the artifact is
+# absolute against the site record — `rel="canonical"`, the sitemap and the printed
+# addresses are all written at build time — so the bytes served at *.pages.dev are
+# the bytes that will be served at the custom domain. If a page ever derived a URL
+# from its request host, this stage would go red and would be right to.
+#
+# The production stage catches what only the custom domain can show, because it is
+# zone-scoped rather than project-scoped: Email Address Obfuscation rewriting the
+# mailto: CTA, Rocket Loader, anything else attached to the zone.
+#
+# ── Pins ────────────────────────────────────────────────────────────────────────────
+#
+# Every action is pinned to a commit, and wrangler to an exact release. A major tag
+# is a moving pointer, and this repository pins Eleventy, vendors its fonts from a
+# SHA-pinned upstream and asserts its own build is byte-reproducible — the deploy
+# path was the one unpinned thing in it, and it is the part that touches production.
+# Check 19 fails the suite if a pin is loosened. Renew them deliberately; the tag each
+# SHA stood for is in the comment beside it.
 
 name: deploy
 
@@ -22,18 +48,15 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  SITE_URL: https://ordoia.com
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -44,27 +67,127 @@ jobs:
       # rather than whatever the runner image happens to carry.
       - run: npx playwright install --with-deps chromium
 
+      # The domain is read from src/_data/site.json, never written here. It moved once
+      # already — ordoia.co.uk to the current domain, on 2026-08-08 — and the copy that
+      # was missed was check 14, which went on passing while asserting nothing. Check 19
+      # fails the suite if a literal domain comes back into this directory.
+      - name: Read the site record
+        id: site
+        run: node tools/site-origin.mjs >> "$GITHUB_OUTPUT"
+
       - name: Build
         run: npm run build
 
-      # The gate. 45 checks against the build; check 15 skips because ORDOIA_LIVE is
-      # unset here, which is deliberate — nothing that needs the network may block a build.
+      # The gate. Check 15 skips here because ORDOIA_LIVE is unset, which is deliberate:
+      # nothing that needs the network may block a build.
       - name: Check the build
         run: npm test
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
+      # ── Stage one: a preview nobody is reading ──────────────────────────────────────
+
+      - name: Deploy to a preview
+        id: preview
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy _site --project-name=ordoia
+          wranglerVersion: '4.120.0'
+          command: pages deploy _site --project-name=ordoia --branch=ci-preview
+      # --branch is not optional, and not cosmetic. Measured against wrangler 4.120.0:
+      # `pages deploy` infers its branch from `git rev-parse --abbrev-ref HEAD`, and the
+      # Pages path — unlike the Workers path — has no CI fallback to GITHUB_REF_NAME.
+      # actions/checkout leaves a detached HEAD, where that returns the literal "HEAD".
+      # A fixed preview branch name also keeps one stable alias instead of minting a new
+      # one per commit.
 
-      # Check 15. This is the half check 14 cannot do: it reads the files the build
-      # emits, not the responses a host returns. Byte-compares every page against the
-      # build, so an edge feature that rewrites HTML — Cloudflare's Email Address
-      # Obfuscation is on by default and would break the services CTA — fails here
-      # rather than in front of a client.
-      - name: Check the deploy
+      # If deployment-url came back empty, ORDOIA_LIVE would be unset, check 15 would
+      # SKIP, and this stage would report a green preview gate having tested nothing.
+      # That is the exact shape CHECKS.md records as lesson 8, so it is asserted rather
+      # than assumed.
+      - name: The preview must have an address
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.deployment-url }}
+        run: |
+          if [ -z "$PREVIEW_URL" ]; then
+            echo "wrangler-action returned no deployment-url."
+            echo "ORDOIA_LIVE would be empty, check 15 would skip, and this gate would"
+            echo "pass having checked nothing. Refusing to promote."
+            exit 1
+          fi
+          echo "preview: $PREVIEW_URL"
+
+      - name: Check the preview
         run: npm test
         env:
-          ORDOIA_LIVE: ${{ env.SITE_URL }}
+          ORDOIA_LIVE: ${{ steps.preview.outputs.deployment-url }}
+
+      # ── The rollback target, captured before there is anything to roll back from ────
+
+      # Only a successful *production* deployment is a valid rollback target — a preview
+      # is not — so this cannot be "the most recent deployment": the step above just made
+      # one. tools/pages-api.mjs filters on env=production for that reason.
+      #
+      # Empty output is legitimate exactly once, on the first ever deploy of the project.
+      - name: Note what is in production now
+        id: current
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/pages-api.mjs current-production >> "$GITHUB_OUTPUT"
+
+      # ── Stage two: the custom domain ────────────────────────────────────────────────
+
+      - name: Deploy to production
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.120.0'
+          command: pages deploy _site --project-name=ordoia --branch=main
+      # This uploads the same artifact a second time. Pages de-duplicates unchanged files
+      # by hash, so the second upload is cheap. There is no promote-a-preview operation
+      # on Pages to use instead — rollback targets production deployments only.
+
+      - name: Check production
+        id: verify
+        run: npm test
+        env:
+          ORDOIA_LIVE: ${{ steps.site.outputs.origin }}
+
+      # ── Recovery ────────────────────────────────────────────────────────────────────
+
+      - name: Roll production back
+        id: rollback
+        if: failure() && steps.verify.outcome == 'failure' && steps.current.outputs.deployment != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node tools/pages-api.mjs rollback "${{ steps.current.outputs.deployment }}"
+
+      # Deliberately not check 15: after a rollback, `_site` in this runner is the build
+      # we just rolled away from, so byte-equality would fail on every successful
+      # recovery. The probe asserts only what must be true of any good deployment.
+      - name: Probe what is serving now
+        if: failure() && steps.rollback.outcome == 'success'
+        run: node tools/probe-live.mjs "${{ steps.site.outputs.origin }}"
+
+      - name: Say which failure this was
+        if: failure() && steps.rollback.outcome == 'success'
+        run: |
+          {
+            echo "### Production was rolled back"
+            echo
+            echo "Rollback answers one question: **we shipped bad bytes.** It does not fix"
+            echo "the failure this practice fears most. If a zone setting is rewriting HTML"
+            echo "— Email Address Obfuscation is on by default and breaks the services CTA —"
+            echo "then the older deployment is rewritten identically and the site is still"
+            echo "wrong. The probe above distinguishes the two:"
+            echo
+            echo "- **probe green** — the bytes were the problem, and production is healthy."
+            echo "  Fix the build and push again."
+            echo "- **probe red on /cdn-cgi/** — the zone is the problem. Rolling back cannot"
+            echo "  help. Turn off Email Address Obfuscation under Security > Settings, then"
+            echo "  re-run this workflow."
+            echo
+            echo "The preview stage is what prevents the second class one stage earlier."
+          } >> "$GITHUB_STEP_SUMMARY"

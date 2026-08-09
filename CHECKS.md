@@ -25,7 +25,7 @@ and a check that passes against an *empty* site is not even that. The baselines 
 the evidence that the suite works.
 
 `test:live-local` is the only one that exercises check 15 without a deployment; it boots
-`_site` behind a Cloudflare-shaped origin, so nothing skips and the suite reports 59/59.
+`_site` behind a Cloudflare-shaped origin, so nothing skips and the suite reports 69/69.
 
 ## Where the enforcement lives
 
@@ -47,6 +47,15 @@ The build defends the pages it renders; the suite defends the ones it does not. 
 hand-written `.measure` in a future page would slip past the macro and be caught
 by check 2.
 
+**One invariant that belongs here and deliberately is not: the version freeze.** By the
+rule above, §5's "a published version's bytes do not change" should fail in the build. Half
+of a frozen version directory is not rendered at all — `styles.css`, `favicon.svg` and four
+version-scoped `.woff2` files are passthrough copies, which no Eleventy transform sees — so
+a build-time guard would cover `index.html` and leave the fonts unguarded, and the fonts are
+exactly what the 2026-08-09 re-subset changed. It is check 21 instead, and `npm run check`
+builds before it tests, so nothing reaches a deploy either way. Stated here rather than
+left for someone to notice the exception.
+
 ## Baseline A — the build, 2026-08-08
 
 **45 tests, 45 pass, 0 fail.** This is the gate.
@@ -65,12 +74,22 @@ are still check 15 and still only under `npm test`; `npm run test:live-local` ru
 whole suite with **59 pass, 0 fail, 0 skipped**, which is the first time every check in
 this repo has been green in one run.
 
+**Updated again, 2026-08-09 (stages 4, 5 and 8): 69 tests, 62 pass, 0 fail, 7 skipped.**
+Ten tests added — check 19's four on the workflows, check 20's three on the recovery path,
+check 21's three on the version freeze. The seven skips are still check 15 and still only
+under `npm test`. `npm run test:live-local` remains **69 pass, 0 fail, 0 skipped**.
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 59 | 52 | 0 | 7 |
-| a local origin | `npm run test:live-local` | 59 | 59 | 0 | 0 |
-| the handover | `npm run test:handover` | 59 | 37 | **8** | 14 |
-| an empty directory | `npm run test:empty` | 59 | 15 | **37** | 7 |
+| the build | `npm test` | 69 | 62 | 0 | 7 |
+| a local origin | `npm run test:live-local` | 69 | 69 | 0 | 0 |
+| the handover | `npm run test:handover` | 69 | 45 | **8** | 16 |
+| an empty directory | `npm run test:empty` | 69 | 24 | **38** | 7 |
+
+All four re-measured on 2026-08-09 after stages 4, 5 and 8, not carried forward. The
+handover's **eight failures are unchanged**, which is the number worth watching: ten new
+tests were added and none of them found a new way to fail against the frozen handover, so
+none of them is measuring the build's shape by accident.
 
 ## Baseline D — the empty target, 2026-08-09
 
@@ -114,6 +133,18 @@ read the repo rather than the target and are correctly out of scope. The two ext
 are the site-touching halves of checks 17 and 18. The property this baseline exists to
 protect is unchanged and was re-verified by listing every passing test by name: **nothing
 that reaches the site passes against a directory with nothing in it.**
+
+**Re-measured after stages 4, 5 and 8: 24 pass, 38 fail, 7 skipped of 69.** Nine of the ten
+new tests pass here and are correctly out of scope — checks 19, 20 and 21 read
+`.github/workflows/`, planted fixtures and `oal.json` rather than the built site. The one
+new failure is check 20's probe against the target, which is the only one of the ten that
+reaches it. **The property this baseline exists to protect is unchanged.**
+
+Check 21 is worth a sentence of its own, because it will move. It passes here **today**
+only because no version is frozen, so it never reads the target at all; from the commit
+that publishes v1.0 it becomes site-touching and will fail against an empty directory like
+everything else. A check that changes category on a future commit should say so before it
+does, rather than have someone discover the shift and wonder which behaviour was intended.
 
 Baseline D is a committed fixture and a named script rather than a demonstration someone
 performed once, so unlike a one-off it cannot rot.
@@ -420,20 +451,85 @@ vault is caught by review against `CHANGES.md`.
 Stated here rather than left to be discovered, on the same principle the rubric
 applies to its own depth caps.
 
+## The deploy path, made executable — checks 19, 20 and 21
+
+Until 2026-08-09 this repository checked everything it published and nothing about how it
+published it. `.github/workflows/` decided which bytes reached the domain and no test read
+it; `/oal/v1.0/`'s immutability was a sentence in `BRIEF.md` §5 with no mechanism behind
+it. Three checks close that, and each was written red first.
+
+**Check 19 — the workflows.** Three defects, each a shape this suite has already been
+bitten by:
+
+| Found | Why it is the same lesson twice |
+|---|---|
+| `deploy.yml:26` and `canary.yml:47` each wrote the domain out by hand | Lesson 8. The domain moved once already, on 2026-08-08, and the copy that was missed — check 14 — went on passing while asserting nothing. `harness.js` says the domain "lives here and nowhere else in the checks"; the workflows were outside the sentence's reach. |
+| Five `uses:` on floating major tags, and `wranglerVersion` unset | This repo pins Eleventy to `3.1.2` and subsets its fonts from a SHA-pinned Adobe release. The deploy path was the one unpinned thing in it, and it is the part that touches production. |
+| `pages deploy` with no `--branch` | Measured against wrangler 4.120.0: it then reads `git rev-parse --abbrev-ref HEAD`, and the Pages code path — unlike the Workers one — has no CI fallback to `GITHUB_REF_NAME`. Under `actions/checkout`'s detached HEAD that returns the literal `HEAD`, so every "production" deploy would have landed as a preview while the deploy step went green. |
+
+Red before the fix, naming all eight offending lines; green after. It is lexical and fails
+closed, in the manner of check 16: it strips full-line comments only, and asserts its own
+parsing assumptions rather than quietly scanning less.
+
+**A claim in the launch-blocker plan was wrong and is withdrawn.** The plan stated that
+`wrangler-action@v4` *"has no `wranglerVersion`"*. It has — the input is in `action.yml` at
+the pinned tag. The drift was real but the cause was that the input was never set. Third
+plan claim in three sessions overturned by looking.
+
+**Check 20 — the recovery path.** Rollback and the probe only ever execute in an
+emergency, which is how they rot unnoticed. So the logic is split from the network: the
+selection of a rollback target and the probe's verdict are both exercised here, against
+planted listings and planted origins. `probe()` reports *what it asserted* as well as what
+it found, because `findings: []` reads identically for "the site is healthy" and "this
+function stopped checking things", and check 20 pins the difference.
+
+> **Nothing here has met the real Cloudflare API.** There is no account. Check 20 proves
+> that given a listing the right deployment is chosen — never that a listing comes back in
+> that shape. `DEPLOY.md` carries the drill on a throwaway project that settles it, and it
+> has not been run.
+
+**Check 21 — the version freeze.** §5 says *"the build refuses to write to a version
+directory that already exists"*. Taken literally that is unimplementable: `_site/oal/v1.0/`
+exists after the first build, so such a rule would refuse the second and every one after.
+The sentence is about published bytes, so the enforceable form is byte identity against a
+manifest taken at publication — which, unlike the literal reading, can be checked on every
+commit rather than once.
+
+Nothing is frozen today and that is correct: v1.0 has not been published, and the italic
+re-subset of 2026-08-09 is precisely the correction that had to stay possible until the
+first deploy. The check says so through `mayBeEmpty` rather than passing quietly.
+
+Proven end to end on 2026-08-09 rather than argued:
+
+| Step | Observed |
+|---|---|
+| `node tools/freeze-version.mjs 1.0` | 10 files recorded |
+| check 21 against the untouched build | **3 pass, 0 fail** |
+| one byte appended to `_site/oal/v1.0/styles.css` | **red** — `v1.0: styles.css differs from what was published — 4374153caf5d became e2b99002655a` |
+| freezing a second time | refused, naming the existing manifest |
+| manifest deleted, `npm run build` | green again |
+
+The manifest was then removed, because v1.0 is not published. The mechanism ships; the act
+does not, and `DEPLOY.md` holds it as a publication step.
+
 ## Not yet built
 
 Checks are in place for all twelve items in §3, plus check 0's controls and check
 13. Deferred, with the reason:
 
-- **Version immutability.** `/oal/v1.0/` is self-contained — its own stylesheet,
-  fonts and favicon at version-scoped paths — but its content is still generated
-  from the live `oal.json`. `requirePublishableVersion` in `eleventy.config.js`
-  stops the build the moment a second version is published, so this cannot ship
-  wrong silently. The freeze itself, and the v1.1 publishing process document,
-  are pass 2.
 - **The accessibility report (§11.5)**, web-archive submission on each published
-  version, the domain-lapse paragraph (§5), the architecture diagram (§11.6) and the
-  did-not-do list (§11.8).
+  version, the domain-lapse paragraph (§5), the architecture diagram (§11.6), the
+  did-not-do list (§11.8) and the v1.1 publishing-process document (§11.3). All six are
+  documents rather than mechanisms, and all six are still unwritten.
+- **The rollback drill.** Check 20 proves the selection logic and the probe; the
+  Cloudflare API calls behind them have never run. `DEPLOY.md` carries the drill on a
+  throwaway project, and until it is performed the rollback claim is documentation in
+  exactly the sense §13 item 6 uses the word.
+
+Closed since 2026-08-09: **version immutability** is no longer pass-2 work. §5's rule is
+executable as check 21 and `tools/freeze-version.mjs`, and the freeze is a publication
+step in `DEPLOY.md` rather than an intention. `requirePublishableVersion` still guards the
+other direction.
 
 Closed since: the scorecard PDF is generated by `tools/build-pdf.mjs` as part of
 `npm run build` and checked by check 14; `_headers`, `_redirects`, `sitemap.xml`,
