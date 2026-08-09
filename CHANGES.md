@@ -93,3 +93,11 @@ From `BRIEF.md` §12 and `RATIONALE.md`. One item remains:
   > stands; its premise does not yet. Publishing the repository is the act that makes this
   > entry true, and until it happens this bullet is recorded here rather than under a
   > heading claiming it is closed.
+  >
+  > **Closed 2026-08-09.** The repository is public, at `github.com/udtrad/ordoia`, and
+  > `main` is `ec26096`. The premise is now true and the claim can be read the way it was
+  > always meant to be: a commit reference on the face of a scorecard resolves to bytes a
+  > reader can fetch and hash for themselves. **The correction above stays.** A provenance
+  > document that deletes the record of having been wrong is worth less than one that
+  > carries it, and the span between the two dates — one day — is itself the evidence that
+  > the flag-and-fix rule works.
