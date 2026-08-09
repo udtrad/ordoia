@@ -19,13 +19,35 @@ npm run test:live-local # against a local origin applying _headers and _redirect
 npm run check           # build then test; this is the deploy gate.
 ```
 
-One suite, four targets. Running it against anything other than the build is not a
+Two more need credentials, so they are opt-in and skip without them:
+
+```bash
+ORDOIA_LIVE=https://ordoia.com npm test   # check 15 — the bytes a host actually returns
+ORDOIA_ZONE_CHECK=1 npm test              # check 22 — the zone configuration underneath
+```
+
+One suite, six targets. Running it against anything other than the build is not a
 formality: a check that cannot fail on the unbuilt site is not a check, it is a comment,
 and a check that passes against an *empty* site is not even that. The baselines below are
 the evidence that the suite works.
 
 `test:live-local` is the only one that exercises check 15 without a deployment; it boots
-`_site` behind a Cloudflare-shaped origin, so nothing skips and the suite reports 69/69.
+`_site` behind a Cloudflare-shaped origin, so nothing skips.
+
+**Current figures, 2026-08-09**, after the zone and the Pages project went live:
+
+| Target | Tests | Pass | Fail | Skip |
+|---|---:|---:|---:|---:|
+| build | 72 | 64 | 0 | 8 |
+| `test:live-local` | 72 | 71 | 0 | 1 |
+| handover (B) | 72 | 47 | **8** | 17 |
+| empty (D) | 72 | 25 | **39** | 8 |
+
+**The number to watch when adding a check is the handover's failure count, not the pass
+count.** It has been 8 across three sessions and thirteen added tests: none of them found a
+new way to fail against a frozen build, so none is measuring the build's shape by accident.
+Baseline D's went 38 → 39 for a known and predicted reason — see *Check 21 changed
+category*.
 
 ## Where the enforcement lives
 
@@ -209,6 +231,84 @@ because in CI it burns the job's whole budget and reports nothing about why. The
 version had the timeout but reported the error as `23`: a timed-out `fetch` raises a
 `DOMException` whose numeric `code` is 23, and reading `code` before `name` threw away
 the only fact worth having. Both fixed, both recorded here rather than quietly.
+
+## Baseline E — the live Cloudflare zone, 2026-08-09
+
+```bash
+ORDOIA_ZONE_CHECK=1 npm test     # check 22, against the real zone
+```
+
+Check 22 reads the layer check 15 cannot: the zone configuration itself. It was written
+before the zone existed and run against it **the minute it was created, unhardened**, which
+made the red baseline a real defect rather than a planted one.
+
+**Red — a fresh zone, nothing touched:**
+
+| Setting | Found | Wanted |
+|---|---|---|
+| `email_obfuscation` | `on` | `off` |
+| `automatic_https_rewrites` | `on` | `off` |
+| `replace_insecure_js` | `on` | `off` |
+| `server_side_exclude` | `on` | `off` |
+| `ssl` | `full` | `strict` |
+| `always_use_https` | `off` | `on` |
+| `min_tls_version` | `1.0` | `1.2` |
+| `speed_brain` | **absent from the response** | `off` |
+
+Plus an empty DNS record set, which the population guard caught before it reached the
+findings — Cloudflare imported **no** records from the registrar, contrary to the assumption
+that its zone scan brings them over.
+
+**Green after `node tools/zone-setup.mjs harden --apply`: 11/11 targets matched, 5 records
+observed.** Re-run after the zone went `active`, because the settings had been applied while
+it was `pending` and a value that sticks on a pending zone is an assumption until it is read
+back on an active one: still 11/11.
+
+### Two findings the table would not have had if it had been written from documentation
+
+**`replace_insecure_js` and `server_side_exclude` were both on**, and neither was in
+`DEPLOY.md` before the zone was read. The first rewrites HTML to substitute Cloudflare-hosted
+JavaScript libraries; the second removes marked content per visitor, so one URL can serve
+different documents to different readers. Both are no-ops on this site and both are off now,
+because "what it published is what it published" should not depend on there happening to be
+no JavaScript.
+
+**`speed_brain` is real but is not in the settings listing.** `GET /zones/{id}/settings`
+returned 56 settings without it; `GET /zones/{id}/settings/speed_brain` returned it, editable,
+with a value. **The fail-closed branch is what caught this** — the naive evaluator, "for each
+setting the API returned, is it what we wanted?", would have reported green having never
+looked at it. That branch was mutation-tested before the zone existed: replacing it with
+`continue` turns the controls red naming the case.
+
+Cloudflare documents Speed Brain as *enabled by default* on Free. This zone reported `off`,
+unmodified. It is pinned anyway: a default that disagrees with its own documentation is a
+default that can change.
+
+### The rollback drill, and the deployments listing shape
+
+Run on the real `ordoia` project before the custom domain was attached. Observed:
+
+```text
+GET /accounts/{a}/pages/projects/ordoia/deployments?env=production&per_page=25
+  result: [ { id, environment: "production", created_on: <ISO-8601>,
+              latest_stage: { name: "deploy", status: "success" } }, … ]   newest first
+```
+
+`?env=production` filters as documented, `created_on` sorts lexicographically, and rolling
+back to the deployment already serving is refused with `8000039` rather than silently
+accepted. **Three defects it found are recorded in `DEPLOY.md`** — the wrong rollback target
+after a rollback, the edge serving stale bytes afterwards, and the hostname lagging its
+deployment.
+
+### Check 21 changed category, as predicted
+
+The previous session recorded that check 21 *"passes under Baseline D today only because
+nothing is frozen, so it never reads the target; from the commit that publishes v1.0 it
+becomes site-touching and will fail there like everything else"*. `versions/v1.0.json` was
+written on 2026-08-09 and it did: Baseline D went from 38 failures to 39, and the new one is
+`check 21 — every frozen version still generates the bytes it was published with`. Recorded
+here because a baseline that moves for a known reason and is not written down is
+indistinguishable from one that moved for an unknown one.
 
 ## Baseline B — the verbatim handover, 2026-08-08
 

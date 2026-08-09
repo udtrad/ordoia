@@ -116,6 +116,15 @@ jobs:
           fi
           echo "preview: $PREVIEW_URL"
 
+      # Measured 2026-08-09 on this project: a Pages hostname lags its deployment. The
+      # file just uploaded 404'd on the alias at t+3s and served at t+8s, while the
+      # deployment's own <hash>.pages.dev URL had it immediately. Running check 15 in the
+      # step straight after the deploy puts that lag inside the gate. Here it would only
+      # refuse to promote, which is the safe direction; on the production stage below the
+      # same lag would roll back a good deployment, so both stages wait.
+      - name: Wait for the preview to serve this build
+        run: node tools/wait-for-origin.mjs "${{ steps.preview.outputs.deployment-url }}"
+
       - name: Check the preview
         run: npm test
         env:
@@ -148,6 +157,11 @@ jobs:
       # by hash, so the second upload is cheap. There is no promote-a-preview operation
       # on Pages to use instead — rollback targets production deployments only.
 
+      # The same lag, where it is dangerous rather than merely annoying: a spurious failure
+      # in the step below triggers a rollback of a deployment that was fine.
+      - name: Wait for production to serve this build
+        run: node tools/wait-for-origin.mjs "${{ steps.site.outputs.origin }}"
+
       - name: Check production
         id: verify
         run: npm test
@@ -163,6 +177,21 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node tools/pages-api.mjs rollback "${{ steps.current.outputs.deployment }}"
+
+      # A rollback on its own does not change what a reader receives. Measured during the
+      # drill on 2026-08-09: after rolling back, the edge went on serving the pre-rollback
+      # bytes and said so — `cf-cache-status: HIT`. A cache-busting query string got the
+      # rolled-back page; a plain request did not, and neither did a no-cache request
+      # header. Without this step the rollback is an operation that changes nothing anyone
+      # can see, and the probe below cannot tell, because it asks whether *a* healthy page
+      # is served rather than *which* one — and the stale page is a healthy page.
+      - name: Purge the edge cache
+        if: failure() && steps.rollback.outcome == 'success'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: node tools/zone-setup.mjs purge-cache --apply
 
       # Deliberately not check 15: after a rollback, `_site` in this runner is the build
       # we just rolled away from, so byte-equality would fail on every successful

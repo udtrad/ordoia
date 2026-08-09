@@ -1,0 +1,94 @@
+{
+  "$comment": [
+    "The DNS records this zone is supposed to have, as a plan `tools/zone-setup.mjs records`",
+    "applies and re-applies. It is declarative and idempotent: running it twice changes",
+    "nothing the second time, and running it after someone edits the dashboard puts the zone",
+    "back. `records` without --apply prints the diff and changes nothing.",
+    "",
+    "Measured on 2026-08-09, before the nameserver move: ordoia.com resolved to",
+    "162.255.119.119 (Namecheap's parking page), with MX at eforward1-5.registrar-servers.com",
+    "and Namecheap's SPF include. Cloudflare's zone scan imports whatever it finds, so all of",
+    "that arrives in the new zone unless it is removed deliberately.",
+    "",
+    "Removing the apex address record before the nameservers move is what makes the ordering",
+    "in DEPLOY.md safe rather than a race: with no proxied web record at the apex, the zone",
+    "can go active without Cloudflare serving a single byte, so the hardening does not have",
+    "to win a race against the first request."
+  ],
+
+  "$removeComment": [
+    "Matched on type and name, and on content when `contentMatches` is given (a regular",
+    "expression). No content matcher on the address records is deliberate: the invariant is",
+    "'no A or AAAA at the apex', which is the same sentence `evaluateZone` asserts, so it is",
+    "stated once and a rotated parking IP cannot slip past it.",
+    "",
+    "Namecheap's free Email Forwarding is only available on their own nameservers, so these",
+    "MX records stop working at the cutover whatever we do. They are removed rather than",
+    "left, because an MX record pointing at a service that no longer accepts your mail is",
+    "worse than none: it accepts the message and drops it."
+  ],
+  "remove": [
+    { "type": "A", "name": "@" },
+    { "type": "AAAA", "name": "@" },
+    { "type": "MX", "name": "@", "contentMatches": "registrar-servers\\.com$" },
+    { "type": "TXT", "name": "@", "contentMatches": "spf\\.efwd\\.registrar-servers\\.com" }
+  ],
+
+  "$ensureComment": [
+    "Namecheap Private Email, taken from its panel on 2026-08-09 rather than from memory.",
+    "Mail is deliberately configured BEFORE the nameservers move, not after: the registrar's",
+    "own forwarding stops working at the cutover, and an MX record pointing at a service that",
+    "no longer accepts your mail is worse than no MX record, because it accepts the message",
+    "and drops it.",
+    "",
+    "Exactly one SPF record may exist for a domain. The registrar's is in `remove` above and",
+    "this one replaces it; two would make both fail rather than merge.",
+    "",
+    "The DKIM value is a public key. It is public by definition — it is published in DNS so",
+    "that anyone can verify a signature with it — so it belongs in this file. The private half",
+    "never leaves Namecheap. It is longer than the 255 bytes a single DNS character-string",
+    "holds; Cloudflare accepts the whole value and splits it on serve, which is why it is",
+    "written here as one string and verified afterwards with dig rather than pre-chunked.",
+    "",
+    "DMARC at p=none first. A practice that publishes a posture should have a DMARC record,",
+    "and quarantine before a single message has been observed is how you lose your own mail.",
+    "Move to p=quarantine once the aggregate reports show the mailbox's own sends aligning.",
+    "",
+    "The apex CNAME IS here, and the reason it is has to be written down, because the",
+    "documentation says the opposite. Cloudflare's custom-domain page states that once the",
+    "nameservers point at Cloudflare it 'will proceed by creating a CNAME record for you'.",
+    "That is true of the dashboard flow. It is not true of `POST /pages/projects/{p}/domains`:",
+    "measured 2026-08-09, the API accepted the domain, reported status 'pending', and sat",
+    "there with verification_data.error_message = 'CNAME record not set' while the zone had",
+    "no address record at all and ordoia.com did not resolve.",
+    "",
+    "So the record is ours to create. The order still matters and is the documented one:",
+    "associate the domain with the Pages project FIRST, then add the CNAME. Cloudflare warns",
+    "that a CNAME added without the association resolves to a 522.",
+    "",
+    "It must be proxied — orange-cloud. A DNS-only CNAME at the apex would bypass the zone",
+    "entirely, so none of the settings check 22 asserts would apply to the traffic, and the",
+    "certificate would not be Cloudflare's to issue."
+  ],
+  "ensure": [
+    {
+      "type": "CNAME",
+      "name": "@",
+      "content": "ordoia.pages.dev",
+      "proxied": true
+    },
+    { "type": "MX", "name": "@", "content": "mx1.privateemail.com", "priority": 10 },
+    { "type": "MX", "name": "@", "content": "mx2.privateemail.com", "priority": 10 },
+    { "type": "TXT", "name": "@", "content": "v=spf1 include:spf.privateemail.com ~all" },
+    {
+      "type": "TXT",
+      "name": "privateemail._domainkey.ordoia.com",
+      "content": "v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl8PPLyilV1NFldH2SK2FkRgJOEpBC00f3WXJrsgclYo/GdTLApMSl7qhtMNUXMyccFvrSZOO8zMFTGUGDw7GozahUt9xjzzV2ycBLYNjOEPlJwaRA56tk+RC3ergj4LluxgtGLJxfVDqpFuKpAQhZoD2xwktws24IGM5vovexID6XKUy/ps3xqQ5eTPmZIbQApZsEWQHSsNnKypgTmk4xXCSNypuBRFmAGCLoON9D57EaVAvDyWRd8dO4tdhOnAPXAYlrKF1zM9R75Obyi1J64lTEBwMZWcUzE3Q1L8/OzMbxg5dkCDWitkpyGdcFcmMCOMFuarKI7S7YSFI00JIdwIDAQAB"
+    },
+    {
+      "type": "TXT",
+      "name": "_dmarc.ordoia.com",
+      "content": "v=DMARC1; p=none; rua=mailto:hello@ordoia.com"
+    }
+  ]
+}

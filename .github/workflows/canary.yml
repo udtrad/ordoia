@@ -10,6 +10,12 @@
 # Email Address Obfuscation is on by default; if it is ever re-enabled, the services CTA
 # breaks silently and nothing else here would notice.
 #
+# Since 2026-08-09 it notices two ways rather than one. Check 15 reads the bytes, which
+# catches any setting that rewrites HTML. Check 22 reads the zone configuration itself,
+# which catches the ones that do not — Speed Brain is on by default and adds a
+# Speculation-Rules header while leaving the body byte-identical, so no amount of
+# byte-comparison would ever have found it.
+#
 # It builds first because check 15 byte-compares the live site against the build. A
 # mismatch therefore means one of two things, both worth a red: the host mutated what
 # it was given, or production is behind `main`.
@@ -67,7 +73,27 @@ jobs:
 
       - run: npm run build
 
-      - name: Check the live site
+      # Two gates, one run. ORDOIA_LIVE turns on check 15 — the bytes on the wire — and
+      # ORDOIA_ZONE_CHECK turns on check 22, the zone configuration underneath them.
+      #
+      # Check 15 catches Email Address Obfuscation and Rocket Loader indirectly, because
+      # both leave /cdn-cgi/ in the HTML. It cannot catch Speed Brain: that adds a
+      # Speculation-Rules response header and leaves the body byte-identical, so the
+      # strongest check in this suite stays green on a zone quietly instructing browsers to
+      # prefetch on our behalf. Speed Brain is on by default on the Free plan.
+      #
+      # A third token, and a deliberately small one: Zone Settings Read and DNS Read, no
+      # more. The deploy token cannot read the zone and this one cannot deploy, so neither
+      # can do the other's damage. deploy.yml does not set ORDOIA_ZONE_CHECK for the same
+      # reason — a deploy must not be blocked on a zone-read permission.
+      #
+      # If the token is missing, check 22 fails rather than skips. That is the point: an
+      # opt-in check that quietly skips itself reports a green gate having tested nothing,
+      # which is the shape the preview gate in deploy.yml already refuses.
+      - name: Check the live site, and the zone behind it
         run: npm test
         env:
           ORDOIA_LIVE: ${{ steps.site.outputs.origin }}
+          ORDOIA_ZONE_CHECK: '1'
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ZONE_READ_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -31,55 +31,34 @@
  * ── Secrets ────────────────────────────────────────────────────────────────────────
  *
  * The token is read from the environment and never written anywhere — not to stdout, not
- * into an error message, not into a URL. `logError` below prints Cloudflare's own error
- * array, which does not contain it.
+ * into an error message, not into a URL, not into an argv. That handling lives once, in
+ * `tools/cf-api.mjs`, which prints Cloudflare's own error array and nothing else.
  */
 
 import { fileURLToPath } from 'node:url';
-
-const API = 'https://api.cloudflare.com/client/v4';
+import { cfCall, credentials } from './cf-api.mjs';
 
 /** The Pages project. Not the domain — that is `src/_data/site.json` and `site-origin.mjs`. */
 export const PROJECT = process.env.CLOUDFLARE_PAGES_PROJECT || 'ordoia';
 
-const TIMEOUT_MS = Number(process.env.ORDOIA_API_TIMEOUT_MS || 20_000);
+/** What both operations below require, in the wording the Cloudflare dashboard uses. */
+const NEEDS = 'Account → Cloudflare Pages → Edit';
 
-function credentials() {
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-  if (!token || !account) {
-    throw new Error(
-      'CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must both be in the environment. ' +
-        'They are repository secrets in CI; locally, export them for the shell that runs ' +
-        'this and do not write them to a file.'
-    );
-  }
-  return { token, account };
-}
-
+/**
+ * Call the Pages project surface.
+ *
+ * The token, the timeout, the JSON handling and the error wording live in `cf-api.mjs`
+ * now, because Stage 6 added three more callers and a second copy of those decisions is a
+ * second place for them to drift. `credentials()` is called for its side effect of
+ * throwing a useful sentence when either variable is missing: `cfCall` alone would report
+ * only the token, and the account id is the one people forget.
+ */
 async function call(pathname, init = {}) {
-  const { token, account } = credentials();
-  const res = await fetch(`${API}/accounts/${account}/pages/projects/${PROJECT}${pathname}`, {
+  const { account } = credentials();
+  return cfCall(`/accounts/${account}/pages/projects/${PROJECT}${pathname}`, {
+    needs: NEEDS,
     ...init,
-    headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-
-  let body;
-  try {
-    body = await res.json();
-  } catch {
-    throw new Error(`Cloudflare returned HTTP ${res.status} and a body that is not JSON`);
-  }
-
-  if (!res.ok || body?.success !== true) {
-    const errors = (body?.errors ?? []).map((e) => `${e.code ?? '?'}: ${e.message ?? e}`);
-    throw new Error(
-      `Cloudflare returned HTTP ${res.status}${errors.length ? ` — ${errors.join('; ')}` : ''}`
-    );
-  }
-
-  return body;
 }
 
 /**
@@ -100,48 +79,80 @@ function isRollbackTarget(d) {
 }
 
 /**
- * The deployment currently serving production, from a listing.
+ * The deployment actually **serving** production.
  *
- * Returns `null` when there is none — the first deploy of a new project, where there is
- * genuinely nothing behind us. The caller has to treat that as "no rollback available"
- * rather than as an error, or the very first deploy fails on the absence of a past.
+ * ── Why this is not "the newest successful production deployment" ──────────────────
  *
- * ── The ordering assumption, asserted rather than trusted ──────────────────────────
+ * It was, until the rollback drill was run against the real API on 2026-08-09 and the
+ * model turned out to be wrong. Deploy A, deploy B, roll back to A, and Cloudflare reports:
  *
- * The API returns deployments newest first, so the first valid candidate is the live one.
- * That is an assumption about someone else's service, and this function is the only place
- * it is made — so when every candidate carries `created_on`, it is checked. Rolling back
- * to the wrong deployment is worse than not rolling back at all: it looks like a recovery.
+ *   project.latest_deployment    = B     the most recent upload
+ *   project.canonical_deployment = A     what the hostname actually serves
+ *   deployments?env=production   = [B, A]   newest first, B still "success"
+ *
+ * The old implementation scanned that listing and returned **B** — a deployment that had
+ * been rolled away from, quite possibly *because it was bad*. `deploy.yml` captures this
+ * value before promoting so it has something to roll back to, so the consequence is precise
+ * and nasty: after any rollback, the next failed deploy would "recover" to the bytes that
+ * were rejected last time, report success, and the probe would pass, because the probe only
+ * asks whether *a* healthy page is being served. This function's previous comment warned
+ * that rolling back to the wrong deployment "looks like a recovery". It was describing its
+ * own behaviour.
+ *
+ * `canonical_deployment` is the authority. Verified by rolling back and then fetching with
+ * a cache-busting query string: the canonical deployment's bytes were the ones served.
+ *
+ * Returns `null` when the project has never deployed — the caller must treat that as "no
+ * rollback available" rather than an error, or the first ever deploy fails on the absence
+ * of a past.
  */
-export function selectRollbackTarget(listing) {
+export function selectServingDeployment(project, listing) {
+  if (!project || !('canonical_deployment' in project)) {
+    throw new Error(
+      'the Pages project response has no `canonical_deployment` field — the API shape ' +
+        'changed. Refusing to fall back to the newest deployment: that is the wrong answer ' +
+        'after a rollback, and it is wrong in the direction that looks like a recovery.'
+    );
+  }
+
+  const canonical = project.canonical_deployment;
+  if (canonical === null || canonical === undefined) return null;
+
+  const { id } = canonical;
+  if (typeof id !== 'string' || id === '') {
+    throw new Error('`canonical_deployment` carries no usable id — the API shape changed');
+  }
+
+  // Cross-check against the listing, best-effort. The listing is one page of production
+  // deployments; a long-serving canonical deployment can legitimately fall off the end of
+  // it, so absence is not an error. Presence in a state that is not a successful
+  // production deploy is, because then two Cloudflare responses disagree about their own
+  // project and neither can be trusted to recover it.
   const result = listing?.result;
   if (!Array.isArray(result)) {
     throw new Error('the deployments listing had no `result` array — the API shape changed');
   }
 
-  const candidates = result.filter(isRollbackTarget);
-  if (candidates.length === 0) return null;
-
-  const [first] = candidates;
-
-  if (candidates.every((d) => typeof d.created_on === 'string')) {
-    const newest = candidates.reduce((a, b) => (a.created_on >= b.created_on ? a : b));
-    if (newest.id !== first.id) {
-      throw new Error(
-        `the deployments listing is no longer newest-first: the first production ` +
-          `deployment is ${first.id} (${first.created_on}) but the newest is ${newest.id} ` +
-          `(${newest.created_on}). Rolling back on this listing would promote the wrong ` +
-          `bytes, which reads as a recovery.`
-      );
-    }
+  const seen = result.find((d) => d?.id === id);
+  if (seen && !isRollbackTarget(seen)) {
+    throw new Error(
+      `Cloudflare reports ${id} as the canonical production deployment, but the deployments ` +
+        `listing shows it as environment=${seen.environment}, ` +
+        `stage=${seen.latest_stage?.name}/${seen.latest_stage?.status}. Two answers from the ` +
+        `same API disagree; rolling back on either would be a guess.`
+    );
   }
 
-  return first.id;
+  return id;
 }
 
-/** The id of the deployment currently in production, or null. */
+/** The id of the deployment currently serving production, or null. */
 export async function currentProduction() {
-  return selectRollbackTarget(await call('/deployments?env=production&per_page=25'));
+  const [project, listing] = await Promise.all([
+    call(''),
+    call('/deployments?env=production&per_page=25'),
+  ]);
+  return selectServingDeployment(project.result, listing);
 }
 
 /** Put `id` back in production. Cloudflare takes no body for this. */

@@ -280,6 +280,43 @@ test('check 19 — the deploy names its wrangler and names its branch', async ()
   );
 });
 
+test('check 19 — nothing checks a host before waiting for it to serve this build', async () => {
+  const files = await workflows();
+  const s = survey({
+    deploys: 'wrangler pages deploy invocations found',
+    waits: 'wait-for-origin invocations found',
+  });
+
+  for (const { name, source, lines } of files) {
+    const deploys = pagesDeploys(lines).length;
+    const waits = lines.filter(({ text }) => text.includes('wait-for-origin.mjs')).length;
+
+    s.count('deploys', deploys);
+    s.count('waits', waits);
+
+    if (deploys === 0) continue;
+
+    if (waits < deploys) {
+      s.fail(
+        `${name} runs \`pages deploy\` ${deploys} time(s) but waits for the origin to serve ` +
+          `the build ${waits} time(s). Measured on 2026-08-09: a Pages hostname lags its ` +
+          `deployment — a file uploaded seconds earlier 404'd on the alias at t+3s and ` +
+          `served at t+8s. Checking inside that window fails a good deploy, and on the ` +
+          `production stage the workflow answers a failed check by rolling back, so the lag ` +
+          `would undo a deployment that was fine and report it as bad bytes.`
+      );
+    }
+  }
+
+  // The canary has no deploy and no wait, so `waits` would be empty if the deploy workflow
+  // ever lost its own. That is the case worth catching, and the population carries it
+  // rather than a hand-written guard.
+  s.report(
+    'every workflow that deploys must wait for the host to serve that build before ' +
+      'checking it, or the check is racing the edge'
+  );
+});
+
 test('check 19 — the scanner still tells a violation from a near miss (controls)', () => {
   const domains = knownDomains();
   const re = new RegExp(domains.map(escapeRe).join('|'));

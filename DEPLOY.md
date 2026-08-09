@@ -76,9 +76,44 @@ flag the upload is tagged with a branch that is not the production branch, so it
 reads as "the host mutated our bytes" when the truth is "we never deployed". Check 19 fails
 the suite if a `pages deploy` line loses its `--branch`.
 
-Secrets it needs: `CLOUDFLARE_API_TOKEN` (scope: Account → Cloudflare Pages → Edit) and
-`CLOUDFLARE_ACCOUNT_ID`. Both are read from the environment by every script here and are
-never written to a file, a log line or a URL.
+### Three tokens, each as small as its job
+
+Not one token used everywhere. The three jobs need different reach, and a single token
+carrying the union of them is a token that can create zones from inside a workflow whose
+only business is uploading files.
+
+| Where | Secret | Permissions |
+|---|---|---|
+| `deploy.yml` | `CLOUDFLARE_API_TOKEN` | Account → Cloudflare Pages → Edit, **Zone → Cache Purge → Purge** |
+| `canary.yml` | `CLOUDFLARE_ZONE_READ_TOKEN` | Zone → Zone Settings → Read, Zone → DNS → Read |
+| Stage 6, local only | *(Keychain, not a repository secret)* | Zone → Zone → Edit **at account scope**, DNS Edit, Zone Settings Edit, Bot Management Edit, Cloudflare Pages Edit, Account Settings Read, Cache Purge |
+
+Plus `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_ZONE_ID`, which are not secrets but are held as
+ones so they are not printed into logs by accident. The zone id is what lets the deploy
+token purge the cache **without** also being able to read the zone: the purge endpoint needs
+an id, and looking that id up by name would require Zone Read.
+
+Cache Purge is on the deploy token because the recovery path needs it — a rollback that
+leaves the edge serving the bytes it rolled away from is not a recovery. It is a narrow
+grant: it can empty a cache, not change a record or a setting.
+
+The CI token cannot read the zone; the canary token cannot deploy. The setup token can do
+both and **exists only for the duration of Stage 6** — it lives in the macOS Keychain, never
+in this repository:
+
+```bash
+security add-generic-password -a ordoia -s cloudflare-setup-token -w   # prompts; never echoed
+export CLOUDFLARE_API_TOKEN=$(security find-generic-password -a ordoia -s cloudflare-setup-token -w)
+security delete-generic-password -a ordoia -s cloudflare-setup-token   # when Stage 6 is done
+```
+
+Read into the environment, never passed as an argument — an argv is visible in `ps` to every
+process on the machine. Every script here reads from the environment and none of them writes
+a token to a file, a log line or a URL; that handling lives once, in `tools/cf-api.mjs`.
+
+**Zone creation needs the grant at *account* scope, not zone scope**, because at the moment
+you make the call the zone does not exist to scope it to. That is the single most likely
+thing to be wrong on a token that was made for deploying.
 
 **Everything is pinned to a commit.** The actions are SHA-pinned and wrangler is pinned to
 an exact release, with the tag each SHA stood for in a trailing comment — that comment is
@@ -127,20 +162,54 @@ published. Email Address Obfuscation is on by default on every new zone, rewrite
 configuration, so it is closable and, unlike a billing cap, **testable**. Check 15 tests
 it on every deploy.
 
+**And one of those defaults is invisible to check 15.** **Speed Brain** is enabled by
+default on the Free plan. It does not touch the body: it adds a `Speculation-Rules`
+response header pointing at a Cloudflare-hosted configuration, which tells the browser to
+prefetch likely next navigations. Byte-equality therefore passes, and the header assertions
+do not look for it — so the strongest check in this suite would stay green on a zone
+issuing prefetch instructions on our behalf that we never disclosed. **Check 22 exists for
+the class of setting check 15 structurally cannot see**, and it reads the zone
+configuration rather than the bytes.
+
+That is the honest statement of the trade: choosing Cloudflare means the site's posture is
+partly a property of an account someone can change from a dashboard, and the answer is not
+to trust the dashboard but to assert it weekly.
+
 ### Setting it up
 
-Order matters: **harden the zone before pointing the domain at it**, so the mutating
-defaults never serve a single request.
+Order matters, and the ordering that matters is not the obvious one. "Harden the zone
+before pointing the domain at it" is right but insufficient, because a zone activates the
+moment the nameservers resolve, and Cloudflare's zone scan imports whatever DNS it found —
+including the registrar's parking `A` record. A zone that activates with a proxied address
+record at the apex is serving something, with whatever defaults are still on.
 
-1. Add `ordoia.com` to Cloudflare as a zone and change the nameservers at Namecheap. An
-   apex domain requires this; a subdomain would not.
-2. **Before adding the custom domain** — Security → Settings → **Email Address
-   Obfuscation → Off**. Confirm **Rocket Loader off**, **Bot Fight Mode off**, and that
-   **Web Analytics is not enabled** (it injects a beacon; the zone's Traffic analytics is
-   server-side and needs no script). SSL/TLS → **Full (strict)**, Always Use HTTPS on.
-3. Any CAA records must permit `letsencrypt.org`, `pki.goog` and `ssl.com`, or
-   certificate issuance for the custom domain fails.
-4. Create the Pages project as **Direct Upload** — deploys come from CI, not from
+So: **remove the apex address record and apply the settings while the zone is still
+pending.** With no proxied web record at the apex, activation serves nothing, and the
+hardening does not have to win a race against the first request.
+
+`tools/zone-setup.mjs` does all of this, and **every mutating command is a dry run unless
+`--apply` is passed.**
+
+1. **Preflight.** `node tools/zone-setup.mjs preflight` — reads only, and prints what this
+   token can actually reach. It exits non-zero if the token cannot be verified.
+2. **Create the zone.** `node tools/zone-setup.mjs zone-create --apply`. It prints the two
+   nameservers to set at Namecheap. Do not set them yet.
+3. **DNS.** `node tools/zone-setup.mjs records` to see the diff, then `--apply`. The plan is
+   `tools/dns-plan.json`: it removes the parking address record and the registrar's mail
+   records, and adds DMARC. The mailbox's own MX, SPF and DKIM go in the plan first — see
+   *Still open before launch*.
+4. **Harden.** `node tools/zone-setup.mjs harden` to see the diff, then `--apply`. It
+   re-reads and re-asserts afterwards, because a `PATCH` returning 200 is not evidence the
+   value stuck. The table is `ZONE_SETTINGS` in that file, and **check 22 asserts the same
+   table against the live zone** — one table, two consumers.
+
+   Also confirm in the dashboard that **Web Analytics is not enabled**: it injects a beacon,
+   and it is not a zone setting the API exposes here. The zone's Traffic analytics is
+   server-side and needs no script.
+5. Any CAA records must permit `letsencrypt.org`, `pki.goog` and `ssl.com`, or certificate
+   issuance for the custom domain fails. There were none on 2026-08-09, so issuance is
+   unrestricted; check 22 asserts that any that appear later still permit all three.
+6. **Create the Pages project as Direct Upload** — deploys come from CI, not from
    Cloudflare's builder. **This is a one-way door**: a Direct Upload project cannot be
    switched to Git integration later. It is the right door here, because the build needs
    Chromium and because CI is the only shape in which `npm test` gates the deploy.
@@ -154,8 +223,48 @@ defaults never serve a single request.
    as a preview and the custom domain silently stops updating. On a Direct Upload project
    the production branch **cannot be changed from the dashboard** — it takes a call to the
    Update Project API — so it is worth getting right at creation.
-5. Add `ordoia.com` as the custom domain. Build output directory `_site`; `_headers` and
-   `_redirects` are picked up from it with no further configuration.
+7. **Deploy and prove it, before the domain moves.** Everything above is project-scoped, and
+   so is every unverified claim this repository makes about Cloudflare: `_headers` applied,
+   the `! Access-Control-Allow-Origin` detach line, the 404 not being an SPA fallback, the
+   cache split, byte-equality surviving the edge. All of them are observable on
+   `ordoia.pages.dev` while `ordoia.com` is still parked.
+
+   ```bash
+   npm run build && npm test
+   npx wrangler@4.120.0 pages deploy _site --project-name=ordoia --branch=main
+   ORDOIA_LIVE=https://ordoia.pages.dev npm test
+   ```
+
+   Run the rollback drill here too — see below. The blast radius is a hostname nobody knows.
+8. **Now** set the nameservers at Namecheap, wait for `status: active`, and re-run check 22:
+   the settings were applied to a pending zone, and re-reading after activation is how that
+   stops being an assumption.
+9. **Attach the custom domain — this is the launch.**
+   `node tools/zone-setup.mjs custom-domain --apply`, then
+   `node tools/zone-setup.mjs records --apply` to add the apex CNAME, then verify.
+
+   > **Cloudflare's documentation is wrong about this, in the direction that leaves you
+   > staring at a domain that does not resolve.** The custom-domains page says that once the
+   > nameservers point at Cloudflare it *"will proceed by creating a CNAME record for you"*.
+   > That is the **dashboard** flow. Measured 2026-08-09: `POST /pages/projects/{p}/domains`
+   > accepted the domain, returned `status: pending`, and stayed there with
+   > `verification_data.error_message: "CNAME record not set"` while the zone had no address
+   > record at all and `ordoia.com` did not resolve for anyone.
+   >
+   > This is the **fourth** time this project has been misled by Cloudflare documentation
+   > that is true in one context and false in the one that matters — after the `_headers`
+   > comma-join, the `pages deploy` branch inference, and the rollback listing. The pattern
+   > is worth more than any of the individual findings: **their docs describe the dashboard;
+   > this repository drives the API.**
+
+   The record is therefore ours to create, and it is in `tools/dns-plan.json`. **The order
+   still matters and is the documented one:** associate the domain with the Pages project
+   *first*, then add the CNAME — a CNAME added without the association resolves to a 522.
+   It must be **proxied**, or the traffic bypasses the zone and none of the settings check 22
+   asserts apply to it.
+
+   Certificate issuance took roughly four minutes, from Google as the CA, with no
+   intervention. Do not read `status: pending` as a failure until the CNAME exists.
 
 Do **not** enable the host's analytics beacons, form handling, or Functions. §9 is
 explicit: no cookies, no client-side analytics, no tag manager, no pixel — which is what
@@ -212,12 +321,35 @@ Seven assertions, in order of what they defend:
 
 It skips unless `ORDOIA_LIVE` is set, so `npm test` stays hermetic and a network outage
 can never block a build. It runs automatically after every deploy, and weekly on a
-schedule — see `.github/workflows/`. The weekly run is the only thing that would notice a
-Cloudflare zone setting being switched on years from now, long after anyone remembers why
-it was off.
+schedule — see `.github/workflows/`.
 
 Assertion 4 is the one this site's whole permanence argument rests on. Run it after any
 DNS or host change, not only after a deploy.
+
+### Check 22 is the layer underneath
+
+Check 15 reads bytes. It catches every zone setting that rewrites HTML, because they all
+leave `/cdn-cgi/` behind. **It cannot catch the ones that do not** — Speed Brain adds a
+response header and changes nothing in the body.
+
+```bash
+ORDOIA_ZONE_CHECK=1 npm test
+```
+
+Skipped unless that is set. But when it *is* set and the credentials are missing, it
+**fails rather than skips**: an opt-in check that quietly skips itself in CI reports a green
+gate having tested nothing, which is the shape `deploy.yml`'s "The preview must have an
+address" step already exists to refuse.
+
+The target table is `ZONE_SETTINGS` in `tools/zone-setup.mjs`, which is also what `harden`
+applies — one table, two consumers, the same arrangement `tests/lib/posture.js` has for
+headers and for the same reason. A setting in the table that Cloudflare's response does not
+contain at all is a **failure**, not a silent pass: that is how a renamed or plan-gated
+setting would otherwise turn this check into lesson 8 with a new denominator.
+
+Both run weekly in `canary.yml`, on one `npm test`. Between them they are the only thing
+that would notice a Cloudflare zone setting being switched on years from now, long after
+anyone remembers why it was off.
 
 ---
 
@@ -266,25 +398,71 @@ carries `mailto:hello@ordoia.com`, and carries no `/cdn-cgi/`.
 > rollback can help — turn Email Address Obfuscation off under Security → Settings and
 > re-run the workflow. `deploy.yml` writes exactly this into the job summary.
 
-### The drill, which has not been run
+### The drill was run on 2026-08-09, and it found three defects
 
-**Nothing here has met the real Cloudflare API.** There is no account yet. Check 20 proves
-that *given a listing* the right deployment is chosen, and that the probe catches a dead
-CTA and a rewriting edge — it cannot prove a listing comes back in that shape, or that the
-rollback POST does what its documentation says.
+Run on the `ordoia` project itself, after the Pages project existed and before the custom
+domain was attached — a hostname nobody had been given, so the blast radius was a
+throwaway's while the token, account and project were the real ones.
 
-Before this path is trusted, run it once on a throwaway Pages project:
+**It found that two of the three claims this section made were wrong.** That is the value
+of a drill, and the reason the previous version of this paragraph — *"nothing here has met
+the real Cloudflare API"* — was the most honest sentence in the file.
 
-1. `wrangler pages project create ordoia-drill --production-branch=main`
-2. Deploy a page, note the deployment id, deploy a visibly different one.
-3. `CLOUDFLARE_PAGES_PROJECT=ordoia-drill node tools/pages-api.mjs current-production` —
-   it must name the second deployment.
-4. Roll back to the first; confirm the first is being served.
-5. Point `tools/probe-live.mjs` at it and confirm the probe's verdict matches.
-6. Delete the project.
+**1. `current-production` named the wrong deployment after a rollback.** Deploy A, deploy B,
+roll back to A. Cloudflare then reports:
 
-Until step 6 is done and recorded in `CHECKS.md`, the rollback claim in this file is
-documentation, in exactly the sense §13 item 6 uses the word.
+```text
+project.latest_deployment    = B        the most recent upload
+project.canonical_deployment = A        what the hostname actually serves
+deployments?env=production   = [B, A]   newest first, B still "success"
+```
+
+The old implementation scanned that listing and answered **B** — the deployment that had
+just been rolled away from, quite possibly because it was bad. `deploy.yml` captures this
+value *before* promoting so it has a rollback target, so the consequence was exact: after
+any rollback, the next failed deploy would "recover" onto the bytes rejected last time,
+report success, and pass the probe. `canonical_deployment` is the authority, verified by
+fetching with a cache-busting query string after a rollback.
+
+**2. A rollback does not change what a reader receives.** After rolling back, the edge went
+on serving the pre-rollback bytes and said so — `cf-cache-status: HIT`. A cache-busting
+query string got the rolled-back page; a plain request did not, and neither did a
+`Cache-Control: no-cache` request header. So the recovery path now purges the zone cache
+between the rollback and the probe. **The probe cannot see this failure**: it asks whether
+*a* healthy page is being served, not *which* one, and the stale page is a healthy page.
+
+**3. A Pages hostname lags its own deployment.** A file uploaded seconds earlier returned
+404 on the project alias at t+3s and 200 by t+8s, while the deployment's own
+`<hash>.pages.dev` URL served it immediately. Both check-15 steps ran inside that window.
+On the preview stage that is fail-safe — it refuses to promote. **On the production stage
+the workflow answers a failed check by rolling back**, so a few seconds of lag would have
+undone a good deployment and reported it as bad bytes. `tools/wait-for-origin.mjs` now runs
+before each check, comparing bytes rather than waiting for a 200, and check 19 fails the
+suite if a deploy ever loses its wait.
+
+**What the drill confirmed:** the rollback POST works and its effect is real; the
+deployments listing has the documented shape, `?env=production` filters as expected, and
+`created_on` is a sortable ISO string; and rolling back to the deployment already serving
+is refused by Cloudflare with `8000039`, not silently accepted.
+
+Check 20 remains pure and offline, so `npm test` stays hermetic. Its fixtures are now built
+from observed responses rather than documented ones.
+
+**Run it on the real project, before the custom domain is attached.** A throwaway project
+was the original plan and it is the weaker one: between creating the Pages project (step 6
+above) and attaching the domain (step 9), `ordoia` itself is a hostname nobody has been
+given, so the blast radius is the same as a throwaway's — and unlike a throwaway it also
+proves the token, the account and the project name that the real deploys will use.
+
+1. Deploy the build to production, then deploy a visibly different second one.
+2. `node tools/pages-api.mjs current-production` — it must name the **second** deployment.
+   If it names the first, or a preview, stop: the listing is not the shape check 20 assumes.
+3. Roll back to the first; confirm the first is what `ordoia.pages.dev` serves.
+4. `node tools/probe-live.mjs https://ordoia.pages.dev` and confirm the verdict matches.
+5. Deploy the real build again.
+
+Record the observed listing shape in `CHECKS.md`. Until that is done, the rollback claim in
+this file is documentation, in exactly the sense §13 item 6 uses the word.
 
 ---
 
@@ -408,8 +586,20 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
   before launch: a CTA that opens a mail client addressed to a mailbox that does not
   exist is worse than no CTA, and it is the one failure on this page that **no check in
   this repo can detect** — check 15 verifies the link survives the edge intact, not that
-  anyone is reading what it sends. Set mail up *after* the nameserver migration, not
-  across it.
+  anyone is reading what it sends.
+
+  **The nameserver move destroys what is there now.** Measured 2026-08-09: `ordoia.com`
+  carries MX records at `eforward1–5.registrar-servers.com` and Namecheap's SPF include —
+  their free Email Forwarding, which is **only available on Namecheap's own BasicDNS,
+  PremiumDNS or FreeDNS**. Pointing the nameservers at Cloudflare ends it. So the mailbox
+  is not a step that happens *after* the migration; its records have to be in
+  `tools/dns-plan.json` and applied *before* it, or there is a window with MX records
+  pointing at a service that no longer accepts the mail — which is worse than none,
+  because it accepts the message and drops it.
+
+  Decided 2026-08-09: **Namecheap Private Email**, so replies come *from* the address with
+  aligned SPF and DKIM. Take its exact MX, SPF and DKIM values from the Private Email panel
+  after purchase and put them in the plan; do not copy them from memory or from here.
 - **Whether to also hold `ordoia.co.uk`.** The domain is printed on the face of every
   scorecard and cannot be changed afterwards, only redirected. Ordoia is positioned as a
   UK practice and `.co.uk` carries that signal where `.com` does not. Registering it and

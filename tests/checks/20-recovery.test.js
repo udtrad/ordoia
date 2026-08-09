@@ -10,19 +10,36 @@
  * So the two halves are separated into pure logic that can be exercised here, and one thin
  * network call that cannot:
  *
- *   tools/pages-api.mjs  selectRollbackTarget()  ← pure. Covered below, against fixtures
- *                                                  built to Cloudflare's documented shape.
- *   tools/probe-live.mjs probe()                 ← covered below against a real origin and
- *                                                  against planted broken ones.
+ *   tools/pages-api.mjs  selectServingDeployment()  ← pure. Covered below, against fixtures
+ *                                                    built from real API responses.
+ *   tools/probe-live.mjs probe()                   ← covered below against a real origin and
+ *                                                    against planted broken ones.
  *
- * ── What this check does not establish, stated because the rubric would ask ─────────
+ * ── The drill was run, and it found the model here was wrong ───────────────────────
  *
- * **No call has ever been made to the Cloudflare API.** There is no account yet. This
- * check proves that given a listing, the right deployment is chosen; it cannot prove that
- * a listing comes back in that shape, or that the rollback POST does what its
- * documentation says. Only the drill in DEPLOY.md settles that, and it has not been run.
- * The distinction matters here more than usual: a rollback that silently promoted the
- * wrong deployment would look exactly like a recovery.
+ * On 2026-08-09 this path met the real Cloudflare API for the first time, on the `ordoia`
+ * project before its custom domain was attached. The fixtures below are no longer built to
+ * *documented* shapes; they are built to observed ones. What it found:
+ *
+ *   1. The rollback POST works, and its effect is real — verified by fetching with a
+ *      cache-busting query string after rolling back.
+ *   2. **The function this check covers returned the wrong deployment after a rollback.**
+ *      Cloudflare keeps the rolled-away-from deployment in the production listing, newest
+ *      first and still `success`, and records the serving one separately as
+ *      `canonical_deployment`. Scanning the listing therefore answered with bytes that had
+ *      been rejected. The old comment warned that rolling back to the wrong deployment
+ *      "looks like a recovery"; it was describing itself.
+ *   3. Cloudflare's edge served the pre-rollback bytes from cache afterwards
+ *      (`cf-cache-status: HIT`), so a rollback is not visible to a reader until the cache
+ *      is purged. DEPLOY.md carries that; the probe cannot see it, because the probe asks
+ *      whether *a* healthy page is served, not *which* one.
+ *
+ * ── What this check still does not establish ───────────────────────────────────────
+ *
+ * The network calls are not exercised here — this check is pure and offline, and stays
+ * that way so `npm test` remains hermetic. It proves the right deployment is chosen given
+ * a pair of responses. That those responses keep their shape is what the drill settles,
+ * and a drill is a point in time.
  *
  * ── Why the probe is narrow, and why that is not laziness ──────────────────────────
  *
@@ -39,7 +56,7 @@ import { createServer } from 'node:http';
 import { TARGET, IS_HANDOVER, serve, SITE } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
 import { probe, ASSERTIONS, PROBE_PATH } from '../../tools/probe-live.mjs';
-import { selectRollbackTarget } from '../../tools/pages-api.mjs';
+import { selectServingDeployment } from '../../tools/pages-api.mjs';
 
 const HANDOVER_SKIP =
   'the handover ships no deploy configuration and no clean URLs — that is the point';
@@ -148,53 +165,68 @@ test('check 20 — the probe still catches a dead CTA and a rewriting edge (cont
   assert.deepEqual(dead.asserted, ['reachable'], 'an unreachable origin asserted only that');
 });
 
-test('check 20 — the rollback target is the deployment currently in production (controls)', () => {
-  const previous = deployment({ id: 'aaaa', created_on: '2026-08-01T00:00:00Z' });
-  const older = deployment({ id: 'bbbb', created_on: '2026-07-01T00:00:00Z' });
-
-  // The listing this pipeline actually produces: our own preview upload is the newest
-  // deployment in the project, and it is not a valid rollback target. "The most recent
-  // deployment" would pick it every time.
+test('check 20 — the rollback target is what is actually serving (controls)', () => {
+  const B = deployment({ id: 'bbbb', created_on: '2026-08-09T10:00:00Z' });
+  const A = deployment({ id: 'aaaa', created_on: '2026-08-09T09:00:00Z' });
   const ourPreview = deployment({
-    id: 'cccc',
+    id: 'pppp',
     environment: 'preview',
-    created_on: '2026-08-09T00:00:00Z',
+    created_on: '2026-08-09T11:00:00Z',
   });
 
-  const failed = deployment({
-    id: 'dddd',
-    status: 'failure',
-    created_on: '2026-08-05T00:00:00Z',
+  const project = (canonical, latest = 'bbbb') => ({
+    name: 'ordoia',
+    canonical_deployment: canonical === null ? null : { id: canonical },
+    latest_deployment: { id: latest },
   });
 
+  // The ordinary case: nothing has been rolled back, so canonical and latest agree.
+  assert.equal(selectServingDeployment(project('bbbb'), listing([ourPreview, B, A])), 'bbbb');
+
+  // **The case the previous implementation got wrong, measured against the real API on
+  // 2026-08-09.** Deploy A, deploy B, roll back to A. Cloudflare keeps B in the listing,
+  // newest-first and still `success`, and records A as canonical. Scanning the listing
+  // returns B — a deployment that was rolled away from, quite possibly because it was bad.
+  // deploy.yml captures this value as its rollback target, so the old behaviour would have
+  // "recovered" a failed deploy onto exactly the bytes that were rejected last time.
   assert.equal(
-    selectRollbackTarget(listing([ourPreview, failed, previous, older])),
+    selectServingDeployment(project('aaaa'), listing([ourPreview, B, A])),
     'aaaa',
-    'the newest *successful production* deployment is the one production is serving'
+    'after a rollback the serving deployment is NOT the newest one in the listing'
   );
 
   assert.equal(
-    selectRollbackTarget(listing([ourPreview])),
+    selectServingDeployment(project(null), listing([])),
     null,
-    'a project with no successful production deployment has nothing to roll back to — ' +
-      'the first ever deploy, which must not be an error'
+    'a project that has never deployed has nothing to roll back to — the first ever ' +
+      'deploy, which must not be an error'
   );
 
-  assert.equal(selectRollbackTarget(listing([])), null, 'an empty project rolls back to nothing');
-
-  // The ordering assumption is about someone else's service, so it is checked rather than
-  // trusted. Rolling back to the wrong deployment is worse than not rolling back: it
-  // looks like a recovery.
-  assert.throws(
-    () => selectRollbackTarget(listing([older, previous])),
-    /no longer newest-first/,
-    'a listing that is not newest-first must stop the rollback, not silently promote the ' +
-      'wrong bytes'
+  // A canonical deployment old enough to have fallen off one page of the listing is
+  // legitimate, so absence from the listing is accepted rather than fatal.
+  assert.equal(
+    selectServingDeployment(project('zzzz'), listing([ourPreview, B, A])),
+    'zzzz',
+    'a canonical deployment beyond the first page of the listing is still the answer'
   );
 
+  // Shape guards. Falling back to "the newest" when the field is missing is exactly the
+  // wrong direction to fail in, so the absence of the field must stop the rollback.
   assert.throws(
-    () => selectRollbackTarget({ success: true }),
+    () => selectServingDeployment({ name: 'ordoia' }, listing([B])),
+    /no `canonical_deployment` field/,
+    'a project response without the field must fail loudly, not guess'
+  );
+  assert.throws(
+    () => selectServingDeployment(project('bbbb'), { success: true }),
     /the API shape changed/,
     'a response with no result array must fail loudly'
+  );
+
+  // Two Cloudflare responses disagreeing about the same project is not a thing to average.
+  assert.throws(
+    () => selectServingDeployment(project('pppp'), listing([ourPreview, B, A])),
+    /Two answers from the same API disagree/,
+    'a canonical deployment the listing calls a preview must stop the rollback'
   );
 });

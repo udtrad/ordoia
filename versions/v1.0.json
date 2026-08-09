@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "The bytes /oal/v1.0/ was published with. BRIEF.md §5: snapshot",
+    "directories are immutable. Check 21 holds every later build to this file.",
+    "",
+    "Do not edit by hand. If a byte here has legitimately changed, that is a new",
+    "rubric version, not a correction to this one."
+  ],
+  "version": "1.0",
+  "frozen": "2026-08-09",
+  "files": {
+    "favicon.svg": "08d67d5b611baf8fb895201cfe8ea9bfe3483479ef1bd06e62420024fc4ade80",
+    "fonts/OFL-Archivo.txt": "108b4e57c9c796d3d38d0428ca7ee39de47ad93187302718d9b2d8864b9b716b",
+    "fonts/OFL-IBMPlexMono.txt": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
+    "fonts/OFL-SourceSerif4.md": "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7",
+    "fonts/archivo-subset.woff2": "34122446523b187458dc74e434e83a7b098f02b1d39253703f335898fc68a8c0",
+    "fonts/ibm-plex-mono-400-subset.woff2": "f697e17543bda18a79f3a1fb6ef31bf773bf4f94dbb7c4696228417c01064600",
+    "fonts/source-serif-4-italic-subset.woff2": "cd6a8cff47f1721caa20b0c02506324d5d9f9817f6cb2868cd8f63dea28076fa",
+    "fonts/source-serif-4-subset.woff2": "c40a8d8f974d5bcebe471667e705395c7acf651ca69bed5ac91ca33ac64072ff",
+    "index.html": "0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b",
+    "styles.css": "a14dd87f40cdbb9d3e4c93721ed75c35dc30d6de19c8db3d4f747c5cf7f6e95f"
+  }
+}
