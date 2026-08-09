@@ -34,26 +34,37 @@ Licences are committed beside the fonts, unmodified: `src/fonts/OFL-Archivo.txt`
 
 ## What was built
 
-| File | Bytes | Axes retained |
-|---|---:|---|
-| `src/fonts/archivo-subset.woff2` | 48,564 | `wght` 400–700, **`wdth` 62–125** |
-| `src/fonts/source-serif-4-subset.woff2` | 54,368 | `wght` 400–700, `opsz` 8–60 |
-| `src/fonts/source-serif-4-italic-subset.woff2` | 23,428 | `wght` 400–700, `opsz` pinned to 20 |
-| `src/fonts/ibm-plex-mono-400-subset.woff2` | 9,308 | static, 400 only |
-| **total woff2** | **135,668** (132.5 KB) | |
+| File | Bytes | Characters | Axes retained |
+|---|---:|---:|---|
+| `src/fonts/archivo-subset.woff2` | 48,560 | 110 | `wght` 400–700, **`wdth` 62–125** |
+| `src/fonts/source-serif-4-subset.woff2` | 54,288 | 110 | `wght` 400–700, `opsz` 8–60 |
+| `src/fonts/source-serif-4-italic-subset.woff2` | 10,852 | **34** | `wght` 400–700, `opsz` pinned to 20 |
+| `src/fonts/ibm-plex-mono-400-subset.woff2` | 9,308 | 110 | static, 400 only |
+| **total woff2** | **123,008** (120.1 KiB) | | |
 
 sha256 of the committed subsets:
 
 ```
-50c5dae0510d0cbe9b8872ade8513d4a4be681225e202e1bd1dfa8825283d04d  archivo-subset.woff2
+34122446523b187458dc74e434e83a7b098f02b1d39253703f335898fc68a8c0  archivo-subset.woff2
 f697e17543bda18a79f3a1fb6ef31bf773bf4f94dbb7c4696228417c01064600  ibm-plex-mono-400-subset.woff2
-84374cb60f35fc48926b0fb8426027341bbf67d0b73ce23710ec9ac0a731c11c  source-serif-4-italic-subset.woff2
-0bff0ef9f59b411088336eb83109186c007900421dd224b60883279fbae9b8a0  source-serif-4-subset.woff2
+cd6a8cff47f1721caa20b0c02506324d5d9f9817f6cb2868cd8f63dea28076fa  source-serif-4-italic-subset.woff2
+c40a8d8f974d5bcebe471667e705395c7acf651ca69bed5ac91ca33ac64072ff  source-serif-4-subset.woff2
 ```
 
-Worst-case page is `oal.html`, which uses all four faces: 132.5 KB of font plus the page
-and stylesheet, inside the 150 KB budget but not by much. The italic is the reason it
-fits — see below.
+> **These hashes changed on 2026-08-09, and three of the four changed for a reason worth
+> reading.** The italic was re-subset (see below). Archivo and the roman have the same
+> character set as before and still moved a few bytes, because until that day this script
+> was **not reproducible** — `varLib.instancer` wrote the wall-clock time into the head
+> table, so two runs seconds apart produced different files and neither matched what was
+> committed. `ibm-plex-mono` never moved, and being the one face that skips the instancer
+> is what located the cause. `tools/build-fonts.sh` now pins `SOURCE_DATE_EPOCH`; two
+> consecutive full runs are byte-identical, which is what the claim at the top of that
+> script always said and did not deliver.
+
+Worst-case page is the rubric, which uses all four faces: 120.1 KiB of font plus the page
+and stylesheet — **139.1 KiB against the 150 KiB budget**, measured by check 17 on every
+run rather than by hand once. The italic is the reason it fits, and the margin is 10.9 KiB
+rather than the 1.5 KiB it was before the italic was narrowed.
 
 ### The commands
 
@@ -104,17 +115,59 @@ deliberately absent: no upstream family here has the glyph.
 ### Italic: a real face, and why it is pinned to one optical size
 
 A real italic is needed, not a synthesised oblique. `.buyerq` (`styles.css:395`) is
-`font-style: italic` and appears five times in `oal.html` as full-paragraph pull-quotes,
-plus four inline `<em>` runs across index/about/services/scorecard. All of them resolve
-to `--body`, i.e. Source Serif 4. Source Serif's italic is a separate alphabet — a
-single-storey *a*, a written *g* — and shearing the roman gets none of that. Those five
-questions are a designed feature of the rubric page, not incidental emphasis.
+`font-style: italic` and appears **eight** times on the rubric page as full-paragraph
+pull-quotes. Source Serif's italic is a separate alphabet — a single-storey *a*, a written
+*g* — and shearing the roman gets none of that. Those eight questions are a designed
+feature of the rubric page, not incidental emphasis.
 
-`opsz` is pinned to 20 on the italic. Italic on this site is only ever set at body size,
-so one optical size is the correct design answer, and keeping the axis variable measured
-**61,436 B against 23,412 B** — 38 KB for a range nothing renders. That 38 KB is the
-difference between `oal.html` fitting the 150 KB budget and busting it. `wght` stays
-400–700 so `<strong>` inside an italic run is a real semibold italic.
+> **Correction, 2026-08-09.** This section previously said `.buyerq` appears *five* times,
+> that there were *four* inline `<em>` runs, and that **"all of them resolve to `--body`,
+> i.e. Source Serif 4"**. Measured with Playwright across all nine pages: `.buyerq` appears
+> eight times, there are **six** `<em>` runs (index 1, about 2, services 1, scorecard 2),
+> and the `<em>` runs do **not** resolve to Source Serif. Their computed `font-family` is
+> `Archivo, system-ui, -apple-system, sans-serif` — a roman-only family — so the browser
+> synthesises an oblique and **fetches no italic file at all**. Only the eight `.buyerq`
+> pull-quotes on `/oal/` and `/oal/v1.0/` ever load the italic woff2, which is why those
+> are the only two pages that pay its weight. `tools/build-fonts.sh` carried the same
+> "5 of them and 4 inline `<em>` runs" sentence and has been corrected too.
+
+`opsz` is pinned to 20 on the italic. Italic on this site is only ever set at body size, so
+one optical size is the correct design answer, and keeping the axis variable cost roughly
+38 KB for a range nothing renders. `wght` stays 400–700 so `<strong>` inside an italic run
+is a real semibold italic.
+
+> The precise pair of figures this paragraph used to quote — "61,436 B against 23,412 B" —
+> has been dropped rather than corrected. 23,412 was never the size of any committed file
+> (the shipped italic was 23,428 B), and neither number is reproducible now: it predates
+> both the `SOURCE_DATE_EPOCH` fix above and the character-set narrowing below. Quoting a
+> figure nobody can re-derive is the defect this repo scores at OAL 1. The claim the
+> paragraph rests on — that pinning `opsz` is worth tens of kilobytes — is sound and is
+> what `varLib.instancer` is doing on line 145; the arithmetic to two significant figures
+> is not something this file should assert without a way to check it.
+
+### The italic character set, and why it is the only narrow one
+
+The italic declares **34 codepoints** where every other face declares 110. It is the one
+face whose rendered characters are knowable: eight pull-quotes of fixed copy on one page.
+Measured, they use 31 — space, comma, question mark, em dash, the capitals *D I T W*, and
+every lowercase letter except *j*, *x* and *z*. Those three are declared anyway, because
+completing lowercase costs 1,068 B and removes the likeliest edit that would otherwise
+fall back; completing uppercase would cost four times that for letters that can only begin
+a sentence. `tools/font-subsets.json` carries the full measurement table.
+
+This took the italic from **23,428 B to 10,852 B**, and the rubric pages from 151.5 KiB —
+over §4's budget — to 139.1 KiB. It had to land before `/oal/v1.0` first published: §5
+freezes that directory and `_headers` caches it `immutable`, so after the first production
+deploy the font could never have been changed and the overage would have been permanent.
+
+The obvious objection is fragility — new italic copy could use a glyph that is no longer
+there, and a synthesised fallback mid-paragraph still looks approximately right to whoever
+ships it. That objection is answered the way this repo answers all of them: **check 18**
+loads every page, collects the characters actually rendered in a real italic face, and
+fails the build if any of them is outside the declared set. The set is single-sourced in
+`tools/font-subsets.json`, which both this script and that check read, so the two cannot
+drift. Its stated limit is in the check's header: it proves the *declared* set covers the
+copy, not that the shipped binary contains those glyphs.
 
 Archivo and IBM Plex Mono are roman-only: `font-style: italic` appears exactly once in
 `styles.css`, and no `<i>`, `<cite>`, `<address>`, `<var>` or `<dfn>` appears in any page,

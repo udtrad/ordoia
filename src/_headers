@@ -17,10 +17,41 @@
   X-Frame-Options: DENY
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
-  Cache-Control: public, max-age=600, must-revalidate
+# Nothing here is meant to be read cross-origin. Detaching costs nothing if the
+# host never sends it, and Cloudflare documents `! Header-Name` as the way to
+# remove one. Check 15 has always asserted this header is absent on the wire and
+# told the operator to remove it exactly this way; until now the line it named
+# did not exist, and the parser could not have seen it if it had.
+  ! Access-Control-Allow-Origin
 
 # §9: "Long-lived immutable caching on version paths; short on current paths."
 #
+# ── Why /* declares no Cache-Control ────────────────────────────────────────
+#
+# Cloudflare's documentation is explicit on two points that together make an
+# overlapping declaration unsafe:
+#
+#   "An incoming request which matches multiple rules' URL patterns will inherit
+#    ALL rules' headers."
+#   "If a header is applied twice in the _headers file, the values are joined
+#    with a comma separator."
+#
+# /oal/v1.0/styles.css matches both /oal/v1.0/* and /*. With a Cache-Control on
+# each, the header on the wire would have been
+#
+#   public, max-age=600, must-revalidate, public, max-age=31536000, immutable
+#
+# — two max-age values and a must-revalidate in one header, on the one directory
+# that is frozen forever. Worse, check 15 asserts /immutable/ *matches* there,
+# and that string does match, so the check would have gone green over a broken
+# freeze. Every path now matches exactly one Cache-Control declaration, so what
+# is served can be read off this file rather than inferred from join order.
+#
+# Current paths therefore take Cloudflare's default, public, max-age=0,
+# must-revalidate — shorter than the 600s declared here before, so §5's "short on
+# current paths" still holds, and a correction still reaches a returning reader.
+# Check 14 asserts the absence deliberately so it cannot be reinstated by accident.
+
 # A version directory is frozen by definition — /oal/v1.0/ carries its own
 # stylesheet, its own fonts and its own favicon, taken at publication, and the
 # build refuses to regenerate it from a newer rubric. Nothing in it can legally
@@ -31,7 +62,9 @@
 
 # The live fonts are vendored and pinned but their filenames are not hashed, so
 # they get a long cache rather than an immutable one: a deliberate font change
-# propagates within a week instead of never.
+# propagates within a week instead of never. /oal/v1.0/fonts/ is not matched by
+# this pattern and takes the immutable rule above, which is correct — those are
+# the frozen copies.
 /fonts/*
   Cache-Control: public, max-age=604800
 

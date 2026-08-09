@@ -187,6 +187,24 @@ the domain is settled and every subdomain that will ever exist can serve TLS —
 side effect of a first deploy. Add the token and submit at
 `hstspreload.org` when you are ready.
 
+### `includeSubDomains` and the floor are both asserted
+
+`max-age` and `includeSubDomains` are checked by check 14 and check 15, through the one
+evaluator in `tests/lib/posture.js`. Two things follow, and both are deliberate:
+
+**The floor is parsed, not pattern-matched.** It was `/max-age=\d{7,}/`, which accepts
+`max-age=1000000` — eleven and a half days wearing the shape of a two-year commitment. The
+value is now compared against 31,536,000 (one year). The site ships 63,072,000.
+
+**`includeSubDomains` is required.** This page documented omitting `preload` as deliberate
+and said nothing about this one, so its presence was an accident that looked like a
+decision. Asserting it makes it a decision: every subdomain of `ordoia.com` must serve
+HTTPS, which costs nothing at Let's Encrypt, and removing it later becomes a visible edit
+to a check with a reason attached rather than a quiet weakening of the header. If a
+subdomain ever genuinely cannot serve TLS, change the `Strict-Transport-Security` entry in
+`posture.js` and log the reason in `CHANGES.md` — that is the intended path, not a
+surprise.
+
 ---
 
 ## Uptime and certificate monitoring

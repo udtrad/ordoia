@@ -19,6 +19,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseHeadersFile, patternToRegExp } from './posture.js';
 
 export const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../..');
 
@@ -142,15 +143,106 @@ const MIME = {
 };
 
 /**
+ * Read `_headers` and `_redirects` out of a build, for the host-emulating mode below.
+ *
+ * Redirect syntax is `from  to  [status]`, one per line, `#` for comments — the shape
+ * `src/_redirects` is written in.
+ */
+function loadHostConfig(root) {
+  const blocksPath = path.join(root, '_headers');
+  const redirectsPath = path.join(root, '_redirects');
+
+  const blocks = existsSync(blocksPath) ? parseHeadersFile(readFileSync(blocksPath, 'utf8')) : [];
+  const redirects = [];
+
+  if (existsSync(redirectsPath)) {
+    for (const raw of readFileSync(redirectsPath, 'utf8').split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const [from, to, status] = line.split(/\s+/);
+      if (from && to) redirects.push({ from, to, status: Number(status) || 301 });
+    }
+  }
+
+  return { blocks, redirects };
+}
+
+/**
+ * The headers a Cloudflare-shaped host would attach to one path.
+ *
+ * Two passes, because that is what the documentation describes: every matching block
+ * contributes its headers, a repeated name is **joined with a comma** rather than
+ * overridden, and only then do removal lines take effect.
+ *
+ * The comma-join is the part worth having. It is counter-intuitive, it is what made an
+ * overlapping `Cache-Control` on the frozen version directory a real defect, and a local
+ * origin that quietly let the narrower rule win would reproduce the intuition instead of
+ * the host.
+ */
+function hostHeadersFor(config, pathname) {
+  const matching = config.blocks.filter((b) => patternToRegExp(b.pattern).test(pathname));
+  const out = new Map();
+
+  for (const block of matching) {
+    for (const [name, value] of block.headers) {
+      out.set(name, out.has(name) ? `${out.get(name)}, ${value}` : value);
+    }
+  }
+  for (const block of matching) {
+    for (const name of block.removals) out.delete(name);
+  }
+
+  return Object.fromEntries(out);
+}
+
+/**
  * Serve the target on an ephemeral port.
  *
  * Resolution order for `/services` is `services.html`, then `services/index.html`
  * — so a clean URL works before the build produces one, and check 9 measures
  * link integrity rather than the server's willingness to guess.
+ *
+ * ── `applyHeaders` ──────────────────────────────────────────────────────────────────
+ *
+ * Off by default, which is what every check other than 15 wants: a plain file server, so
+ * a check measures the build rather than the deploy configuration.
+ *
+ * On, it also applies `_headers`, `_redirects` and a real `404.html` — enough of a
+ * Cloudflare-shaped host to run check 15 against without deploying. CHECKS.md claimed
+ * check 15 had been proven green "against a local origin that applies `_headers` and
+ * `_redirects`", and that origin was not in the repo, so the strongest discrimination
+ * claim here could not be re-run by anyone reading it. `npm run test:live-local` is that
+ * claim, made reproducible.
+ *
+ * **Stated limit, in the manner of checks 12 and 14: a local Node server is not
+ * Cloudflare.** It reproduces the documented parsing of two config files. It does not
+ * reproduce Email Address Obfuscation, Rocket Loader, Brotli, HTTP/2, the edge cache, or
+ * anything zone-scoped — which is exactly why `ORDOIA_LIVE` against a real deployment
+ * stays the only thing that settles §13 item 6.
  */
-export async function serve(root = TARGET) {
+export async function serve(root = TARGET, { applyHeaders = false } = {}) {
+  const config = applyHeaders ? loadHostConfig(root) : null;
+
   const server = createServer(async (req, res) => {
     const url = decodeURIComponent((req.url || '/').split('?')[0]);
+
+    // "Redirects are applied before headers, so when a request matches both a redirect
+    // and a header, the redirect takes priority." — Cloudflare Pages documentation.
+    if (config) {
+      const hit = config.redirects.find((r) => r.from === url);
+      if (hit) {
+        res.writeHead(hit.status, { location: hit.to });
+        res.end();
+        return;
+      }
+      // The host serves neither of its own config files.
+      if (url === '/_headers' || url === '/_redirects') {
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end('404');
+        return;
+      }
+    }
+
     const rel = url.replace(/^\/+/, '');
     const candidates = url.endsWith('/')
       ? [path.join(rel, 'index.html')]
@@ -167,12 +259,28 @@ export async function serve(root = TARGET) {
         res.writeHead(200, {
           'content-type': MIME[path.extname(full)] || 'application/octet-stream',
           'content-length': body.length,
+          ...(config ? hostHeadersFor(config, url) : {}),
         });
         res.end(body);
         return;
       } catch {
         /* try the next candidate */
       }
+    }
+
+    // A real 404 page, carrying the posture, when the host config is in play. Check 15
+    // asserts both — a soft 404 tells crawlers every mistyped address is a real page, and
+    // whether `_headers` reaches a 404 response is undocumented on Pages.
+    const notFound = config ? path.resolve(root, '404.html') : null;
+    if (notFound && existsSync(notFound)) {
+      const body = await readFile(notFound);
+      res.writeHead(404, {
+        'content-type': MIME['.html'],
+        'content-length': body.length,
+        ...hostHeadersFor(config, url),
+      });
+      res.end(body);
+      return;
     }
 
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });

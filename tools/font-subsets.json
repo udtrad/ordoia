@@ -1,0 +1,65 @@
+{
+  "$comment": [
+    "The declared character set of each subset font, in pyftsubset --unicodes syntax.",
+    "",
+    "Single-sourced because two things read it and they must not drift:",
+    "  tools/build-fonts.sh        — builds the .woff2 files from it",
+    "  tests/checks/18-font-coverage.test.js — asserts the site renders nothing outside it",
+    "",
+    "A declared set that is narrower than the rendered text is not a build error. The",
+    "browser silently falls back to a synthesised face, mid-paragraph, and the page still",
+    "looks approximately right — which is the failure mode this repo exists to make",
+    "impossible to ship quietly. Check 18 turns it into a red build.",
+    "",
+    "STATED LIMIT: check 18 proves the DECLARED set covers the copy. It does not decode",
+    "the woff2 to prove the shipped binary contains those glyphs. Closing that gap means",
+    "a woff2 decoder in Node, for a failure that requires someone to edit this file",
+    "without re-running tools/build-fonts.sh."
+  ],
+
+  "shared": {
+    "$comment": [
+      "Archivo, Source Serif roman, IBM Plex Mono. Derived from the rendered text of every",
+      "page plus scorecard.md and the generated content in styles.css; FONTS.md carries the",
+      "per-codepoint inventory. Full printable ASCII is deliberate headroom — the pages use",
+      "86 of the 95, and carrying the other 9 means an editor can type '!' without a font",
+      "rebuild. U+201B is absent: no upstream family here has the glyph."
+    ],
+    "unicodes": "U+0020-007E,U+00A0,U+00A3,U+00B7,U+00D7,U+2013,U+2014,U+2018-201A,U+201C-201D,U+2026,U+2193,U+2265"
+  },
+
+  "italic": {
+    "$comment": [
+      "Source Serif 4 italic, and the only subset narrower than `shared`.",
+      "",
+      "Italic resolves to a real face in exactly one place on this site: the eight .buyerq",
+      "pull-quotes on the rubric page. The inline <em> runs elsewhere compute to Archivo and",
+      "are synthesised obliques — they never fetch this file. Measured across all nine pages,",
+      "the characters actually rendered in Source Serif italic are 31: space, comma, question",
+      "mark, em dash, the four capitals D I T W, and every lowercase letter except j, x, z.",
+      "",
+      "Declared here as 34 rather than those 31, and the difference is the whole judgement:",
+      "",
+      "  31 codepoints (exactly what renders)   9,776 B",
+      "  34 (+ j, x, z — lowercase completed)  10,844 B   +1,068 B",
+      "  56 (+ A-Z)                            14,964 B   +5,188 B",
+      "  68 (+ punctuation)                    16,352 B   +6,576 B",
+      "",
+      "Completing lowercase costs 1,068 B for three glyphs and removes the likeliest edit",
+      "that would otherwise fall back: a new lowercase English word in a pull-quote.",
+      "Completing uppercase costs four times as much for letters that can only appear at the",
+      "start of a sentence. The asymmetry is measured, and the rule follows it rather than",
+      "the other way round. Everything past 34 is left to check 18, which turns a missing",
+      "glyph into a red build at the moment the copy changes — cheaper than carrying 6 KB",
+      "against the possibility.",
+      "",
+      "This set was full printable ASCII (110 codepoints, 23,428 B) until 2026-08-09. The",
+      "13.6 KB that removed is what took /oal/ and /oal/v1.0/ from 151.5 KiB — over §4's",
+      "budget — to 139.2 KiB. It had to land before /oal/v1.0 first published, because",
+      "_headers caches that directory immutable and §5 freezes its contents: after the first",
+      "production deploy the font could never have been changed, and the overage would have",
+      "been permanent."
+    ],
+    "unicodes": "U+0020,U+002C,U+003F,U+0044,U+0049,U+0054,U+0057,U+0061-007A,U+2014"
+  }
+}

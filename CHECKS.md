@@ -11,15 +11,21 @@ runs on every deploy and reports is **evidenced**.
 ## Running it
 
 ```bash
-npm run build          # eleventy -> _site/
-npm test               # against _site/ — the build. Must be green.
-npm run test:handover  # against . — the verbatim designer handover. Must be red.
-npm run check          # build then test; this is the deploy gate.
+npm run build           # eleventy -> _site/
+npm test                # against _site/ — the build. Must be green.
+npm run test:handover   # against . — the verbatim designer handover. Must be red.
+npm run test:empty      # against an empty directory — Baseline D. Must be red.
+npm run test:live-local # against a local origin applying _headers and _redirects.
+npm run check           # build then test; this is the deploy gate.
 ```
 
-One suite, two targets. Running it against the handover is not a formality: a
-check that cannot fail on the unbuilt site is not a check, it is a comment. The
-two baselines below are the evidence that the suite works.
+One suite, four targets. Running it against anything other than the build is not a
+formality: a check that cannot fail on the unbuilt site is not a check, it is a comment,
+and a check that passes against an *empty* site is not even that. The baselines below are
+the evidence that the suite works.
+
+`test:live-local` is the only one that exercises check 15 without a deployment; it boots
+`_site` behind a Cloudflare-shaped origin, so nothing skips and the suite reports 59/59.
 
 ## Where the enforcement lives
 
@@ -52,6 +58,19 @@ offline. `npm test` remains hermetic and remains the gate.
 
 **Updated 2026-08-09: 55 tests, 48 pass, 0 fail, 7 skipped.** Three tests were added by
 check 16; the seven skips are unchanged.
+
+**Updated again, 2026-08-09 (stage 2 and 3): 59 tests, 52 pass, 0 fail, 7 skipped.** Four
+tests added — check 14's posture controls, check 17, and check 18's two. The seven skips
+are still check 15 and still only under `npm test`; `npm run test:live-local` runs the
+whole suite with **59 pass, 0 fail, 0 skipped**, which is the first time every check in
+this repo has been green in one run.
+
+| Target | Command | Tests | Pass | Fail | Skip |
+|---|---|---:|---:|---:|---:|
+| the build | `npm test` | 59 | 52 | 0 | 7 |
+| a local origin | `npm run test:live-local` | 59 | 59 | 0 | 0 |
+| the handover | `npm run test:handover` | 59 | 37 | **8** | 14 |
+| an empty directory | `npm run test:empty` | 59 | 15 | **37** | 7 |
 
 ## Baseline D — the empty target, 2026-08-09
 
@@ -89,6 +108,13 @@ controls tests, check 12's two file-readers, and check 16's three source-scanner
 **Zero site-touching tests pass vacuously.** Each of the thirty-five names the population
 that came back empty.
 
+**Re-measured after stage 2 and 3: 15 pass, 37 fail, 7 skipped of 59.** The two extra
+passes are check 14's posture controls and check 18's range-parser controls, both of which
+read the repo rather than the target and are correctly out of scope. The two extra failures
+are the site-touching halves of checks 17 and 18. The property this baseline exists to
+protect is unchanged and was re-verified by listing every passing test by name: **nothing
+that reaches the site passes against a directory with nothing in it.**
+
 Baseline D is a committed fixture and a named script rather than a demonstration someone
 performed once, so unlike a one-off it cannot rot.
 
@@ -124,6 +150,26 @@ that applies `_headers` and `_redirects` the way a host does: **7 pass, 0 fail.*
 check therefore discriminates — it is not merely reporting that `ordoia.com` is
 undeployed. What it has *not* yet seen is Cloudflare, which is the remaining gap and the
 reason it runs on every deploy rather than once.
+
+> **That origin was not in the repo, and this paragraph was therefore unreproducible until
+> 2026-08-09.** The strongest discrimination claim in this file rested on a server someone
+> ran once and did not commit — which is, precisely, a provenance claim the reader cannot
+> check. It is now `npm run test:live-local` (`tools/serve-local.mjs`), and the whole suite
+> runs against it green with nothing skipped:
+>
+> ```bash
+> npm run test:live-local
+> # → 59 tests, 59 pass, 0 fail, 0 skipped
+> ```
+>
+> It reproduces the one piece of documented Cloudflare behaviour that is counter-intuitive
+> — two blocks matching one request have their headers **joined with a comma**, not
+> overridden — which is how the `Cache-Control` defect in "What the suite taught about
+> itself" was demonstrated rather than argued. **A local Node server is still not
+> Cloudflare**, and that limit is stated in the runner's own header: no Email Address
+> Obfuscation, no Rocket Loader, no Brotli, nothing zone-scoped. Green here means the
+> artifact and the configuration agree. Only `ORDOIA_LIVE=https://ordoia.com` means the
+> site does.
 
 **A defect in the check, found by running it.** The first version had no request timeout
 and took **95 seconds per assertion** against a parked domain that accepted the
@@ -302,6 +348,58 @@ direction — measuring the shape of the markup rather than what a reader gets.
    extra steps — which is precisely how check 14 shipped without the guard while check 9
    had it. Check 16 then enforces the rule on every future check.
 
+10. **Check 14 was reading a header from the wrong block, and would have certified eight
+    unprotected pages.** It found each required header with
+    `lines.find(l => l.startsWith(name + ':'))` — the first occurrence of a name *anywhere
+    in the file*, whatever path it was scoped to. A Content-Security-Policy declared only
+    under `/oal/v1.0/*` therefore satisfied check 14 for the entire site, including the
+    eight pages carrying the £2,500 CTA. Demonstrated rather than reasoned about: the
+    shipped `_headers` was mutated to scope its CSP that way, and the old evaluator's
+    logic was replayed over the result — **it returned `missing: []`**, while the new one
+    fails with `/* — Content-Security-Policy is absent`.
+
+    The fix is not a better search. Check 14 and check 15 each wrote their own evaluator
+    over a table they *shared*, which is not sharing — it is one table with two readers who
+    disagree. Both now call `evaluateHeaders(get)` in `tests/lib/posture.js`; check 14
+    backs it with the parsed `/*` block, check 15 with a live `Headers` object.
+
+    Two more defects fell out of writing it down. The HSTS matcher was `/max-age=\d{7,}/`,
+    which accepts `max-age=1000000` — **eleven and a half days wearing the shape of a
+    two-year commitment**; a digit count is not a duration, and the floor is now parsed and
+    compared. And `FORBIDDEN_IN_CSP`'s off-origin pattern was anchored on `//`, so
+    `script-src example.com` — a bare authority, valid CSP, loads an off-origin script —
+    went through unflagged. Enumerating forbidden shapes dates the way enumerating edge
+    features does, so the rule is now an allowlist of what keeps the policy on our own
+    origin, with `style-src-attr 'unsafe-inline'` as the one shipped exception and a
+    controls test pinning both directions.
+
+11. **The `_headers` file had a latent defect that check 15 was structurally unable to
+    catch.** Cloudflare's documentation is explicit and counter-intuitive: *"An incoming
+    request which matches multiple rules' URL patterns will inherit **all** rules'
+    headers"*, and *"if a header is applied twice in the `_headers` file, the values are
+    **joined with a comma separator**"*. Overlapping declarations concatenate; they do not
+    override.
+
+    `/oal/v1.0/styles.css` matched both `/oal/v1.0/*` and `/*`, and both declared a
+    `Cache-Control`. Served, that is:
+
+    ```
+    public, max-age=600, must-revalidate, public, max-age=31536000, immutable
+    ```
+
+    Two max-ages and a `must-revalidate`, on the one directory that can never be corrected
+    after publication. **And check 15 asserts that value matches `/immutable/`, which it
+    does** — so the wire-level check would have reported the freeze intact over a broken
+    one. Lesson 8 arriving by a new route: not an empty population this time, but an
+    assertion too weak to distinguish the string it wanted from a string containing it.
+
+    Fixed structurally rather than by strengthening the regex: no header name may be
+    declared in two blocks that can match one request (`overlappingDeclarations()`), and
+    `/*` now declares no `Cache-Control` at all, so every path matches exactly one. Current
+    paths take the host default, `public, max-age=0, must-revalidate` — shorter than the
+    600s that was declared, so §5's "short on current paths" holds a fortiori. Demonstrated
+    against `npm run test:live-local`, which reproduces the comma-join.
+
 The pattern is worth keeping in view: each of these would have shipped as a
 passing check that silently measured nothing, which is the OAL 1 failure the
 rubric describes — a behaviour requested in a comment with nothing verifying it.
@@ -349,20 +447,54 @@ every printed permanent address resolving. It replaces the four `curl` commands
 `DEPLOY.md` used to carry: one claim, verified in one place, rather than two copies to
 keep in step. It runs after every deploy and weekly thereafter.
 
-## One budget miss, measured
+## The budget miss, closed — and made executable
 
-§4 sets "no page over 150 KB compressed including fonts". Measured over the wire
-on a cold load, with only the faces each page actually fetches:
+§4 sets "no page over 150 KB compressed including fonts". This was recorded here as prose,
+measured once by hand, and four of the nine pages were never in the table. **Check 17 now
+measures it on every run** — the real request set under `networkidle`, gzip -9 on text and
+raw bytes on binary, against a declared 153,600-byte budget — and prints the whole table.
 
-| Page | Over the wire | |
+| Page | 2026-08-08, as recorded | Now, measured by check 17 |
 |---|---|---|
-| `/about/`, `/independence/`, `/` | 110–112 KB | |
-| `/scorecard/`, `/services/`, `/changelog/` | 118–121 KB | |
-| `/oal/` and `/oal/v1.0/` | **151.3 KB** | **1.3 KB over** |
+| `/about/`, `/independence/`, `/` | 110–112 KB | 110.0 – 111.8 KiB |
+| `/404.html` | *not recorded* | 117.9 KiB |
+| `/changelog/`, `/scorecard/`, `/services/` | 118–121 KB | 118.4 – 121.1 KiB |
+| `/oal/` and `/oal/v1.0/` | **151.3 KB — 1.3 KB over** | **139.1 KiB — 10.9 KiB under** |
 
-The two rubric pages are the only ones that pull the Source Serif italic (23.4
-KB), which the eight `.buyerq` pull-quotes use. The lever, if the budget is hard,
-is to subset the italic to the characters that actually appear in italic on the
-site rather than the full latin range — roughly 60 glyphs against the current
-subset. It is not taken here because it trades a stated budget against a fragile
-asset, and that is a decision rather than an oversight.
+**The recorded figures were substantially right, and one recorded claim that was doubted
+turned out to be correct.** A draft of the launch-blocker plan asserted that six pages pull
+the Source Serif italic and that `/scorecard/` and `/services/` were really ~144 KiB rather
+than the recorded 118–121. Measured with Playwright, per page, against the actual request
+set: **that is false and the claim is withdrawn.** Only `/oal/` and `/oal/v1.0/` ever fetch
+the italic woff2 — exactly as this section already said. Six pages fetch the *mono*, and
+six pages *render* italic text, and those are two different sets of six, neither of which
+is "pulls the italic file". The four non-rubric italic runs are `<em>` inside `.note`,
+which compute to Archivo and are synthesised obliques that fetch nothing.
+
+**The miss is closed by narrowing the italic**, not by moving the budget: 110 declared
+codepoints to 34, 23,428 B to 10,852 B. The fragility that argued against taking this lever
+last time — new italic copy using a glyph the subset no longer carries, falling back
+silently mid-paragraph — is now check 18, which fails the build naming the character. See
+FONTS.md and `tools/font-subsets.json` for the measurement behind choosing 34 rather than
+the 31 that render or the 68 that would have been comfortable.
+
+It had to land before `/oal/v1.0` first publishes. §5 freezes that directory and `_headers`
+caches it `immutable`; after the first production deploy the font could never be changed
+and the overage would have been permanent.
+
+### A reproducibility claim that was false
+
+`tools/build-fonts.sh` opens by saying a clean checkout should reproduce the committed
+`.woff2` files byte for byte in six years. Running it produced files matching neither the
+commit nor each other:
+
+```
+run 1   archivo-subset.woff2  48,548 B   head.modified=3869118376
+run 2   archivo-subset.woff2  48,528 B   head.modified=3869118380
+```
+
+`varLib.instancer` writes the current wall-clock time into the head table. `ibm-plex-mono`
+was byte-stable throughout and is the only face that skips the instancer, which is what
+located it. Fixed by pinning `SOURCE_DATE_EPOCH`; verified by running the whole script
+twice and diffing the hashes. **Nine of the ten lessons below were found by running the
+suite. This one was found by not believing a comment.**

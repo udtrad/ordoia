@@ -31,6 +31,29 @@ SUBSET="uvx --from $FONTTOOLS pyftsubset"
 INSTANCER="uvx --from $FONTTOOLS fonttools varLib.instancer"
 
 # ---------------------------------------------------------------------------
+# The build clock.
+#
+# Without this the header's byte-for-byte claim is simply false, and it was.
+# `varLib.instancer` writes the current wall-clock time into the head table's
+# `modified` field, so two runs of this script four seconds apart produced
+# different bytes:
+#
+#   run 1   head.modified=3869118376   archivo-subset.woff2  48548 B
+#   run 2   head.modified=3869118380   archivo-subset.woff2  48528 B
+#
+# — a twenty-byte swing downstream, because the timestamp perturbs what brotli
+# does with the block that contains it. Neither run reproduced the committed
+# file. `ibm-plex-mono` was byte-stable throughout, and it is the one face that
+# never goes through the instancer, which is what located the cause.
+#
+# fontTools honours SOURCE_DATE_EPOCH, the reproducible-builds convention.
+# Pinned rather than derived from the commit, so the value does not move when the
+# history is rewritten, and overridable for anyone testing that it still bites.
+# Verified: two consecutive runs with it set are byte-identical.
+# ---------------------------------------------------------------------------
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1786147200}"   # 2026-08-08T00:00:00Z
+
+# ---------------------------------------------------------------------------
 # Pinned upstream sources.
 #
 # Archivo: BRIEF.md names "googlefonts/archivo", which does not exist. The design
@@ -77,8 +100,16 @@ PLEX_SHA="6d23f01257663d8cc49a0d64c22ced630b79e0e2a0ac08a0da86e9a38bbc481c"
 #                 named in the brief.
 #
 # U+201B is deliberately absent: no upstream family here has the glyph.
+#
+# The sets themselves live in tools/font-subsets.json, because check 18 also reads
+# them: it asserts the site renders nothing outside the declared set, and a build
+# script and a check holding two copies of a character list is exactly the drift
+# that check exists to catch. Read with node rather than the pinned python because
+# node is already required to build the site and jq is not.
 # ---------------------------------------------------------------------------
-UNICODES="U+0020-007E,U+00A0,U+00A3,U+00B7,U+00D7,U+2013,U+2014,U+2018-201A,U+201C-201D,U+2026,U+2193,U+2265"
+SUBSETS="$REPO_ROOT/tools/font-subsets.json"
+UNICODES="$(node -p "require('$SUBSETS').shared.unicodes")"
+ITALIC_UNICODES="$(node -p "require('$SUBSETS').italic.unicodes")"
 
 # Default layout features plus the two the design depends on. tabular figures
 # (tnum) and lining figures (lnum) back `font-variant-numeric: tabular-nums
@@ -134,22 +165,26 @@ $INSTANCER -q -o "$WORK/Archivo-limited.ttf" "$WORK/Archivo[wdth,wght].ttf" wght
 $INSTANCER -q -o "$WORK/SourceSerif4-Roman-limited.ttf" \
   "$WORK/SourceSerif4Variable-Roman.ttf" wght=400:700
 
-# The italic is pinned to opsz=20 rather than kept variable. Italic on this site
-# appears in exactly two places, both at body size: the .buyerq pull-quotes in
-# oal.html (5 of them) and 4 inline <em> runs. One optical size is the correct
-# design answer for a face that is only ever set at 17px, and keeping opsz
-# variable costs 38,024 bytes for range nobody renders — 61,436 B against
-# 23,412 B measured. wght stays 400:700 so <strong> inside an italic run is a
-# real semibold italic and not a synthesised one.
+# The italic is pinned to opsz=20 rather than kept variable. It is only ever set at
+# body size, and one optical size is the correct design answer for a face that only
+# renders at 17px. wght stays 400:700 so <strong> inside an italic run is a real
+# semibold italic and not a synthesised one.
+#
+# Corrected 2026-08-09: this comment said the italic appears in "the .buyerq
+# pull-quotes in oal.html (5 of them) and 4 inline <em> runs". Measured: .buyerq
+# appears 8 times, and the <em> runs compute to Archivo — a roman-only family — so
+# they are synthesised obliques that never fetch this file. The eight pull-quotes on
+# the rubric page are the whole of the italic's use, which is what makes its narrow
+# character set below knowable. See FONTS.md.
 $INSTANCER -q -o "$WORK/SourceSerif4-Italic-limited.ttf" \
   "$WORK/SourceSerif4Variable-Italic.ttf" wght=400:700 opsz=20
 
 echo "== subsetting =="
-sub() {  # sub <in> <out>
+sub() {  # sub <in> <out> [unicodes]
   $SUBSET "$1" \
     --output-file="$2" \
     --flavor=woff2 \
-    --unicodes="$UNICODES" \
+    --unicodes="${3:-$UNICODES}" \
     --layout-features+="$FEATURES" \
     --name-IDs='*' \
     --notdef-outline \
@@ -159,7 +194,10 @@ sub() {  # sub <in> <out>
 
 sub "$WORK/Archivo-limited.ttf"              "$OUT/archivo-subset.woff2"
 sub "$WORK/SourceSerif4-Roman-limited.ttf"   "$OUT/source-serif-4-subset.woff2"
-sub "$WORK/SourceSerif4-Italic-limited.ttf"  "$OUT/source-serif-4-italic-subset.woff2"
+# The italic takes its own, much narrower set — see tools/font-subsets.json for the
+# measurement behind it. It is the only face on the site whose declared characters are
+# not the shared set, because it is the only one that renders a knowable handful of them.
+sub "$WORK/SourceSerif4-Italic-limited.ttf"  "$OUT/source-serif-4-italic-subset.woff2" "$ITALIC_UNICODES"
 sub "$WORK/IBMPlexMono-Regular.ttf"          "$OUT/ibm-plex-mono-400-subset.woff2"
 
 echo "== licences =="

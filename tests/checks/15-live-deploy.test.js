@@ -32,7 +32,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { TARGET, htmlFiles, urlFor, SITE } from '../lib/harness.js';
-import { REQUIRED_HEADERS, FORBIDDEN_IN_CSP, parseHeadersFile } from '../lib/posture.js';
+import { evaluateHeaders, parseHeadersFile } from '../lib/posture.js';
 import { survey } from '../lib/population.js';
 
 const LIVE = process.env.ORDOIA_LIVE?.replace(/\/+$/, '');
@@ -203,21 +203,19 @@ test('check 15 — the security headers are on the wire, not just in the file', 
   assert.ok(r.ok, `the site root is unreachable — ${r.error}`);
   const got = r.res.headers;
 
-  const missing = REQUIRED_HEADERS.filter(({ name, must }) => {
-    const value = got.get(name.toLowerCase());
-    return !value || !must.test(value);
-  }).map((h) => h.name);
-
+  // The same evaluator check 14 runs over `_headers`, backed by a live Headers object
+  // instead of a parsed block. Each check used to write its own pass over the shared
+  // table, and check 14's was wrong — see the header of tests/lib/posture.js. One
+  // evaluator is the only way the file-level and wire-level verdicts cannot drift.
+  const findings = evaluateHeaders((name) => got.get(name.toLowerCase()));
   assert.deepEqual(
-    missing,
+    findings,
     [],
-    `the host is not sending headers the build declared: ${missing.join(', ')}. ` +
-      `_headers is in the deploy directory but the host did not apply it.`
+    `what the host returns does not match the posture the build declared:\n  ` +
+      `${findings.join('\n  ')}\n` +
+      `_headers is in the deploy directory; either the host did not apply it, or it ` +
+      `applied it and then widened the result.`
   );
-
-  const csp = got.get('content-security-policy') || '';
-  const widened = FORBIDDEN_IN_CSP.filter(({ re }) => re.test(csp)).map((f) => f.name);
-  assert.deepEqual(widened, [], `the CSP on the wire is wider than the one built: ${widened.join(', ')}`);
 
   // Cloudflare Pages adds `Access-Control-Allow-Origin: *` to every static response
   // unless `_headers` removes it. Nothing here is meant to be read cross-origin.
