@@ -58,6 +58,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { withSite, REPO_ROOT } from '../lib/harness.js';
 import { sentences } from '../lib/lexicon.js';
+import { survey } from '../lib/population.js';
 
 const DATA_DIR = path.join(REPO_ROOT, 'src', '_data');
 const COPY_DIR = path.join(DATA_DIR, 'copy');
@@ -256,11 +257,17 @@ test('check 12 — rendered prose traces back to the copy source or to a logged 
   if (!corpus) assert.fail('no copy source of truth — see the first check in this file');
 
   const untraced = [];
+  const s = survey({
+    pages: 'pages loaded',
+    blocks: 'prose blocks read',
+    sentences: `sentences of at least ${MIN_WORDS} words checked against the corpus`,
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const blocks = await page.evaluate((selector) =>
         [...document.querySelectorAll(selector)]
           .filter((el) => !el.closest('.vh'))
@@ -274,10 +281,13 @@ test('check 12 — rendered prose traces back to the copy source or to a logged 
           .map((el) => (el.innerText || el.textContent || '').trim())
           .filter(Boolean), PROSE);
 
+      s.count('blocks', blocks.length);
+
       for (const block of blocks) {
         for (const raw of units(block)) {
           const sentence = normalise(raw);
           if (words(sentence).length < MIN_WORDS) continue;
+          s.count('sentences');
           if (traces(corpus, sentence)) continue;
           untraced.push(`${url}: "${raw.trim().slice(0, 110)}"`);
         }
@@ -288,9 +298,8 @@ test('check 12 — rendered prose traces back to the copy source or to a logged 
 
   const unique = [...new Set(untraced)];
   const sample = unique.slice(0, 12);
-  assert.deepEqual(
-    sample,
-    [],
+  s.failAll(sample);
+  s.report(
     `${unique.length} rendered sentence(s) appear in neither the copy source nor the change ` +
       `log, so they were written into a template rather than a content file:\n  ${sample.join('\n  ')}`
   );

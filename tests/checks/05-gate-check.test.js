@@ -18,6 +18,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSource, isRubricOrScorecardRoute } from '../lib/harness.js';
+import { survey } from '../lib/population.js';
 import { ledgerFor } from '../lib/allowances.js';
 
 const GATES = [
@@ -33,9 +34,12 @@ const GATES = [
 test('check 5 — no gate on any route', async () => {
   const ledger = await ledgerFor(5);
   const violations = [];
+  const s = survey({ sources: 'source files scanned', markup: 'characters of markup scanned' });
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
+      s.count('sources');
+      s.count('markup', html.length);
       for (const { name, re } of GATES) {
         const m = html.match(re);
         if (!m) continue;
@@ -46,20 +50,33 @@ test('check 5 — no gate on any route', async () => {
     }
   });
 
-  assert.deepEqual(violations, [], `a gate stands between a reader and an artifact:\n  ${violations.join('\n  ')}`);
+  s.failAll(violations);
+  s.report(`a gate stands between a reader and an artifact:\n  ${violations.join('\n  ')}`);
   assert.deepEqual(ledger.unused().map((a) => a.id), [], 'stale check-5 allowances');
 });
 
 test('check 5 — the only contact path is mailto:', async () => {
   const violations = [];
   const mailtos = [];
+  // `mailtos` was already guarded here, before the rest of the suite was. It is expressed
+  // as a population so the rule is uniform, and because it is the strongest example of why
+  // the rule exists: no mailto: at all is a different failure from a gated one, and this
+  // check is the only thing standing between the site and having no contact path.
+  const s = survey({
+    sources: 'source files scanned',
+    hrefs: 'href attributes examined',
+    mailtos: 'mailto: links found',
+  });
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
+      s.count('sources');
       for (const m of html.matchAll(/href\s*=\s*["']([^"']+)["']/gi)) {
+        s.count('hrefs');
         const href = m[1];
         if (href.startsWith('mailto:')) {
           mailtos.push(`${url} -> ${href}`);
+          s.count('mailtos');
           continue;
         }
         // Anything pointing at a form-hosting or capture service.
@@ -70,10 +87,6 @@ test('check 5 — the only contact path is mailto:', async () => {
     }
   });
 
-  assert.deepEqual(violations, [], `a capture path exists:\n  ${violations.join('\n  ')}`);
-  assert.ok(
-    mailtos.length > 0,
-    'no mailto: anywhere — the site has no contact path at all, which is a different failure ' +
-      'from having a gated one but is still a failure'
-  );
+  s.failAll(violations);
+  s.report(`a capture path exists:\n  ${violations.join('\n  ')}`);
 });

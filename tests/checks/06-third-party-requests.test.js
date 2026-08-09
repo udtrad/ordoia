@@ -22,16 +22,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 
 test('check 6 — every runtime request stays on our own origin', async () => {
   const ledger = await ledgerFor(6);
   const offOrigin = [];
+  // The population is *requests observed*, not off-origin requests. Those are the
+  // findings, and they are supposed to be zero. A page that failed to load also makes zero
+  // off-origin requests, and this check is the whole evidence for the no-consent-banner
+  // posture — so it has to be able to tell "nothing left our origin" apart from "nothing
+  // happened".
+  const s = survey({
+    pages: 'pages loaded',
+    requests: 'runtime requests observed',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
 
     page.on('request', (req) => {
+      s.count('requests');
       const url = req.url();
       if (url.startsWith(origin) || url.startsWith('data:') || url.startsWith('about:')) return;
       offOrigin.push({ page: page.url().replace(origin, '') || '/', url, type: req.resourceType() });
@@ -39,6 +50,7 @@ test('check 6 — every runtime request stays on our own origin', async () => {
 
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'networkidle' });
+      s.count('pages');
     }
     await context.close();
   });
@@ -50,9 +62,8 @@ test('check 6 — every runtime request stays on our own origin', async () => {
   // De-duplicate; the same font CSS on seven pages is one defect, not seven.
   const unique = [...new Set(violations)].sort();
 
-  assert.deepEqual(
-    unique,
-    [],
+  s.failAll(unique);
+  s.report(
     `runtime requests left our origin — the no-consent-banner claim depends on this ` +
       `being empty:\n  ${unique.join('\n  ')}`
   );
@@ -77,12 +88,15 @@ test('check 6 — no off-origin references in the markup either', async () => {
   const { withSource } = await import('../lib/harness.js');
   const ledger = await ledgerFor(6);
   const violations = [];
+  const s = survey({ sources: 'source files scanned', tags: 'tags examined' });
 
   const METADATA_RELS = /^(canonical|alternate|author|license|me)$/i;
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
+      s.count('sources');
       for (const [, rawTag, attrs] of html.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+        s.count('tags');
         const tag = rawTag.toLowerCase();
         if (tag === 'a') continue;
 
@@ -100,9 +114,6 @@ test('check 6 — no off-origin references in the markup either', async () => {
   });
 
   const unique = [...new Set(violations)].sort();
-  assert.deepEqual(
-    unique,
-    [],
-    `off-origin subresource references in markup:\n  ${unique.join('\n  ')}`
-  );
+  s.failAll(unique);
+  s.report(`off-origin subresource references in markup:\n  ${unique.join('\n  ')}`);
 });

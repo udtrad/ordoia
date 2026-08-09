@@ -28,6 +28,7 @@ import { TARGET, IS_HANDOVER, htmlFiles, urlFor, SITE, printedAddresses } from '
 const read = (name) => readFile(path.join(TARGET, name), 'utf8');
 
 import { REQUIRED_HEADERS, FORBIDDEN_IN_CSP } from '../lib/posture.js';
+import { survey } from '../lib/population.js';
 
 test('check 14 — the security headers exist and say what §9 requires', async (t) => {
   if (IS_HANDOVER) return t.skip('the handover ships no deploy configuration — that is the point');
@@ -104,12 +105,21 @@ test('check 14 — robots, sitemap and a real 404 are all built', async (t) => {
   const listed = [...sitemap.matchAll(/<loc>https:\/\/[^/]+([^<]*)<\/loc>/g)].map((m) => m[1]).sort();
   const built = (await htmlFiles()).map(urlFor).filter((u) => u !== '/404.html').sort();
 
-  assert.deepEqual(
-    listed,
-    built,
-    `sitemap.xml does not match what was built.\n  listed: ${listed.join(' ')}\n  built:  ${built.join(' ')}`
-  );
-  assert.ok(!listed.includes('/404.html'), 'the sitemap lists the 404 page, which is a list of what does not exist');
+  // Both sides can go empty: `listed` if the <loc> shape changes, `built` if htmlFiles()
+  // finds nothing. Two empty arrays are deepEqual, so without this the strongest assertion
+  // in the test would pass on a build that produced no pages at all.
+  const s = survey({ listed: 'addresses listed in sitemap.xml', built: 'HTML pages built' });
+  s.count('listed', listed.length);
+  s.count('built', built.length);
+  if (listed.join('\n') !== built.join('\n')) {
+    s.fail(
+      `sitemap.xml does not match what was built.\n  listed: ${listed.join(' ')}\n  built:  ${built.join(' ')}`
+    );
+  }
+  if (listed.includes('/404.html')) {
+    s.fail('the sitemap lists the 404 page, which is a list of what does not exist');
+  }
+  s.report('the sitemap must list every built page and nothing else');
 });
 
 test('check 14 — every printed permanent address has an extensionless redirect', async (t) => {
@@ -123,29 +133,34 @@ test('check 14 — every printed permanent address has an extensionless redirect
   // operational failure this site can have.
   const printed = new Set();
   const { withSource } = await import('../lib/harness.js');
-  await withSource(({ sources }) => {
-    for (const { html } of sources) printedAddresses(html, printed);
+
+  // This is the guard lesson 8 produced. Without it, a domain change turns the matcher
+  // into a no-op: `printed` goes empty, `unrouted` goes empty, and the assertion below
+  // passes while asserting nothing — on the one check that defends §9's worst-case
+  // failure. Check 9 carried it from the start; this check did not, and a domain change is
+  // what exposed that. It is expressed through survey() now, and the same discipline has
+  // since been applied to every other check in the suite.
+  const s = survey({
+    sources: 'source files scanned',
+    printed: `addresses on ${SITE.domain} printed as text`,
   });
 
-  // Without this, a domain change turns the matcher above into a no-op: `printed` goes
-  // empty, `unrouted` goes empty, and the assertion below passes while asserting nothing —
-  // on the one check that defends §9's worst-case failure. Check 9 has carried this guard
-  // since it was written; this check did not, and a domain change is what exposed it.
-  assert.ok(
-    printed.size > 0,
-    `no address on ${SITE.domain} is printed anywhere in the source, so this check has ` +
-      `nothing to verify. Either the printed addresses are gone, or the matcher no longer ` +
-      `matches the domain in src/_data/site.json.`
-  );
+  await withSource(({ sources }) => {
+    for (const { html } of sources) {
+      s.count('sources');
+      printedAddresses(html, printed);
+    }
+  });
+
+  s.count('printed', printed.size);
 
   const unrouted = [...printed]
     .filter((p) => p !== '/' && !p.endsWith('/'))
     .filter((p) => !new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s`, 'm').test(redirects))
     .sort();
 
-  assert.deepEqual(
-    unrouted,
-    [],
+  s.failAll(unrouted);
+  s.report(
     `a printed address has no redirect rule, so it depends on the host guessing:\n  ${unrouted.join('\n  ')}`
   );
 });

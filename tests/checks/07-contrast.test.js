@@ -42,6 +42,7 @@ import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
 import { contrastRatio, requiredRatio, AA_NON_TEXT } from '../lib/contrast.js';
+import { survey } from '../lib/population.js';
 
 /**
  * Elements whose visible line carries information rather than decoration.
@@ -145,15 +146,21 @@ function collectGraphics(selectors) {
 test('check 7 — every text pair meets WCAG AA', async () => {
   const ledger = await ledgerFor(7);
   const failures = new Map();
+  const s = survey({
+    pages: 'pages loaded',
+    runs: 'text runs with a computable contrast ratio',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1280, height: 900 });
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       for (const item of await page.evaluate(collectText)) {
         const ratio = contrastRatio(item.colour, item.bg);
         if (ratio === null) continue;
+        s.count('runs');
         const required = requiredRatio(item.size, item.weight);
         if (ratio >= required) continue;
         if (ledger.allows(url, item.sel)) continue;
@@ -171,7 +178,8 @@ test('check 7 — every text pair meets WCAG AA', async () => {
   });
 
   const list = [...failures.values()].sort();
-  assert.deepEqual(list, [], `text below WCAG AA:\n  ${list.join('\n  ')}`);
+  s.failAll(list);
+  s.report(`text below WCAG AA:\n  ${list.join('\n  ')}`);
   assert.deepEqual(ledger.unused().map((a) => a.id), [], 'stale check-7 allowances');
 });
 
@@ -179,12 +187,26 @@ test('check 7 — the measure itself meets 3:1 as a load-bearing graphic', async
   const ledger = await ledgerFor(7);
   const failures = new Map();
 
+  // `graphics` is the population that matters in this file. This test found the worst
+  // defect in the whole baseline — not-assessed ticks drawn in the same colour as the rule
+  // they sit on, measuring 1.00:1, literally invisible — and it found it by resolving
+  // LOAD_BEARING_GRAPHICS against the page. Rename `.measure__rule` or `.tick` and the
+  // selector resolves to nothing, no ratio is ever computed, no failure is ever recorded,
+  // and this test reports green having looked at no instrument at all. Measured against an
+  // empty directory on 2026-08-09, that is exactly what it did.
+  const s = survey({
+    pages: 'pages loaded',
+    graphics: `load-bearing graphics measured (${LOAD_BEARING_GRAPHICS.join(', ')})`,
+  });
+
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     await page.setViewportSize({ width: 1280, height: 900 });
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       for (const g of await page.evaluate(collectGraphics, LOAD_BEARING_GRAPHICS)) {
+        s.count('graphics');
         const ratio = contrastRatio(g.ink, g.bg);
         if (ratio === null || ratio >= AA_NON_TEXT) continue;
         if (ledger.allows(url, g.sel)) continue;
@@ -198,9 +220,8 @@ test('check 7 — the measure itself meets 3:1 as a load-bearing graphic', async
   });
 
   const list = [...failures.values()].sort();
-  assert.deepEqual(
-    list,
-    [],
+  s.failAll(list);
+  s.report(
     `the measure's own line is below 3:1. It is not decoration — it is the instrument ` +
       `every claim on this site is drawn against:\n  ${list.join('\n  ')}`
   );

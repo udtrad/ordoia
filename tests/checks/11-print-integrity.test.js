@@ -19,6 +19,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
+import { survey } from '../lib/population.js';
 
 /** A4 at 96dpi, less the 16mm/14mm margins the stylesheet sets. */
 const A4_CONTENT_WIDTH_PX = (210 - 28) * (96 / 25.4); // ≈ 688px
@@ -27,6 +28,13 @@ const PRINTED_ROUTES = [/scorecard/, /oal/];
 
 test('check 11 — nothing overflows the A4 content width in print', async () => {
   const overflows = [];
+  // PRINTED_ROUTES is a filter over the page list, so it is the thing that can silently
+  // match nothing — rename the scorecard or rubric route and this check would inspect no
+  // pages and report that nothing overflows A4.
+  const s = survey({
+    routes: `printed routes matched (${PRINTED_ROUTES.join(', ')})`,
+    boxes: 'elements measured against the A4 content width',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -35,9 +43,12 @@ test('check 11 — nothing overflows the A4 content width in print', async () =>
 
     for (const { url } of pages.filter((p) => PRINTED_ROUTES.some((r) => r.test(p.url)))) {
       await page.goto(origin + url, { waitUntil: 'load' });
-      const wide = await page.evaluate((limit) => {
+      s.count('routes');
+      const { wide, seen } = await page.evaluate((limit) => {
         const out = [];
+        let count = 0;
         for (const el of document.querySelectorAll('.measure, .row, table, .paper, .stamp, .na')) {
+          count += 1;
           const r = el.getBoundingClientRect();
           if (r.width > limit + 1) {
             out.push({
@@ -46,19 +57,25 @@ test('check 11 — nothing overflows the A4 content width in print', async () =>
             });
           }
         }
-        return out;
+        return { wide: out, seen: count };
       }, A4_CONTENT_WIDTH_PX);
 
+      s.count('boxes', seen);
       for (const w of wide) overflows.push(`${url}: ${w.sel} is ${w.width}px wide, past the ${Math.round(A4_CONTENT_WIDTH_PX)}px A4 content width`);
     }
     await page.close();
   });
 
-  assert.deepEqual(overflows, [], `content clipped by the A4 page box:\n  ${overflows.join('\n  ')}`);
+  s.failAll(overflows);
+  s.report(`content clipped by the A4 page box:\n  ${overflows.join('\n  ')}`);
 });
 
 test('check 11 — every measure keeps its stamp and its labels in print', async () => {
   const lost = [];
+  const s = survey({
+    routes: `printed routes matched (${PRINTED_ROUTES.join(', ')})`,
+    measures: '.measure elements inspected in print',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -67,6 +84,11 @@ test('check 11 — every measure keeps its stamp and its labels in print', async
 
     for (const { url } of pages.filter((p) => PRINTED_ROUTES.some((r) => r.test(p.url)))) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('routes');
+      s.count(
+        'measures',
+        await page.evaluate(() => document.querySelectorAll('.measure').length)
+      );
       const problems = await page.evaluate(() => {
         const out = [];
         for (const m of document.querySelectorAll('.measure')) {
@@ -102,13 +124,17 @@ test('check 11 — every measure keeps its stamp and its labels in print', async
     await page.close();
   });
 
-  assert.deepEqual(lost, [], `print loses part of the instrument:\n  ${lost.join('\n  ')}`);
+  s.failAll(lost);
+  s.report(`print loses part of the instrument:\n  ${lost.join('\n  ')}`);
 });
 
 test('check 11 — the scorecard renders to a real multi-page A4 PDF', async () => {
+  const s = survey({ scorecard: 'a scorecard route to print' });
+
   await withSite(async ({ origin, pages, browser }) => {
     const scorecard = pages.find((p) => /scorecard/.test(p.url));
     assert.ok(scorecard, 'no scorecard route to print');
+    s.count('scorecard');
 
     const page = await browser.newPage();
     await page.goto(origin + scorecard.url, { waitUntil: 'load' });
@@ -122,5 +148,7 @@ test('check 11 — the scorecard renders to a real multi-page A4 PDF', async () 
     const text = pdf.toString('latin1');
     const counts = [...text.matchAll(/\/Type\s*\/Page[^s]/g)].length;
     assert.ok(counts >= 1, 'the PDF reports no pages');
+
+    s.report('the scorecard must render to a real A4 PDF');
   });
 });

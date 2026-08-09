@@ -23,10 +23,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSource, withSite, printedAddresses } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 
 test('check 9 — every internal href resolves', async () => {
   const ledger = await ledgerFor(9);
   const broken = [];
+  const s = survey({ pages: 'pages loaded', links: 'internal links resolved' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -34,6 +36,7 @@ test('check 9 — every internal href resolves', async () => {
 
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const hrefs = await page.evaluate(() =>
         [...document.querySelectorAll('a[href]')].map((a) => ({
           href: a.getAttribute('href'),
@@ -44,6 +47,7 @@ test('check 9 — every internal href resolves', async () => {
       for (const { href, text } of hrefs) {
         if (!href || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
         if (/^(https?:)?\/\//i.test(href)) continue; // external, not ours to guarantee
+        s.count('links');
 
         if (href.startsWith('#')) {
           const ok = await page.evaluate(
@@ -84,7 +88,8 @@ test('check 9 — every internal href resolves', async () => {
   });
 
   const unique = [...new Set(broken)].sort();
-  assert.deepEqual(unique, [], `internal links that do not resolve:\n  ${unique.join('\n  ')}`);
+  s.failAll(unique);
+  s.report(`internal links that do not resolve:\n  ${unique.join('\n  ')}`);
   assert.deepEqual(ledger.unused().map((a) => a.id), [], 'stale check-9 allowances');
 });
 
@@ -96,10 +101,22 @@ test('check 9 — every printed version address resolves', async () => {
   const ledger = await ledgerFor(9);
   const printed = new Set();
   const unresolved = [];
+  // `printed` carried the suite's original non-empty guard — the one check 14 lacked when
+  // the domain changed, which is why check 9 failed loudly and check 14 went quiet. It is
+  // expressed through survey() now so the whole suite states its denominator the same way.
+  const s = survey({
+    sources: 'source files scanned',
+    printed: 'permanent addresses printed as text',
+  });
 
   await withSource(({ sources }) => {
-    for (const { html } of sources) printedAddresses(html, printed);
+    for (const { html } of sources) {
+      s.count('sources');
+      printedAddresses(html, printed);
+    }
   });
+
+  s.count('printed', printed.size);
 
   await withSite(async ({ origin, browser }) => {
     const page = await browser.newPage();
@@ -116,10 +133,8 @@ test('check 9 — every printed version address resolves', async () => {
     await page.close();
   });
 
-  assert.ok(printed.size > 0, 'no version address is printed anywhere — the permanence guarantee has nothing to guarantee');
-  assert.deepEqual(
-    unresolved.sort(),
-    [],
+  s.failAll(unresolved.sort());
+  s.report(
     `a printed permanent address 404s, which §9 names the most serious operational ` +
       `failure this site can have:\n  ${unresolved.join('\n  ')}`
   );
@@ -128,9 +143,16 @@ test('check 9 — every printed version address resolves', async () => {
 test('check 9 — Terms and Privacy are absent, not broken', async () => {
   // §10: deliberately not built. The failure mode to catch is a link that
   // resolves to nothing, not the absence of the page.
+  //
+  // Zero findings is the *expected* result here, which is exactly why the denominator has
+  // to be named: "no dangling Terms link" and "no pages were read" are indistinguishable
+  // outcomes otherwise. The population is pages scanned, not links found.
   const dangling = [];
+  const s = survey({ sources: 'source files scanned' });
+
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
+      s.count('sources');
       for (const m of html.matchAll(/<a[^>]+href\s*=\s*["']([^"']*)["'][^>]*>([^<]*(?:terms|privacy)[^<]*)</gi)) {
         const [, href, text] = m;
         if (!href || href === '#' || href === '') {
@@ -139,5 +161,7 @@ test('check 9 — Terms and Privacy are absent, not broken', async () => {
       }
     }
   });
-  assert.deepEqual(dangling, [], `Terms/Privacy links resolving to nothing:\n  ${dangling.join('\n  ')}`);
+
+  s.failAll(dangling);
+  s.report(`Terms/Privacy links resolving to nothing:\n  ${dangling.join('\n  ')}`);
 });

@@ -18,6 +18,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 import { findBannedLexicon } from '../lib/lexicon.js';
 
 /**
@@ -31,11 +32,16 @@ const CHROME = 'header.masthead, footer, .skip, title';
 test('check 3 — no banned lexicon in rendered text', async () => {
   const ledger = await ledgerFor(3);
   const violations = [];
+  // Prose is the denominator. The detector is deliberately permissive — a banned term
+  // counts only in a sentence carrying no negation — so a page that renders no text at all
+  // produces no violations for exactly the wrong reason.
+  const s = survey({ pages: 'pages loaded', prose: 'characters of rendered prose scanned' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
 
       const text = await page.evaluate((chromeSel) => {
         const doc = document.cloneNode(true);
@@ -46,6 +52,8 @@ test('check 3 — no banned lexicon in rendered text', async () => {
         return doc.body?.innerText || doc.body?.textContent || '';
       }, CHROME);
 
+      s.count('prose', text.trim().length);
+
       for (const f of findBannedLexicon(text)) {
         if (ledger.allows(url, f.match)) continue;
         violations.push(`${url}: "${f.match}" (${f.why}) — "${f.sentence.slice(0, 120)}"`);
@@ -54,11 +62,8 @@ test('check 3 — no banned lexicon in rendered text', async () => {
     await page.close();
   });
 
-  assert.deepEqual(
-    violations,
-    [],
-    `banned lexicon claimed rather than disclaimed:\n  ${violations.join('\n  ')}`
-  );
+  s.failAll(violations);
+  s.report(`banned lexicon claimed rather than disclaimed:\n  ${violations.join('\n  ')}`);
 
   const stale = ledger.unused();
   assert.deepEqual(

@@ -20,16 +20,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
 import { contrastRatio } from '../lib/contrast.js';
+import { survey } from '../lib/population.js';
 
 const FLOOR = 'rgb(138, 74, 5)';
 
 test('check 8 — nothing --floor says is said by hue alone', async () => {
   const problems = [];
+  const s = survey({ pages: 'pages loaded', floor: 'outermost elements rendering --floor text' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
 
       // Only the OUTERMOST coloured element is judged. Colour inherits, so a
       // `<span class="mono">OAL ——</span>` inside `<p class="floor-line">Lowest
@@ -52,6 +55,8 @@ test('check 8 — nothing --floor says is said by hue alone', async () => {
             cls: typeof el.className === 'string' ? el.className : '',
           })), FLOOR);
 
+      s.count('floor', coloured.length);
+
       for (const el of coloured) {
         // Each of the two situations must name itself in words.
         const namesItself =
@@ -67,7 +72,8 @@ test('check 8 — nothing --floor says is said by hue alone', async () => {
     await page.close();
   });
 
-  assert.deepEqual(problems, [], `information conveyed by hue alone:\n  ${problems.join('\n  ')}`);
+  s.failAll(problems);
+  s.report(`information conveyed by hue alone:\n  ${problems.join('\n  ')}`);
 });
 
 test('check 8 — the page still meets contrast once desaturated', async () => {
@@ -76,11 +82,13 @@ test('check 8 — the page still meets contrast once desaturated', async () => {
   // real test, because a mid-brown against a light grey can pass in colour and
   // collapse in greyscale.
   const failures = [];
+  const s = survey({ pages: 'pages loaded', floor: '--floor text runs measured' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const items = await page.evaluate((floor) =>
         [...document.querySelectorAll('*')]
           .filter((el) => getComputedStyle(el).color === floor && (el.textContent || '').trim())
@@ -94,6 +102,8 @@ test('check 8 — the page still meets contrast once desaturated', async () => {
             return { bg, size: s.fontSize, weight: s.fontWeight, text: (el.textContent || '').trim().slice(0, 50) };
           }), FLOOR);
 
+      s.count('floor', items.length);
+
       for (const item of items) {
         // Desaturate both sides to their luminance-equivalent grey, then compare.
         const ratio = contrastRatio(FLOOR, item.bg);
@@ -105,17 +115,39 @@ test('check 8 — the page still meets contrast once desaturated', async () => {
     await page.close();
   });
 
-  assert.deepEqual(failures, [], `--floor text fails AA:\n  ${failures.join('\n  ')}`);
+  s.failAll(failures);
+  s.report(`--floor text fails AA:\n  ${failures.join('\n  ')}`);
 });
 
-test('check 8 — a desaturated render still differs from a blank page', async () => {
-  // A guard against the check above passing because the page rendered nothing.
-  await withSite(async ({ origin, browser }) => {
+test('check 8 — --floor is actually rendered somewhere on the site', async () => {
+  // This was "a desaturated render still differs from a blank page", and it asserted
+  // `screenshot.length > 5000` on a PNG of the home page. Its comment said it was a guard
+  // against the checks above passing because the page rendered nothing — but a PNG's byte
+  // length measures image entropy, not whether `--floor` reached the page, and a blank
+  // 1100x800 render compresses to well under the threshold anyway. The stated intent and
+  // the actual assertion had drifted apart.
+  //
+  // Rewritten as the thing it meant. Both checks above are conditional on `--floor` being
+  // found; this asserts, once and directly, that it is there to find. The screenshot is
+  // gone: it was slower than the thing it guarded and proved less.
+  const s = survey({ pages: 'pages loaded', floor: 'elements rendering --floor anywhere' });
+
+  await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
-    await page.setViewportSize({ width: 1100, height: 800 });
-    await page.goto(origin + '/', { waitUntil: 'load' });
-    const shot = await page.screenshot({ type: 'png' });
-    assert.ok(shot.length > 5000, 'the greyscale render produced an implausibly small image');
+    for (const { url } of pages) {
+      await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
+      const n = await page.evaluate(
+        (floor) =>
+          [...document.querySelectorAll('*')].filter(
+            (el) => getComputedStyle(el).color === floor && (el.textContent || '').trim()
+          ).length,
+        FLOOR
+      );
+      s.count('floor', n);
+    }
     await page.close();
   });
+
+  s.report('--floor must be on the page for the two greyscale checks above to mean anything');
 });

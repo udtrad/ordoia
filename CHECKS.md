@@ -50,6 +50,60 @@ are check 15, which needs a live host and skips unless `ORDOIA_LIVE` is set. Tha
 deliberate: a check that needs the network must not be able to block a build by being
 offline. `npm test` remains hermetic and remains the gate.
 
+**Updated 2026-08-09: 55 tests, 48 pass, 0 fail, 7 skipped.** Three tests were added by
+check 16; the seven skips are unchanged.
+
+## Baseline D — the empty target, 2026-08-09
+
+```bash
+npm run test:empty     # ORDOIA_TARGET=tests/fixtures/empty-target
+```
+
+Baselines A, B and C each prove something a check *found*. D proves the opposite and
+harder thing: that a check handed **nothing** says so, instead of reporting green because
+it found no violations among no subjects.
+
+`tests/fixtures/empty-target/` contains no HTML, so `htmlFiles()` returns `[]` and every
+check whose population is the built site has nothing to look at.
+
+**Before the population fix:**
+
+```
+33 pass, 12 fail, 7 skipped — against a directory containing nothing at all
+```
+
+Eight of those passes were honest — check 0 and three controls tests never touch the
+site, and two of check 12's tests read the repo root rather than the target.
+**Twenty-three were site-touching checks reporting green having examined an empty page
+list**, including `07 — the measure itself meets 3:1`, the check that found the 1.00:1
+invisible tick, and `15 — the bytes served are the bytes built`.
+
+**After:**
+
+```
+13 pass, 35 fail, 7 skipped
+```
+
+The thirteen are exactly the tests that never reach the site: check 0's five, three
+controls tests, check 12's two file-readers, and check 16's three source-scanners.
+**Zero site-touching tests pass vacuously.** Each of the thirty-five names the population
+that came back empty.
+
+Baseline D is a committed fixture and a named script rather than a demonstration someone
+performed once, so unlike a one-off it cannot rot.
+
+**What Baseline D does not prove.** With zero pages the selectors are never queried, so
+it cannot show that a *renamed selector* goes red. That needs the per-selector protocol —
+break the selector, run against the real build, observe. Recorded below for check 7:
+
+| Check | Population | How it was zeroed | Before the guard | After |
+|---|---|---|---|---|
+| 7 — load-bearing graphic | `.measure__rule`, `.measure__rule .tick` | renamed to `.measure__rule-XX` | **3 pass, 0 fail** | **red**, naming the empty population |
+
+Row 1 is the whole argument for this work in one line: the committed check that found the
+worst defect in the baseline, reporting green against the real site with its selector
+renamed.
+
 ## Baseline C — the live host, 2026-08-08
 
 Check 15 was written and run **before anything was deployed**, against
@@ -226,10 +280,36 @@ direction — measuring the shape of the markup rather than what a reader gets.
    handover legible — without it, baseline B still reported 8 failures but check 9
    failed for the wrong reason, which is its own kind of wrong.
 
+9. **Number 8 was not one defect. It was twenty-three, and the fix had been applied to
+   two of them.** On 2026-08-09 the suite was pointed at an empty directory — the obvious
+   experiment, never run — and **33 of 52 tests passed against nothing at all**. Setting
+   aside check 0 and the controls, twenty-three site-touching checks reported green having
+   examined an empty page list. Among them: `07 — the measure itself meets 3:1`, the check
+   that found the 1.00:1 invisible tick, and `15 — the bytes served are the bytes built`,
+   which runs in CI immediately after a deploy.
+
+   The generalisation that made it tractable: **vacuity is never `findings === 0`, it is
+   always `population === 0`.** Every check here asserts that a list of violations is
+   empty; the bug is never the numerator, it is that the denominator was empty too. Once
+   those are separated the apparent exceptions dissolve — check 9's "Terms and Privacy are
+   absent" has population *pages scanned*, check 6's "zero off-origin requests" has
+   population *requests observed*, and both legitimately expect zero findings. No check
+   needed exempting. Several needed their population named correctly.
+
+   `tests/lib/population.js` makes naming it compulsory rather than available: `survey()`
+   requires at least one declared population, and `report()` checks every one is non-empty
+   *before* it looks at the findings. A helper you can forget to call is hand-guarding with
+   extra steps — which is precisely how check 14 shipped without the guard while check 9
+   had it. Check 16 then enforces the rule on every future check.
+
 The pattern is worth keeping in view: each of these would have shipped as a
 passing check that silently measured nothing, which is the OAL 1 failure the
 rubric describes — a behaviour requested in a comment with nothing verifying it.
 Number 8 is the sharpest case, because the check did not break — it kept passing.
+Number 9 is the most uncomfortable, because the lesson had already been learned, written
+down here, and applied to two of the seventeen places it applied to. **A lesson recorded
+and not generalised is a lesson the next reader has to learn again** — so it is now a
+check rather than a paragraph.
 
 ## What check 12 can and cannot establish
 

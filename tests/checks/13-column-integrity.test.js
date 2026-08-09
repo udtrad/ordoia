@@ -23,6 +23,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
+import { survey } from '../lib/population.js';
 
 /** Desktop, mobile, and 1280px seen at 200% browser zoom. */
 const DESKTOP = { width: 1280, height: 900 };
@@ -31,6 +32,13 @@ const ZOOMED = { width: 640, height: 800 };
 
 test('check 13 — the content column is the content column, not the rail', async () => {
   const narrow = [];
+  // This check exists because the rubric once rendered at 152px inside the rail's column.
+  // `main .body, main .paper` is the selector that found it, and if it stops matching the
+  // check reports that no content is in the rail — having looked at no content.
+  const s = survey({
+    pages: 'pages loaded',
+    blocks: 'main .body / main .paper blocks measured',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -38,6 +46,11 @@ test('check 13 — the content column is the content column, not the rail', asyn
 
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
+      s.count(
+        'blocks',
+        await page.evaluate(() => document.querySelectorAll('main .body, main .paper').length)
+      );
       const found = await page.evaluate(() => {
         const rail = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail')) || 0;
         // --rail is in rem; resolve against the root font size.
@@ -68,11 +81,8 @@ test('check 13 — the content column is the content column, not the rail', asyn
     await page.close();
   });
 
-  assert.deepEqual(
-    narrow,
-    [],
-    `content rendering in the rail's column:\n  ${narrow.join('\n  ')}`
-  );
+  s.failAll(narrow);
+  s.report(`content rendering in the rail's column:\n  ${narrow.join('\n  ')}`);
 });
 
 test('check 13 — nothing overflows sideways at 320px or at 200% zoom', async () => {
@@ -80,6 +90,7 @@ test('check 13 — nothing overflows sideways at 320px or at 200% zoom', async (
   // horizontally to finish a sentence on is a page they stop reading, and the
   // scorecard is the artifact most likely to be opened on a phone in a meeting.
   const overflows = [];
+  const s = survey({ renders: 'page renders measured (pages x viewports)' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -88,6 +99,7 @@ test('check 13 — nothing overflows sideways at 320px or at 200% zoom', async (
       await page.setViewportSize(size);
       for (const { url } of pages) {
         await page.goto(origin + url, { waitUntil: 'load' });
+        s.count('renders');
         const over = await page.evaluate(
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth
         );
@@ -97,7 +109,8 @@ test('check 13 — nothing overflows sideways at 320px or at 200% zoom', async (
     await page.close();
   });
 
-  assert.deepEqual(overflows, [], `horizontal overflow:\n  ${overflows.join('\n  ')}`);
+  s.failAll(overflows);
+  s.report(`horizontal overflow:\n  ${overflows.join('\n  ')}`);
 });
 
 test('check 13 — the untravelled span keeps its question at every breakpoint', async () => {
@@ -105,6 +118,12 @@ test('check 13 — the untravelled span keeps its question at every breakpoint',
   // It is the one piece of the measure that turns a graphic into an instrument, and
   // it is exactly the element a responsive tidy-up removes first.
   const lost = [];
+  // The span is the element a responsive tidy-up removes first — so "no span found" is the
+  // most likely way this check would stop meaning anything, and it must not read as a pass.
+  const s = survey({
+    renders: 'page renders measured (pages x viewports)',
+    spans: '.measure .span elements inspected',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -113,6 +132,11 @@ test('check 13 — the untravelled span keeps its question at every breakpoint',
       await page.setViewportSize(size);
       for (const { url } of pages) {
         await page.goto(origin + url, { waitUntil: 'load' });
+        s.count('renders');
+        s.count(
+          'spans',
+          await page.evaluate(() => document.querySelectorAll('.measure .span').length)
+        );
         const problems = await page.evaluate(() =>
           [...document.querySelectorAll('.measure .span')].map((span) => {
             const q = span.querySelector('.span__q');
@@ -131,5 +155,6 @@ test('check 13 — the untravelled span keeps its question at every breakpoint',
     await page.close();
   });
 
-  assert.deepEqual(lost, [], `the span lost its question:\n  ${lost.join('\n  ')}`);
+  s.failAll(lost);
+  s.report(`the span lost its question:\n  ${lost.join('\n  ')}`);
 });

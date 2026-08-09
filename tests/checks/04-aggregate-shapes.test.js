@@ -34,6 +34,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSource, withSite } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 
 /** Markup that can only exist to draw an aggregate. */
 const FORBIDDEN_MARKUP = [
@@ -74,9 +75,12 @@ const TOTAL_SHAPES = [
 test('check 4 — no markup that can draw an aggregate', async () => {
   const ledger = await ledgerFor(4);
   const violations = [];
+  const s = survey({ sources: 'source files scanned', markup: 'characters of markup scanned' });
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
+      s.count('sources');
+      s.count('markup', html.length);
       for (const { name, re } of FORBIDDEN_MARKUP) {
         const m = html.match(re);
         if (!m || ledger.allows(url, m[0])) continue;
@@ -93,18 +97,22 @@ test('check 4 — no markup that can draw an aggregate', async () => {
     }
   });
 
-  assert.deepEqual(violations, [], `aggregate-capable markup found:\n  ${violations.join('\n  ')}`);
+  s.failAll(violations);
+  s.report(`aggregate-capable markup found:\n  ${violations.join('\n  ')}`);
   assert.deepEqual(ledger.unused().map((a) => a.id), [], 'stale check-4 allowances');
 });
 
 test('check 4 — no numeric total across dimensions', async () => {
   const violations = [];
+  const s = survey({ pages: 'pages loaded', prose: 'characters of rendered text scanned' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const text = await page.evaluate(() => document.body.innerText || '');
+      s.count('prose', text.trim().length);
       for (const re of TOTAL_SHAPES) {
         for (const m of text.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))) {
           violations.push(`${url}: "${m[0]}"`);
@@ -114,11 +122,8 @@ test('check 4 — no numeric total across dimensions', async () => {
     await page.close();
   });
 
-  assert.deepEqual(
-    violations,
-    [],
-    `a number that reads as a total across dimensions:\n  ${violations.join('\n  ')}`
-  );
+  s.failAll(violations);
+  s.report(`a number that reads as a total across dimensions:\n  ${violations.join('\n  ')}`);
 });
 
 test('check 4 — the detectors still catch a real aggregate (controls)', () => {
@@ -182,11 +187,23 @@ test('check 4 — the measure keeps its fixed, non-data-driven geometry', async 
   // RATIONALE.md: the ratio is "fixed and identical on every dimension and every
   // page". A per-dimension curve would be an invented datum; worse, a
   // data-driven width is the first step toward a bar whose length can be summed.
+  //
+  // `assert.ok(seen.size <= 1)` was the assertion here, and **zero satisfies it**. Rename
+  // `.measure`, `.tick` or the `--p` custom property and this reported that the geometry
+  // was fixed, having found no geometry. Check 10 does the same Set-size assertion
+  // correctly — `size > 0` first, then `size === 1` — and is the specification for the
+  // shape below.
+  const s = survey({
+    pages: 'pages loaded',
+    geometries: 'distinct .measure tick geometries observed',
+  });
+
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     const seen = new Set();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const positions = await page.evaluate(() =>
         [...document.querySelectorAll('.measure')].map((m) =>
           [...m.querySelectorAll('.tick')]
@@ -198,10 +215,13 @@ test('check 4 — the measure keeps its fixed, non-data-driven geometry', async 
     }
     await page.close();
 
-    assert.ok(
-      seen.size <= 1,
-      `the measure's tick geometry varies between instances, so it is data-driven ` +
-        `rather than fixed: ${[...seen].join('  vs  ')}`
-    );
+    s.count('geometries', seen.size);
+    if (seen.size > 1) {
+      s.fail(
+        `the measure's tick geometry varies between instances, so it is data-driven ` +
+          `rather than fixed: ${[...seen].join('  vs  ')}`
+      );
+    }
+    s.report('the measure must have exactly one tick geometry across the whole site');
   });
 });

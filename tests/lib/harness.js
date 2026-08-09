@@ -22,15 +22,38 @@ import { fileURLToPath } from 'node:url';
 
 export const REPO_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../..');
 
-/** Where the checks look. `_site` when it exists, otherwise the repo root. */
+/**
+ * Where the checks look. `_site` unless `ORDOIA_TARGET` names somewhere else.
+ *
+ * There is no fallback. An earlier version returned the repo root when `_site` was
+ * missing, which meant a missing build was reported as eight failures about horizontal
+ * overflow and Google Fonts preconnects — the handover's real defects — rather than as
+ * "there is no build". The suite still exited non-zero, because the handover is red by
+ * design, so the gate was never at risk; the operator was simply told the wrong thing and
+ * sent after phantom CSS bugs. Guessing a target is not worth a misdiagnosis.
+ */
 export function resolveTarget() {
   const explicit = process.env.ORDOIA_TARGET;
-  if (explicit) return path.resolve(REPO_ROOT, explicit);
-  const built = path.join(REPO_ROOT, '_site');
-  return existsSync(built) ? built : REPO_ROOT;
+  const target = explicit ? path.resolve(REPO_ROOT, explicit) : path.join(REPO_ROOT, '_site');
+
+  if (!existsSync(target)) {
+    throw new Error(
+      explicit
+        ? `ORDOIA_TARGET points at ${target}, which does not exist.`
+        : `There is no build at ${target}. Run \`npm run build\` first, or \`npm run check\` ` +
+          `to do both. To check the frozen handover instead, run \`npm run test:handover\`.`
+    );
+  }
+  return target;
 }
 
 export const TARGET = resolveTarget();
+
+/**
+ * True only when the target *is* the repo root — which, since the fallback was removed,
+ * can happen only by typing `ORDOIA_TARGET=.` (what `npm run test:handover` does).
+ * It is no longer inferred from the filesystem, though the line still reads like it.
+ */
 export const IS_HANDOVER = TARGET === REPO_ROOT;
 
 /**

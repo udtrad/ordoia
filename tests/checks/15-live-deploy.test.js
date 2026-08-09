@@ -33,6 +33,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { TARGET, htmlFiles, urlFor, SITE } from '../lib/harness.js';
 import { REQUIRED_HEADERS, FORBIDDEN_IN_CSP, parseHeadersFile } from '../lib/posture.js';
+import { survey } from '../lib/population.js';
 
 const LIVE = process.env.ORDOIA_LIVE?.replace(/\/+$/, '');
 const SKIP = 'set ORDOIA_LIVE=https://<host> to check what a host actually returns';
@@ -89,10 +90,17 @@ test('check 15 — the bytes served are the bytes built', async (t) => {
 
   const mismatched = [];
   const unreachable = [];
+  // Both result arrays start empty and are supposed to end empty, so an empty
+  // `htmlFiles()` makes the strongest assertion in the suite pass having compared nothing.
+  // That is not hypothetical here: this check runs in CI immediately after a deploy, where
+  // a wrong working directory or an output directory that moved would produce exactly that
+  // — and report the deploy as byte-perfect.
+  const s = survey({ compared: 'built pages compared against the host' });
 
   for (const file of await htmlFiles()) {
     const url = urlFor(file);
     if (url === '/404.html') continue; // not served at its own path; asserted separately below
+    s.count('compared');
 
     const built = await readFile(path.join(TARGET, file));
     const r = await live(url);
@@ -111,17 +119,14 @@ test('check 15 — the bytes served are the bytes built', async (t) => {
     }
   }
 
-  assert.deepEqual(
-    unreachable,
-    [],
-    `pages the host did not return:\n  ${unreachable.join('\n  ')}`
+  s.failAll(unreachable.map((u) => `unreachable: ${u}`));
+  s.failAll(
+    mismatched.map((m) => `byte mismatch: ${m}`)
   );
-  assert.deepEqual(
-    mismatched,
-    [],
-    `the host is not serving what the build made. Something between the build and the ` +
-      `browser rewrote the HTML — an edge feature, a minifier, or an injected script:\n  ` +
-      `${mismatched.join('\n  ')}`
+  s.report(
+    `the host is not serving what the build made. Either a page did not come back, or ` +
+      `something between the build and the browser rewrote the HTML — an edge feature, a ` +
+      `minifier, or an injected script.`
   );
 });
 

@@ -20,6 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite, TARGET } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 import { parseColour } from '../lib/contrast.js';
 
 const FLOOR = '#8a4a05';
@@ -38,17 +39,24 @@ function isFloor(cssColour) {
 test('check 1 — --floor resolves only on the lowest-level field and a breaking changelog entry', async () => {
   const ledger = await ledgerFor(1);
   const violations = [];
+  const s = survey({
+    pages: 'pages loaded',
+    elements: 'elements whose computed styles were inspected',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       const response = await page.goto(origin + url, { waitUntil: 'load' });
       assert.ok(response?.ok(), `${url} did not load from ${TARGET}`);
+      s.count('pages');
 
-      const found = await page.evaluate((permitted) => {
+      const { found, scanned } = await page.evaluate((permitted) => {
         const floorRgb = 'rgb(138, 74, 5)';
         const out = [];
+        let seen = 0;
         for (const el of document.querySelectorAll('*')) {
+          seen += 1;
           const s = getComputedStyle(el);
           // Every property that can put the colour in front of a reader.
           const props = {
@@ -82,8 +90,10 @@ test('check 1 — --floor resolves only on the lowest-level field and a breaking
             });
           }
         }
-        return out;
+        return { found: out, scanned: seen };
       }, PERMITTED);
+
+      s.count('elements', scanned);
 
       for (const f of found) {
         if (ledger.allows(url, `${f.prop} ${f.tag} ${f.cls}`)) continue;
@@ -93,11 +103,8 @@ test('check 1 — --floor resolves only on the lowest-level field and a breaking
     await page.close();
   });
 
-  assert.deepEqual(
-    violations,
-    [],
-    `--floor escaped its two situations:\n  ${violations.join('\n  ')}`
-  );
+  s.failAll(violations);
+  s.report(`--floor escaped its two situations:\n  ${violations.join('\n  ')}`);
 
   const stale = ledger.unused();
   assert.deepEqual(
@@ -112,11 +119,14 @@ test('check 1 — the colour is present where it is supposed to be', async () =>
   // entirely would be a silent regression, not compliance: the two situations
   // are load-bearing, and "lowest level assessed" set in ink reads as ordinary
   // prose rather than as the field you must not average away.
+  const s = survey({ pages: 'pages loaded' });
+
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     const sightings = [];
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const hits = await page.evaluate((permitted) =>
         permitted.filter((sel) =>
           [...document.querySelectorAll(sel)].some(
@@ -127,10 +137,14 @@ test('check 1 — the colour is present where it is supposed to be', async () =>
     }
     await page.close();
 
-    assert.ok(
-      sightings.some((s) => s.includes('.floor-line')),
-      'no scorecard renders --floor on "lowest level assessed" — the colour rule has been ' +
-        'satisfied by deleting the colour, which is not the same thing'
-    );
+    // The sighting itself is the assertion here, so it is a finding rather than a
+    // population: this test exists to fail when the colour is absent.
+    if (!sightings.some((hit) => hit.includes('.floor-line'))) {
+      s.fail(
+        'no scorecard renders --floor on "lowest level assessed" — the colour rule has been ' +
+          'satisfied by deleting the colour, which is not the same thing'
+      );
+    }
+    s.report('the two load-bearing uses of --floor must still be on the page');
   });
 });

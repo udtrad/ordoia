@@ -25,6 +25,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
+import { survey } from '../lib/population.js';
 
 /** The four qualifiers a stamp must carry, and how each is recognised. */
 const QUALIFIERS = {
@@ -36,11 +37,13 @@ const QUALIFIERS = {
 
 test('check 2 — a measure showing a score carries level, depth, version and working paper', async () => {
   const violations = [];
+  const s = survey({ pages: 'pages loaded', measures: '.measure elements found' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
 
       const measures = await page.evaluate(() =>
         [...document.querySelectorAll('.measure')].map((m, i) => ({
@@ -56,6 +59,8 @@ test('check 2 — a measure showing a score carries level, depth, version and wo
           stamp: m.querySelector('.stamp')?.textContent?.trim() || null,
         }))
       );
+
+      s.count('measures', measures.length);
 
       for (const m of measures) {
         const claimsALevel = (m.hasMark && !m.readerOnly) || m.hasFill;
@@ -76,22 +81,30 @@ test('check 2 — a measure showing a score carries level, depth, version and wo
     await page.close();
   });
 
-  assert.deepEqual(
-    violations,
-    [],
-    `a level is being shown without all four qualifiers:\n  ${violations.join('\n  ')}`
-  );
+  s.failAll(violations);
+  s.report(`a level is being shown without all four qualifiers:\n  ${violations.join('\n  ')}`);
 });
 
 test('check 2 — the reader mark stays a reader mark', async () => {
   // The exemption above is only safe while `.mark--reader` is visually distinct
   // from an issued score. If it ever loses its outline treatment and renders as
   // a solid ink mark, the exemption starts hiding real scores.
+  // The assertions used to sit inside the loop below, which meant an empty `readerMarks`
+  // executed none of them and the test passed. That is worse here than elsewhere: the
+  // exemption in the test above keys on `.mark--reader`, so the selector going stale would
+  // quietly widen what counts as "not a score" while this check reported that the mark was
+  // still safe.
+  const s = survey({
+    pages: 'pages loaded',
+    marks: '.mark--reader elements found',
+  });
+
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     const readerMarks = [];
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const marks = await page.evaluate(() =>
         [...document.querySelectorAll('.mark--reader')].map((el) => {
           const s = getComputedStyle(el);
@@ -102,16 +115,21 @@ test('check 2 — the reader mark stays a reader mark', async () => {
     }
     await page.close();
 
+    s.count('marks', readerMarks.length);
+
     for (const m of readerMarks) {
-      assert.notEqual(
-        m.bg,
-        'rgb(23, 26, 26)',
-        `${m.url}: .mark--reader is filled with --ink, making it indistinguishable from an issued score`
-      );
-      assert.ok(
-        parseFloat(m.borderWidth) > 0,
-        `${m.url}: .mark--reader has lost its outline, which is the only thing separating it from a score`
-      );
+      if (m.bg === 'rgb(23, 26, 26)') {
+        s.fail(
+          `${m.url}: .mark--reader is filled with --ink, making it indistinguishable from an issued score`
+        );
+      }
+      if (!(parseFloat(m.borderWidth) > 0)) {
+        s.fail(
+          `${m.url}: .mark--reader has lost its outline, which is the only thing separating it from a score`
+        );
+      }
     }
+
+    s.report('the reader mark must stay visually distinct from an issued score');
   });
 });

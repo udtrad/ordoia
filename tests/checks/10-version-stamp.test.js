@@ -21,6 +21,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite } from '../lib/harness.js';
 import { ledgerFor } from '../lib/allowances.js';
+import { survey } from '../lib/population.js';
 
 /** Anything that constitutes a rubric claim needing a version behind it. */
 const CLAIM_PATTERNS = [
@@ -39,15 +40,21 @@ const VERSION = /\bOAL\s*v\d+\.\d+\b|\bv\d+\.\d+\b|\/oal\/v\d+\.\d+/i;
 test('check 10 — no page states a level, depth, threshold or dimension without a version in scope', async () => {
   const ledger = await ledgerFor(10);
   const violations = [];
+  const s = survey({
+    pages: 'pages loaded',
+    claiming: 'pages stating a level, depth, threshold or dimension',
+  });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const text = await page.evaluate(() => document.body.innerText || '');
 
       const claims = CLAIM_PATTERNS.filter(({ re }) => re.test(text));
       if (claims.length === 0) continue;
+      s.count('claiming');
 
       if (!VERSION.test(text)) {
         if (ledger.allows(url, 'missing-version')) continue;
@@ -59,11 +66,8 @@ test('check 10 — no page states a level, depth, threshold or dimension without
     await page.close();
   });
 
-  assert.deepEqual(
-    violations,
-    [],
-    `a rubric claim with no version behind it:\n  ${violations.join('\n  ')}`
-  );
+  s.failAll(violations);
+  s.report(`a rubric claim with no version behind it:\n  ${violations.join('\n  ')}`);
   assert.deepEqual(ledger.unused().map((a) => a.id), [], 'stale check-10 allowances');
 });
 
@@ -74,14 +78,17 @@ test('check 10 — every scorecard stamp names its version inline, not just on t
   // survive that. RATIONALE.md makes the stamp carry the version for exactly
   // this reason.
   const violations = [];
+  const s = survey({ pages: 'pages loaded', stamps: 'scorecard stamps found' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
     for (const { url } of pages) {
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const stamps = await page.evaluate(() =>
         [...document.querySelectorAll('.paper .stamp, .sheetpaper .stamp')].map((s) => (s.textContent || '').trim())
       );
+      s.count('stamps', stamps.length);
       for (const stamp of stamps) {
         // A row that was not assessed has no level, so it needs no version.
         if (/^no level\b/i.test(stamp)) continue;
@@ -93,7 +100,8 @@ test('check 10 — every scorecard stamp names its version inline, not just on t
     await page.close();
   });
 
-  assert.deepEqual(violations, [], `scorecard stamps missing their version:\n  ${violations.join('\n  ')}`);
+  s.failAll(violations);
+  s.report(`scorecard stamps missing their version:\n  ${violations.join('\n  ')}`);
 });
 
 test('check 10 — the version identifier is one value, not several', async () => {
@@ -101,7 +109,12 @@ test('check 10 — the version identifier is one value, not several', async () =
   // all. This catches a half-applied bump, which §10 says must be additive:
   // "publishing v1.1 adds a snapshot, a changelog entry and a current-pointer
   // move, and touches nothing else."
+  //
+  // This test is the specification the rest of the suite was fixed against: it guards its
+  // Set with `size > 0` *before* asserting `size === 1`. Check 4's geometry test made the
+  // same assertion as `size <= 1` and had no guard, so zero satisfied it.
   const versions = new Set();
+  const s = survey({ pages: 'live pages loaded', versions: 'distinct OAL versions named' });
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -109,16 +122,16 @@ test('check 10 — the version identifier is one value, not several', async () =
       // Frozen snapshots legitimately carry their own older version.
       if (/\/oal\/v\d+\.\d+/.test(url)) continue;
       await page.goto(origin + url, { waitUntil: 'load' });
+      s.count('pages');
       const text = await page.evaluate(() => document.body.innerText || '');
       for (const m of text.matchAll(/\bOAL\s*v(\d+\.\d+)\b/gi)) versions.add(m[1]);
     }
     await page.close();
   });
 
-  assert.ok(versions.size > 0, 'no OAL version identifier appears anywhere on the live pages');
-  assert.equal(
-    versions.size,
-    1,
-    `the live pages disagree about which rubric version is current: v${[...versions].join(', v')}`
-  );
+  s.count('versions', versions.size);
+  if (versions.size > 1) {
+    s.fail(`the live pages disagree about which rubric version is current: v${[...versions].join(', v')}`);
+  }
+  s.report('the live pages must name exactly one current rubric version');
 });
