@@ -626,11 +626,18 @@ bytes — and after the first scorecard is issued the answer is yes, permanently
 sequence, for the record:
 
 ```bash
-rm versions/v1.0.json                  # the deliberate act the tool refuses to do for you
+rm -r versions/v1.0.json versions/v1.0/   # BOTH — see below
 npm run build
 node tools/freeze-version.mjs 1.0
 node tools/zone-setup.mjs purge-cache --apply   # /oal/v1.0/* is immutable for a year
 ```
+
+**Removing the manifest alone is not enough, and the failure is silent.** While
+`versions/v1.0/` exists the build serves the snapshot from *those* bytes and `src/` cannot
+reach it — that is the whole point of the decoupling. So a re-freeze that deletes only the
+manifest rebuilds the *stored* stylesheet, hashes it, and records the identical bytes: the
+command reports success and changes nothing. The stored directory has to go too, which
+drops the build back to the `src/` fallback for one build.
 
 Check 21 then fails on any later build that changes, adds or removes a single file under
 `/oal/v1.0/`, and fails separately if a *superseded* version has no manifest at all.

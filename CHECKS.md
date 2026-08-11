@@ -38,10 +38,12 @@ the evidence that the suite works.
 
 | Target | Tests | Pass | Fail | Skip |
 |---|---:|---:|---:|---:|
-| build | 78 | 69 | 0 | 9 |
-| `test:live-local` | 78 | 76 | 0 | 2 |
-| handover (B) | 78 | 51 | **9** | 18 |
-| empty (D) | 78 | 28 | **41** | 9 |
+| build | 80 | 71 | 0 | 9 |
+| `test:live-local` | 80 | 78 | 0 | 2 |
+| handover (B) | 80 | 53 | **9** | 18 |
+| empty (D) | 80 | 30 | **41** | 9 |
+
+With `ORDOIA_MONITOR_CHECK=1` and credentials the build target is **80 / 72 / 0 / 8**.
 
 **The number to watch when adding a check is the handover's failure count, not the pass
 count.** It had been 8 across four sessions and fifteen added tests, and that was the
