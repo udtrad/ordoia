@@ -29,13 +29,17 @@
  * and be caught by the suite.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { copyFile, cp, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 
 import { contrastRatio, AA_NON_TEXT } from './tests/lib/contrast.js';
+// The snapshot's location and its asset list are owned by the freeze tool. Re-deriving
+// them here is how a third PINNED_ASSET would get stored at publication and never served
+// — the exact store-vs-serve divergence the pinning exists to close.
+import { pinnedDir, PINNED_ASSETS } from './tools/freeze-version.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const readJSON = (p) => JSON.parse(readFileSync(path.join(ROOT, p), 'utf8'));
@@ -418,6 +422,33 @@ export default function (eleventyConfig) {
    * that scorecards have been issued against, which is the same defect class as
    * restating a historical score.
    *
+   * ── That paragraph described an intention this code did not implement ──────────────
+   *
+   * Until 2026-08-11 the copy below read from `src/`, so the "self-contained" snapshot
+   * was self-contained in its *paths* and not in its *bytes*: every build re-derived
+   * /oal/v1.0/styles.css from the living stylesheet. The comment above the copy warned
+   * about the exact hazard the copy had.
+   *
+   * Nothing had noticed because check 21 hides it in the most misleading way possible —
+   * it holds the built snapshot to a manifest, so the coupling never showed up as a
+   * frozen page changing. It showed up as **the living stylesheet being un-editable**:
+   * touch one declaration in src/styles.css and the freeze check goes red, on a file the
+   * edit was never about. A legibility defect in the measure sat unfixable behind that
+   * for exactly as long as anyone had wanted to fix it.
+   *
+   * ── What it does now ──────────────────────────────────────────────────────────────
+   *
+   * A version with bytes stored under `versions/v<n>/` is served from those bytes, and
+   * `src/` cannot reach it. A version with no stored bytes is being published for the
+   * first time, and live source *is* its published content — so the fallback is correct
+   * rather than lenient. `tools/freeze-version.mjs` stores the bytes at the same moment
+   * it records their hashes, which is what turns the first case on.
+   *
+   * Still generated rather than pinned: `index.html` and `favicon.svg`. Editing a layout
+   * or the favicon will turn check 21 red and force this decision again, deliberately —
+   * full content-pinning is the pass-2 work `requirePublishableVersion` describes below.
+   * The line here is passthrough assets, which is where the silent re-derivation was.
+   *
    * Copied rather than passed through, for two reasons: Eleventy takes one target per
    * passthrough source, and a real `copyFile` puts byte-identical bytes at both paths
    * rather than a re-serialised template. Font URLs inside styles.css are relative, so
@@ -426,11 +457,17 @@ export default function (eleventyConfig) {
   eleventyConfig.on('eleventy.after', async ({ dir }) => {
     for (const v of oal.versions) {
       const target = path.join(ROOT, dir.output, 'oal', `v${v.version}`);
+      const pinned = pinnedDir(v.version);
+      const published = existsSync(pinned);
+      const from = (rel) => (published ? path.join(pinned, rel) : path.join(ROOT, 'src', rel));
+
       await mkdir(target, { recursive: true });
-      await copyFile(path.join(ROOT, 'src/styles.css'), path.join(target, 'styles.css'));
-      const fonts = path.join(ROOT, 'src/fonts');
-      if (existsSync(fonts)) {
-        await cp(fonts, path.join(target, 'fonts'), { recursive: true });
+      for (const asset of PINNED_ASSETS) {
+        const source = from(asset);
+        if (!existsSync(source)) continue;
+        const to = path.join(target, asset);
+        if (statSync(source).isDirectory()) await cp(source, to, { recursive: true });
+        else await copyFile(source, to);
       }
     }
   });

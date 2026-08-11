@@ -516,22 +516,74 @@ the provenance evidence: a repository whose commits are cited on the face of a s
 cannot carry commits that mean nothing. A second workflow that re-enables the first has to
 be triggered by something, and that something is the same problem one level up.
 
-So liveness lives outside the repository. Two endpoints, two keyword assertions each:
+So liveness lives outside the repository — but its **configuration does not**. Four
+monitors described only in someone's memory of a web form is the failure this practice
+sells against. `tools/monitors.json` is the plan, `tools/monitor-setup.mjs` applies it,
+and **check 24** reads the account back and fails if it has drifted.
 
-| URL | Must contain | Must not contain |
+| URL | Assertion | Better Stack `monitor_type` |
 |---|---|---|
-| `https://ordoia.com/oal/v1.0` | `Ordoia Assurance Levels` | `/cdn-cgi/l/email-protection` |
-| `https://ordoia.com/services/` | `mailto:hello@ordoia.com` | `/cdn-cgi/l/email-protection` |
+| `https://ordoia.com/oal/v1.0/` | contains `Ordoia Assurance Levels` | `keyword` |
+| `https://ordoia.com/oal/v1.0/` | does **not** contain `/cdn-cgi/l/email-protection` | `keyword_absence` |
+| `https://ordoia.com/services/` | contains `mailto:hello@ordoia.com` | `keyword` |
+| `https://ordoia.com/services/` | does **not** contain `/cdn-cgi/l/email-protection` | `keyword_absence` |
+
+**Two corrections to this table, made on 2026-08-11 by measuring rather than re-reading
+it.** Both would have produced a monitor that alerted on its first run or watched nothing:
+
+1. It asserted `mailto:hello@ordoia.com` on `/oal/v1.0`. **That page contains that string
+   zero times** — the CTA is on `/services/`. Measured, not assumed.
+2. It printed `https://ordoia.com/oal/v1.0` **without the trailing slash**, which returns
+   **301** to the slashed form. A keyword monitor that does not follow redirects reads a
+   redirect body and finds none of these strings. The plan sets `follow_redirects` as
+   well, so the assertion survives the URL being written either way.
 
 Those keywords are not decoration. The pair catches precisely the Email Address
 Obfuscation failure — the one zone setting that breaks the only conversion path on the
 site — and they are the same pair `tools/probe-live.mjs` uses, deliberately: one failure
-mode, one pair of strings, three places that look for it. Certificate expiry monitoring
-comes free with almost any such service and closes the second half of §9's ask.
+mode, one pair of strings, three places that look for it.
+
+**Four monitors, not two.** Better Stack puts the present/absent distinction in
+`monitor_type` rather than in a flag beside the keyword, and takes one keyword per
+monitor. Read off the API reference, not inferred from the UI.
+
+### Setting up the monitors
+
+The token never enters a file in this repository, an argv where `ps` would show it, or a
+conversation. Same rule as the Cloudflare tokens.
+
+```bash
+# once: put the Better Stack API token in the Keychain
+security add-generic-password -a ordoia -s betterstack-api-token -w
+
+# every time: read it into the environment at call time
+export BETTERSTACK_API_TOKEN=$(security find-generic-password \
+  -a ordoia -s betterstack-api-token -w)
+
+node tools/monitor-setup.mjs status          # reads, prints the diff, changes nothing
+node tools/monitor-setup.mjs apply --apply   # makes the account match tools/monitors.json
+
+ORDOIA_MONITOR_CHECK=1 npm test              # check 24 holds it to the plan
+```
+
+`status` is idempotent and safe to run at any time; `apply` without `--apply` still writes
+nothing, so a mistyped command cannot change the account.
+
+**Prove each monitor can fail before trusting it.** A monitor that has only ever been
+green has not been shown to watch anything — the same argument this repository makes for
+every check in its own suite. Point a throwaway `keyword` monitor at a URL lacking its
+keyword and confirm it goes down; delete one real monitor and confirm check 24 goes red
+naming it, then restore it with `apply --apply`.
+
+`ssl_expiration` and `domain_expiration` are set in the plan's defaults, which closes the
+certificate half of §9 and turns §5's domain-lapse worry into an alert rather than a
+paragraph nobody has written yet.
 
 **If the external monitor lapses too, nothing notices.** That is the residual risk, and it
 is accepted knowingly rather than papered over. It is also recorded in `canary.yml`'s own
-header, where the next person to read that file will find it.
+header, where the next person to read that file will find it. Check 24 narrows it but does
+not close it: it verifies the monitor's *configuration*, not that anyone reads its alerts,
+and it only runs when somebody runs the suite.
 
 ---
 
@@ -548,10 +600,44 @@ manifest taken at publication:
 
 ```bash
 npm run build
-node tools/freeze-version.mjs 1.0     # writes versions/v1.0.json
+node tools/freeze-version.mjs 1.0     # writes versions/v1.0.json AND versions/v1.0/
 npm test                              # check 21 now holds the build to it
-git add versions/v1.0.json
+git add versions/v1.0.json versions/v1.0/
 ```
+
+**It stores the bytes, not only their hashes.** `versions/v<n>/` holds the snapshot's own
+`styles.css` and fonts, and the build serves `/oal/v<n>/` from those — `src/` cannot reach
+a published version. Until 2026-08-11 it could: the build re-copied the living stylesheet
+into the frozen directory on every run, so "self-contained" was true of the snapshot's
+*paths* and never of its *bytes*. The visible symptom was not a frozen page changing; it
+was **the living stylesheet becoming un-editable**, because check 21 went red on any
+change to it. See `CHANGES.md` row 40.
+
+`index.html` and `favicon.svg` are still generated. Editing a layout or the favicon turns
+check 21 red and makes you decide, which is the design — but it is not the same as the
+snapshot being immutable by construction.
+
+**Re-freezing a published version is not a procedure.** The manifest's own header says a
+changed byte means a new version, and that stands. It was done exactly once, on
+2026-08-11, to carry a legibility fix into a rubric that was two days old, unannounced,
+cited on no scorecard, and still a cache MISS at the edge. If you are reading this
+considering a second one, the honest question is whether anyone could have relied on the
+bytes — and after the first scorecard is issued the answer is yes, permanently. The
+sequence, for the record:
+
+```bash
+rm -r versions/v1.0.json versions/v1.0/   # BOTH — see below
+npm run build
+node tools/freeze-version.mjs 1.0
+node tools/zone-setup.mjs purge-cache --apply   # /oal/v1.0/* is immutable for a year
+```
+
+**Removing the manifest alone is not enough, and the failure is silent.** While
+`versions/v1.0/` exists the build serves the snapshot from *those* bytes and `src/` cannot
+reach it — that is the whole point of the decoupling. So a re-freeze that deletes only the
+manifest rebuilds the *stored* stylesheet, hashes it, and records the identical bytes: the
+command reports success and changes nothing. The stored directory has to go too, which
+drops the build back to the `src/` fallback for one build.
 
 Check 21 then fails on any later build that changes, adds or removes a single file under
 `/oal/v1.0/`, and fails separately if a *superseded* version has no manifest at all.
@@ -576,17 +662,23 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
 
 - **The entity.** Terms and Privacy stay unbuilt until it exists, and `_redirects`
   deliberately routes neither.
-- **Freeze `/oal/v1.0/` on the day it publishes.** The mechanism exists and is checked;
-  the act has not been performed, because it must not be — see *Publishing a rubric
-  version* below. The v1.1 publishing-process document (§11.3) is still unwritten.
 - **Web-archive submission** on each published version, and the one-paragraph note on
-  what happens to `/oal/v1.0` if the domain lapses (§5).
-- **A mailbox at `hello@ordoia.com`.** The services page CTA is a `mailto:` to it and it
-  is the only conversion path on the site. Stand it up and send a live test message
-  before launch: a CTA that opens a mail client addressed to a mailbox that does not
-  exist is worse than no CTA, and it is the one failure on this page that **no check in
-  this repo can detect** — check 15 verifies the link survives the edge intact, not that
-  anyone is reading what it sends.
+  what happens to `/oal/v1.0` if the domain lapses (§5). The *paragraph* is still
+  unwritten; the *alert* exists since 2026-08-11 — `domain_expiration` on the Better Stack
+  monitors, 30 days.
+
+**Done 2026-08-10, and no longer outstanding:**
+
+- **Freeze `/oal/v1.0/`.** Performed in the change that took the site live. Re-taken once
+  on 2026-08-11 — see *Publishing a rubric version* below and `CHANGES.md` row 40 for the
+  reasoning, which is not a precedent.
+- **A mailbox at `hello@ordoia.com`.** Stood up on Namecheap Private Email and **proved
+  end to end on 2026-08-11**: a message sent from the site's own CTA arrived in the
+  mailbox, and a reply sent from it arrived back. That closes the one failure on this page
+  **no check in this repository can detect** — check 15 verifies the link survives the
+  edge intact, not that anyone is reading what it sends. It is also a precondition for the
+  external monitor, whose alerts go to that address; a monitor configured before the
+  mailbox was proved would have been reporting to nobody.
 
   **The nameserver move destroys what is there now.** Measured 2026-08-09: `ordoia.com`
   carries MX records at `eforward1–5.registrar-servers.com` and Namecheap's SPF include —

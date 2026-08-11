@@ -40,8 +40,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
-import { TARGET, IS_HANDOVER } from '../lib/harness.js';
+import { existsSync, statSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { TARGET, IS_HANDOVER, REPO_ROOT } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
 import oal from '../../src/_data/oal.json' with { type: 'json' };
 import {
@@ -50,6 +51,9 @@ import {
   readManifest,
   versionDir,
   manifestPath,
+  pinnedDir,
+  PINNED_ASSETS,
+  sha256,
 } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is the point';
@@ -100,6 +104,73 @@ test('check 21 — every frozen version still generates the bytes it was publish
       'year and are printed on the face of every scorecard issued under that version, so ' +
       'a change does not replace the published document — it creates a second one. If the ' +
       'change is wanted, it is a new rubric version.'
+  );
+});
+
+test('check 21 — a published version is served from its stored bytes, not from src/', async () => {
+  /**
+   * The check the freeze mechanism was missing until 2026-08-11.
+   *
+   * From that date the build serves `/oal/v<n>/` from `versions/v<n>/` rather than
+   * re-copying `src/`. The manifest cannot verify that on its own: today the stored
+   * stylesheet and `src/styles.css` are byte-identical, so **both arms of the branch
+   * produce the same manifest and the same green**. A regression that pointed the copy
+   * back at `src/` would be invisible here and would only surface years later, as a
+   * published methodology document quietly restyled by a change nobody connected to it.
+   *
+   * Which is the repository's own recurring shape: the property was proved once by hand
+   * (DEPLOY.md's drill) and then held by nothing. This makes it hold on every commit.
+   *
+   * It compares the stored bytes to the built ones directly rather than mutating `src/`,
+   * so it needs no build and cannot leave the working tree dirty if it throws.
+   */
+  const s = survey({
+    versions: 'frozen versions checked for independence from src/',
+    assets: 'pinned assets compared between versions/ and the build',
+  });
+
+  for (const { version } of oal.versions) {
+    if (!readManifest(version)) continue;
+    const pinned = pinnedDir(version);
+    if (!existsSync(pinned)) {
+      s.count('versions');
+      s.fail(
+        `v${version} has a freeze manifest but no stored bytes at ` +
+          `${path.relative(REPO_ROOT, pinned)}/. The build therefore falls back to src/, ` +
+          `so the published snapshot is re-derived from the living site on every build ` +
+          `and the next stylesheet edit silently rewrites a document that has been cited. ` +
+          `Re-publish with \`node tools/freeze-version.mjs ${version}\`.`
+      );
+      continue;
+    }
+    s.count('versions');
+
+    const built = path.join(REPO_ROOT, '_site', versionDir(version));
+    if (!existsSync(built)) continue;
+
+    for (const asset of PINNED_ASSETS) {
+      const stored = path.join(pinned, asset);
+      const output = path.join(built, asset);
+      if (!existsSync(stored) || !existsSync(output)) continue;
+      if (statSync(stored).isDirectory()) continue;
+      s.count('assets');
+
+      const a = sha256(await readFile(stored));
+      const b = sha256(await readFile(output));
+      if (a !== b) {
+        s.fail(
+          `v${version}: ${asset} in the build does not match the stored copy — ` +
+            `${a.slice(0, 12)} became ${b.slice(0, 12)}. The build is not serving the ` +
+            `snapshot from versions/, which means it is serving it from src/.`
+        );
+      }
+    }
+  }
+
+  s.report(
+    'a published version whose assets are re-derived from src/ is not frozen, it is ' +
+      'merely unchanged so far. The manifest cannot see the difference while the two ' +
+      'sources agree, which is exactly when the regression would be introduced.'
   );
 });
 
