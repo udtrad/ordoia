@@ -168,6 +168,32 @@ jobs:
         env:
           ORDOIA_LIVE: ${{ steps.site.outputs.origin }}
 
+      # The same purge the recovery path does, on the path that actually runs.
+      #
+      # `_headers` caches `/oal/v1.0/*` as `public, max-age=31536000, immutable`, so a
+      # deployment that changes a byte under that prefix is a deployment no returning
+      # reader receives — for a year. Measured on 2026-08-11 before this step existed:
+      # `/oal/v1.0/styles.css` came back `cf-cache-status: HIT`, `age: 7854`, holding
+      # bytes that a successful deploy had every intention of replacing.
+      #
+      # The rollback path was hardened against exactly this on 2026-08-09 and the success
+      # path was left open, which is the wrong way round: a rollback is rare and a deploy
+      # is every time. The check above proves the host was *given* the right bytes; this
+      # is what makes a reader receive them.
+      #
+      # In the steady state a frozen directory never changes and this purges nothing that
+      # mattered — one API call against being wrong in the one direction that is silent
+      # and lasts a year. It is deliberately not conditioned on the diff: a step that only
+      # fires when someone remembered to mark a deploy as touching a frozen version is a
+      # step that fires when it is least needed.
+      - name: Purge the edge cache
+        if: success()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: node tools/zone-setup.mjs purge-cache --apply
+
       # ── Recovery ────────────────────────────────────────────────────────────────────
 
       - name: Roll production back
