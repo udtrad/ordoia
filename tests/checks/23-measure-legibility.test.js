@@ -446,9 +446,11 @@ test('check 23 — the priced-surface detector catches a header run under (contr
 
   const s = survey({
     renders: 'page renders measured with a header pulled out of flow',
-    reproducedSection: 'card sections in which the planted collision appeared',
-    reproducedCell: 'grid cells in which the planted collision appeared',
+    sections: 'card sections carrying a heading the planted CSS can move',
+    cells: 'grid cells carrying a product name the planted CSS can move',
   });
+  let reproducedSection = 0;
+  let reproducedCell = 0;
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -461,9 +463,20 @@ test('check 23 — the priced-surface detector catches a header run under (contr
       s.count('renders');
 
       for (const surface of await readPricedSurfaces(page)) {
+        // Count only surfaces the planted CSS can actually perturb. The handover has two
+        // `table.grid` cells, but they carry no `.prod` — so a population of "cells that
+        // exist" asserted that a frozen 2026 artifact contains markup it never had, and
+        // turned the handover baseline 9 -> 10 for a reason that was about the fixture
+        // rather than the detector. The population has to be the thing the control moves.
+        const movable =
+          surface.kind === 'cell'
+            ? surface.parts.some((part) => part.label.includes('prod'))
+            : surface.parts.some((part) => part.label === 'h2' || part.label.includes('h2'));
+        if (movable) s.count(surface.kind === 'cell' ? 'cells' : 'sections');
         const { findings } = collisions(surface.parts, (p) => p.label);
         if (findings.length === 0) continue;
-        s.count(surface.kind === 'cell' ? 'reproducedCell' : 'reproducedSection');
+        if (surface.kind === 'cell') reproducedCell += 1;
+        else reproducedSection += 1;
       }
     }
 
@@ -472,26 +485,58 @@ test('check 23 — the priced-surface detector catches a header run under (contr
 
   // The collisions are the point here, so they are counted rather than failed.
   //
-  // BOTH arms are asserted separately, and that is the whole value of this control. The
-  // first version planted a collision only in `section.block`, so `table.grid td`,
-  // `.prod` or `.scope .v` could all have stopped matching with the main test's surface
-  // population still healthy and this control still green — the grid being exactly half
-  // of what the extension was written to reach.
-  assert.ok(
-    s.size('reproducedSection') > 0,
-    'pulling a section heading out of flow produced no collision in any card section, so ' +
-      'this detector cannot be shown to see a header running under an adjacent element — ' +
-      'which is the only thing §5 asked it for. Either PRICED_PARTS no longer matches the ' +
-      'real elements or the surfaces list has drifted, and either way the green above ' +
-      'means nothing.'
-  );
-  assert.ok(
-    s.size('reproducedCell') > 0,
-    'pulling a product name out of flow produced no collision in any grid cell, so the ' +
-      'grid half of this detector is unproven. The grid is where every price on the site ' +
-      'is rendered; a selector that silently stopped matching there would leave the main ' +
-      'test green over an unreadable price.'
-  );
+  // Each arm is asserted SEPARATELY and only where that surface exists. Both halves of
+  // that matter. Asserting only the section arm — the first version of this control —
+  // let `table.grid td`, `.prod` or `.scope .v` all stop matching with the main test's
+  // population still healthy and this control still green, and the grid is exactly half
+  // of what the extension was written to reach. But asserting the grid arm
+  // *unconditionally* fails on the designer handover, which has no `table.grid` with
+  // these classes and never did: that would be this control asserting a fact about a
+  // frozen 2026 artifact rather than about the detector. Conditioning on the surface
+  // population is the honest form — where the structure exists, perturbing it must
+  // reproduce a collision; where it does not, there is nothing to prove.
+  // A target legitimately without one of these structures is not a target that measured
+  // nothing — it is a target the planted CSS has no purchase on. `mayBeEmpty` is the
+  // harness's own way of saying so out loud, the same way check 21 says it about an
+  // unpublished version, rather than letting an empty population read as a silent pass.
+  if (s.size('sections') === 0) {
+    s.mayBeEmpty(
+      'sections',
+      'this target renders no section.block carrying an h2, so there is no heading for ' +
+        'the planted CSS to pull out of flow and nothing about the detector to prove here'
+    );
+  }
+  if (s.size('cells') === 0) {
+    s.mayBeEmpty(
+      'cells',
+      'this target renders no grid cell carrying a .prod product name — the designer ' +
+        'handover has table cells but never had that markup — so the grid arm of the ' +
+        'planted CSS has nothing to move and proves nothing on this target'
+    );
+  }
+
+  if (s.size('sections') > 0) {
+    assert.ok(
+      reproducedSection > 0,
+      `${s.size('sections')} card sections carrying a movable heading were found, but ` +
+        'pulling a section heading out ' +
+        'of flow produced no collision in any of them — so this detector cannot be shown ' +
+        'to see a header running under an adjacent element, which is the only thing §5 ' +
+        'asked it for. Either PRICED_PARTS no longer matches the real elements or the ' +
+        'surfaces list has drifted, and either way the green above means nothing.'
+    );
+  }
+  if (s.size('cells') > 0) {
+    assert.ok(
+      reproducedCell > 0,
+      `${s.size('cells')} grid cells carrying a product name were found, but pulling it ` +
+        'out of flow ' +
+        'produced no collision in any of them, so the grid half of this detector is ' +
+        'unproven. The grid is where every price on the site is rendered; a selector that ' +
+        'silently stopped matching there would leave the main test green over an ' +
+        'unreadable price.'
+    );
+  }
 
   s.report('a header and a product name pulled out of flow reproduce the collisions this extension exists to catch');
 });
