@@ -44,8 +44,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { readdir, readFile, writeFile, mkdir, copyFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,6 +61,60 @@ export const versionDir = (version) => path.join('oal', `v${version}`);
 
 /** The manifest path for a version, whether or not it exists yet. */
 export const manifestPath = (version) => path.join(FROZEN_DIR, `v${version}.json`);
+
+/** Where a published version's own bytes are kept. See `storePublishedAssets`. */
+export const pinnedDir = (version) => path.join(FROZEN_DIR, `v${version}`);
+
+/**
+ * The assets a published version is served from, rather than re-derived from `src/`.
+ *
+ * These are the passthrough copies — the half of a version directory that no Eleventy
+ * transform ever sees. Before 2026-08-11 the build re-read them from `src/` on every run,
+ * so "the frozen snapshot" was frozen in its paths and not in its bytes, and the only
+ * thing standing between a stylesheet edit and a silently-restated methodology document
+ * was check 21 going red on a file the edit was not about.
+ *
+ * `index.html` and `favicon.svg` are deliberately absent: they are generated, and pinning
+ * generated output is the larger pass-2 change `requirePublishableVersion` describes.
+ * Check 21 still covers them, so a layout change is caught — it just has to be decided
+ * rather than absorbed.
+ */
+export const PINNED_ASSETS = ['styles.css', 'fonts'];
+
+/**
+ * Copy a published version's assets out of the build and into the repository.
+ *
+ * Run at publication, from the same bytes the manifest is taken from, so the hash and the
+ * stored file can never disagree about what was published.
+ */
+export async function storePublishedAssets(version, built) {
+  const target = pinnedDir(version);
+
+  // Loud rather than partial. A missing asset here means the snapshot would be published
+  // half-pinned: the stored half immune to `src/`, the absent half silently re-derived
+  // from it on every later build. That is the defect this function exists to end, and it
+  // would ship reporting success — so it throws instead of returning a short list.
+  const missing = PINNED_ASSETS.filter((a) => !existsSync(path.join(built, a)));
+  if (missing.length) {
+    throw new Error(
+      `cannot publish v${version}: ${missing.join(', ')} missing from ${built}. Every ` +
+        `asset in PINNED_ASSETS has to be stored, or the snapshot is pinned in part and ` +
+        `re-derived from src/ in part — which looks identical today and diverges the ` +
+        `first time src/ changes. Run \`npm run build\` and try again.`
+    );
+  }
+
+  await mkdir(target, { recursive: true });
+  const stored = [];
+  for (const asset of PINNED_ASSETS) {
+    const from = path.join(built, asset);
+    const to = path.join(target, asset);
+    if (statSync(from).isDirectory()) await cp(from, to, { recursive: true });
+    else await copyFile(from, to);
+    stored.push(asset);
+  }
+  return stored;
+}
 
 /** The manifest for a version, or null if that version is not frozen. */
 export function readManifest(version) {
@@ -141,7 +195,11 @@ async function main([version]) {
       `v${version} is already frozen (${manifestPath(version)}, taken ` +
         `${existing.frozen}). A published version is not re-frozen: if the bytes have ` +
         `legitimately changed, that is a new version, and if they have not, this is a ` +
-        `no-op. Deleting the manifest by hand is the deliberate act that overrides this.`
+        `no-op. The deliberate act that overrides this is deleting BOTH the manifest and ` +
+        `${pinnedDir(version)}/ — the manifest alone is not enough, because the build ` +
+        `serves the snapshot from the stored bytes, so a rebuild would reproduce exactly ` +
+        `what is already frozen and this command would report success having changed ` +
+        `nothing.`
     );
   }
 
@@ -167,9 +225,16 @@ async function main([version]) {
     ) + '\n'
   );
 
+  // The bytes, not only their hashes. A manifest alone records what was published; it
+  // does not make the next build produce it. Storing the assets here is what lets
+  // `src/styles.css` change afterwards without restating a document that has been cited.
+  const stored = await storePublishedAssets(version, built);
+
   process.stdout.write(
     `froze /oal/v${version}/ — ${Object.keys(files).length} files recorded in ` +
-      `${path.relative(REPO_ROOT, manifestPath(version))}\n`
+      `${path.relative(REPO_ROOT, manifestPath(version))}\n` +
+      `stored ${stored.join(', ')} in ${path.relative(REPO_ROOT, pinnedDir(version))}/ — ` +
+      `the build serves the snapshot from these, not from src/\n`
   );
 }
 

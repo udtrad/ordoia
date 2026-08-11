@@ -1,0 +1,95 @@
+{
+  "$comment": [
+    "The external monitors, as a plan `tools/monitor-setup.mjs` applies and re-applies.",
+    "Declarative and idempotent in the manner of `dns-plan.json`: `status` prints the diff",
+    "and changes nothing, `--apply` makes the account match this file.",
+    "",
+    "DEPLOY.md §'Uptime and certificate monitoring' explains why this cannot be the weekly",
+    "canary: GitHub disables scheduled workflows after 60 days of repository quiet, and a",
+    "site that is finished by design is quiet by design, so the canary switches off exactly",
+    "when it becomes the only thing watching. Liveness therefore runs outside the",
+    "repository — but its *configuration* lives here, where it can be read and checked.",
+    "Check 24 holds the account to this file.",
+    "",
+    "Provider: Better Stack. POST https://uptime.betterstack.com/api/v2/monitors."
+  ],
+
+  "$keywordComment": [
+    "Better Stack puts the present/absent distinction in `monitor_type`, not in a flag",
+    "beside the keyword: `keyword` alerts when required_keyword is MISSING, and",
+    "`keyword_absence` alerts when it is PRESENT. One keyword per monitor. Two URLs and two",
+    "assertions each is therefore four monitors, not two — read off the API reference on",
+    "2026-08-11 rather than assumed from the UI.",
+    "",
+    "The keyword pairs are not decoration. `/cdn-cgi/l/email-protection` appearing is",
+    "exactly what Cloudflare's Email Address Obfuscation does to the services CTA, which is",
+    "the only conversion path on the site; it is on by default, and this is the failure",
+    "with the longest tail. The same pair is used by tools/probe-live.mjs and by check 15:",
+    "one failure mode, one pair of strings, three places that look for it.",
+    "",
+    "MEASURED 2026-08-11, not assumed: /oal/v1.0/ contains 'Ordoia Assurance Levels' six",
+    "times and 'mailto:hello@ordoia.com' ZERO times. A monitor asserting mailto: there",
+    "would have alerted on its first run. /services/ carries the mailto:."
+  ],
+
+  "$urlComment": [
+    "The trailing slash on /oal/v1.0/ is load-bearing. MEASURED: /oal/v1.0 without it",
+    "returns 301 to the trailing-slash form, and a keyword monitor that does not follow",
+    "redirects sees a redirect body with none of these strings in it. DEPLOY.md's table",
+    "printed the slashless form until 2026-08-11. follow_redirects is set as well, so the",
+    "monitor survives the URL being written either way."
+  ],
+
+  "defaults": {
+    "check_frequency": 180,
+    "request_timeout": 30,
+    "follow_redirects": true,
+    "verify_ssl": true,
+    "email": true,
+    "sms": false,
+    "call": false,
+    "ssl_expiration": 14,
+    "domain_expiration": 30,
+    "regions": ["us", "eu"]
+  },
+
+  "$defaultsComment": [
+    "ssl_expiration and domain_expiration close the second half of BRIEF.md §9's ask, and",
+    "the domain-lapse worry §5 raises has been prose in a document until now. 30 days is",
+    "the last comfortable moment to renew a domain that a scorecard's printed address",
+    "depends on; 14 for the certificate, which Cloudflare renews automatically, so an alert",
+    "there means the automation has stopped rather than that a human forgot.",
+    "",
+    "sms and call are off: this is a finished static site, and a 3am phone call for a page",
+    "that will still be down at 9am buys nothing. email goes to hello@ordoia.com, which was",
+    "proved to deliver on 2026-08-11 — a monitor alerting into an unverified mailbox is a",
+    "monitor that reports to nobody."
+  ],
+
+  "monitors": [
+    {
+      "pronounceable_name": "Ordoia — /oal/v1.0/ is the rubric",
+      "url": "https://ordoia.com/oal/v1.0/",
+      "monitor_type": "keyword",
+      "required_keyword": "Ordoia Assurance Levels"
+    },
+    {
+      "pronounceable_name": "Ordoia — /oal/v1.0/ is not obfuscated",
+      "url": "https://ordoia.com/oal/v1.0/",
+      "monitor_type": "keyword_absence",
+      "required_keyword": "/cdn-cgi/l/email-protection"
+    },
+    {
+      "pronounceable_name": "Ordoia — /services/ carries the CTA",
+      "url": "https://ordoia.com/services/",
+      "monitor_type": "keyword",
+      "required_keyword": "mailto:hello@ordoia.com"
+    },
+    {
+      "pronounceable_name": "Ordoia — /services/ is not obfuscated",
+      "url": "https://ordoia.com/services/",
+      "monitor_type": "keyword_absence",
+      "required_keyword": "/cdn-cgi/l/email-protection"
+    }
+  ]
+}

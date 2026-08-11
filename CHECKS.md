@@ -34,19 +34,31 @@ the evidence that the suite works.
 `test:live-local` is the only one that exercises check 15 without a deployment; it boots
 `_site` behind a Cloudflare-shaped origin, so nothing skips.
 
-**Current figures, 2026-08-09**, after the zone and the Pages project went live:
+**Current figures, 2026-08-11**, after checks 23 and 24 were added:
 
 | Target | Tests | Pass | Fail | Skip |
 |---|---:|---:|---:|---:|
-| build | 72 | 64 | 0 | 8 |
-| `test:live-local` | 72 | 71 | 0 | 1 |
-| handover (B) | 72 | 47 | **8** | 17 |
-| empty (D) | 72 | 25 | **39** | 8 |
+| build | 78 | 69 | 0 | 9 |
+| `test:live-local` | 78 | 76 | 0 | 2 |
+| handover (B) | 78 | 51 | **9** | 18 |
+| empty (D) | 78 | 28 | **41** | 9 |
 
 **The number to watch when adding a check is the handover's failure count, not the pass
-count.** It has been 8 across three sessions and thirteen added tests: none of them found a
-new way to fail against a frozen build, so none is measuring the build's shape by accident.
-Baseline D's went 38 → 39 for a known and predicted reason — see *Check 21 changed
+count.** It had been 8 across four sessions and fifteen added tests, and that was the
+evidence none of them was measuring the build's shape by accident.
+
+**On 2026-08-11 it moved for the first time: 8 → 9.** The ninth is **check 23**, and the
+move is the point rather than a regression in the rule. The handover carries the measure's
+span/stamp collision in its own `styles.css` — the defect came in with the design and was
+faithfully rebuilt — so a check that detects it must fail there. This is the first added
+check in five sessions to find a *new* way to fail against a frozen build, which is exactly
+the evidence that it measures a defect rather than a shape. A check that added a handover
+failure without being able to name the bytes causing it would be the opposite finding.
+
+The other movements, each with its reason: Baseline D 39 → 41 (check 23's two site-touching
+tests fail against an empty directory, correctly); skips +1 everywhere (check 24's live test
+needs `ORDOIA_MONITOR_CHECK=1`); `test:live-local` skips 1 → 2 for the same reason. Baseline
+D's earlier 38 → 39 has its own known and predicted reason — see *Check 21 changed
 category*.
 
 ## Where the enforcement lives
@@ -612,6 +624,70 @@ Proven end to end on 2026-08-09 rather than argued:
 The manifest was then removed, because v1.0 is not published. The mechanism ships; the act
 does not, and `DEPLOY.md` holds it as a publication step.
 
+## Presence is not legibility — check 23
+
+**Check 13 tested the untravelled span for the whole life of the site, and passed, while
+the span was printed through the paragraph below it.**
+
+Check 13 asks whether the question is present: not `display: none`, not `visibility:
+hidden`, not collapsed to zero area, not empty. Every answer was yes. All four can be true
+of text that no one can read, because something else is drawn on top of it. That gap is
+the entire reason check 23 exists, and it is worth stating as a rule rather than as an
+anecdote: **a check that asks whether an element exists has not asked whether it can be
+used.**
+
+The defect: `.span` was `position: absolute` inside a `.measure__rule` of `height: 1px`,
+so it hung out of flow, and `.stamp` followed the rule in normal flow. `.measure--q`
+reserved 6.5rem at the *figure's* bottom edge — past the stamp rather than between them.
+Measured at 36.5–55.4px of overlap on three of the five measures, at every width from
+760px up. See `CHANGES.md` row 39.
+
+**Why the geometry is in `tests/lib/overlap.js` and not in the browser.** The same reason
+`compareToManifest` is separated from the filesystem: the detector can then be proven
+against synthetic rectangles, including the case a one-axis detector gets wrong — two
+paragraphs stacked in normal flow overlap completely on x and are not a collision. A
+detector whose only evidence is "it went green on the fixed page" has shown nothing.
+
+**The control that carries the check.** The third test re-injects the pre-fix declarations
+and asserts the collision comes back. It is what keeps the selectors honest: if a future
+refactor renames `.span` or `.stamp`, the main test goes quietly green and this one goes
+loudly red, naming the fact that the check can no longer be shown to detect the defect it
+was written for.
+
+**Viewports 1280, 800, 640, 320.** Check 13 samples 1280, 640 and 320 — and 640 and 320
+are both below the 46rem breakpoint, where the measure rotates and this defect does not
+exist. Its viewport list had one desktop sample. 800 is the second, in the band where a
+fixed-height reservation breaks first.
+
+## The monitor the repository cannot run — check 24
+
+§9's liveness cannot live here. GitHub disables scheduled workflows after 60 days of
+repository quiet; this site is finished by design, so quiet is the expected state and
+`canary.yml` switches off exactly when it becomes the only thing watching. The two in-repo
+fixes were considered and rejected — see `DEPLOY.md` and `canary.yml`'s header.
+
+What does not have to leave is the *configuration*. `tools/monitors.json` is the plan,
+`tools/monitor-setup.mjs` applies it, and check 24 reads the account back.
+
+**A planned monitor missing from the API response is a failure, not a pass.** This is
+check 22's absent-setting branch moved one layer out, and it matters more here: the naive
+evaluator — "for each monitor the account returned, is it right?" — reports green against
+an account with no monitors at all. Deletion is how monitoring actually dies, because
+monitors are removed by people tidying dashboards rather than by systems failing. The
+controls prove the branch: an empty account must produce four findings, not zero.
+
+**Two errors in `DEPLOY.md` found by measuring the live site rather than re-reading the
+table.** It asserted `mailto:hello@ordoia.com` on `/oal/v1.0`, which contains that string
+**zero** times — the monitor would have alerted on its first run — and it printed the
+address without its trailing slash, which 301s. Both corrected; check 24 now asserts both
+properties so the table cannot drift back.
+
+**What check 24 does not establish**: that anyone reads the alerts, that the monitor has
+not been paused at the provider, or that it is running right now. It runs when the suite
+runs. It moves the claim from *"a monitor was set up once"* to *"a monitor matching this
+file existed the last time anyone looked"*, which is an improvement and not a closure. The
+residual in `canary.yml`'s header stands.
+
 ## Not yet built
 
 Checks are in place for all twelve items in §3, plus check 0's controls and check
@@ -620,11 +696,26 @@ Checks are in place for all twelve items in §3, plus check 0's controls and che
 - **The accessibility report (§11.5)**, web-archive submission on each published
   version, the domain-lapse paragraph (§5), the architecture diagram (§11.6), the
   did-not-do list (§11.8) and the v1.1 publishing-process document (§11.3). All six are
-  documents rather than mechanisms, and all six are still unwritten.
-- **The rollback drill.** Check 20 proves the selection logic and the probe; the
-  Cloudflare API calls behind them have never run. `DEPLOY.md` carries the drill on a
-  throwaway project, and until it is performed the rollback claim is documentation in
-  exactly the sense §13 item 6 uses the word.
+  documents rather than mechanisms, and all six are still unwritten. The domain-lapse
+  *paragraph* is unwritten; since 2026-08-11 the domain-lapse *alert* exists, because
+  `domain_expiration` came free on the Better Stack monitor object — check 24.
+- **Full content-pinning of a version snapshot.** Since 2026-08-11 the passthrough assets
+  (`styles.css`, the fonts) are served from bytes stored at publication under
+  `versions/v1.0/`, so the living stylesheet can change without restating a published
+  document. `index.html` and `favicon.svg` are still *generated*: editing a layout will
+  turn check 21 red and force the decision again. That is deliberate — check 21 catching
+  it is the design — but it is not the same as the snapshot being immutable by
+  construction. `CHANGES.md` row 40.
+
+Closed on 2026-08-10, and this list said otherwise until 2026-08-11: **the rollback
+drill**. It was run against the real `ordoia` project before the custom domain was
+attached, and it overturned two of the three things `DEPLOY.md` claimed about the recovery
+path — see *The rollback drill, and the deployments listing shape* above, which has
+recorded the observed responses since that session. This section went on saying the
+Cloudflare API calls "have never run" while the same document, three hundred lines
+earlier, printed what they returned. **A document that contradicts itself is worse than
+one that is merely out of date: both halves look authoritative.** Logged as `CHANGES.md`
+row 42 rather than quietly corrected, for the same reason rows 28 and 30 were.
 
 Closed since 2026-08-09: **version immutability** is no longer pass-2 work. §5's rule is
 executable as check 21 and `tools/freeze-version.mjs`, and the freeze is a publication
