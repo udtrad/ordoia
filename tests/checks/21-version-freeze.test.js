@@ -24,17 +24,29 @@
  * build from the other direction — generating a superseded version's page out of a newer
  * rubric — and the two guards meet in the middle.
  *
- * ── Nothing is frozen yet, and that is the correct state ───────────────────────────
+ * ── v1.0 is frozen, since 2026-08-11 ──────────────────────────────────────────────
  *
- * A version is frozen when it has a manifest under `versions/`. v1.0 has none, because it
- * has not been published: freezing a draft would claim a publication that has not
- * happened, and the italic re-subset of 2026-08-09 is exactly the kind of correction that
- * has to stay free to land until the first deploy. So today this check verifies the rule
- * that *is* live — no superseded version may be unfrozen — and says plainly, through
- * `mayBeEmpty`, that the comparison population is empty and why.
+ * A version is frozen when it has a manifest under `versions/`. This header said
+ * "nothing is frozen yet" for a day after that stopped being true — the same shape as
+ * row 42, a correction landing in one place and not the others.
  *
- * `tools/freeze-version.mjs 1.0` is the one command that changes that, and DEPLOY.md
- * carries it as a publication step.
+ * `tools/freeze-version.mjs 1.0` is the command that writes the first manifest, and
+ * DEPLOY.md carries it as a publication step.
+ *
+ * ── The hole that pinning `index.html` opened, and the fourth test ────────────────
+ *
+ * Pinning `index.html` (row 50) closed a coupling and opened a quieter one. Before it,
+ * `/oal/v1.0/index.html` was regenerated from live `oal.md` on every build, so editing
+ * the rubric's copy turned this check red and forced a decision. After it, the snapshot
+ * is served from stored bytes — so the same edit changes `/oal/`, leaves `/oal/v1.0/`
+ * alone, and **check 21 stays green while one version number names two different
+ * documents.**
+ *
+ * That is worse than what pinning fixed, because it is silent. While a version's status
+ * is `Current`, the live rubric page and its snapshot are the same document by
+ * definition, and the last test in this file asserts exactly that. When v1.1 publishes
+ * and v1.0 becomes `Superseded`, the assertion stops applying to v1.0 on its own — which
+ * is correct, and is the moment the two are *supposed* to diverge.
  */
 
 import test from 'node:test';
@@ -239,5 +251,73 @@ test('check 21 — the comparison still catches a changed, added and removed fil
     compareToManifest({ version: '1.0', files: {} }, { 'index.html': 'f'.repeat(64) })[0],
     /lists no files/,
     'a manifest recording nothing must fail rather than vacuously pass'
+  );
+});
+
+/**
+ * Prose as a reader receives it, with markup and whitespace collapsed away.
+ *
+ * The two pages differ legitimately in their chrome — `assetBase` rewrites the
+ * stylesheet and font URLs, the canonical link differs, the masthead marks a different
+ * nav item current. None of that is the rubric. What must not differ is a word of the
+ * methodology, so the comparison is over text and not over bytes.
+ */
+const prose = (html) =>
+  String(html)
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(nbsp|middot|mdash|ndash|amp|quot|hellip|darr|times|gt|lt|#\d+);/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+test('check 21 — a current version says the same thing at both of its addresses', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  const s = survey({
+    current: 'versions whose status is Current',
+    words: 'words of rubric prose compared between the live page and the snapshot',
+  });
+
+  for (const v of oal.versions) {
+    if (String(v.status).toLowerCase() !== 'current') continue;
+    s.count('current');
+
+    const live = path.join(TARGET, 'oal', 'index.html');
+    const snapshot = path.join(TARGET, versionDir(v.version), 'index.html');
+
+    if (!existsSync(live) || !existsSync(snapshot)) {
+      s.fail(
+        `v${v.version} is Current but ${!existsSync(live) ? '/oal/' : versionDir(v.version)}` +
+          `/index.html was not generated, so the two addresses cannot be compared.`
+      );
+      continue;
+    }
+
+    const a = prose(await readFile(live, 'utf8'));
+    const b = prose(await readFile(snapshot, 'utf8'));
+    s.count('words', b.split(' ').length);
+
+    if (a === b) continue;
+
+    // Name the first divergence rather than printing two documents at each other.
+    const wa = a.split(' ');
+    const wb = b.split(' ');
+    let i = 0;
+    while (i < wa.length && i < wb.length && wa[i] === wb[i]) i += 1;
+    s.fail(
+      `v${v.version} reads differently at /oal/ and /${versionDir(v.version)}/, from word ` +
+        `${i}:\n      live:     …${wa.slice(Math.max(0, i - 6), i + 12).join(' ')}…\n` +
+        `      snapshot: …${wb.slice(Math.max(0, i - 6), i + 12).join(' ')}…`
+    );
+  }
+
+  s.report(
+    'the current rubric version states different things at its two addresses. While a ' +
+      'version is Current those are the same document, and a scorecard citing it does not ' +
+      'say which address the reader should have used. This is the failure mode pinning ' +
+      "index.html introduced: before it, editing the rubric's copy moved the snapshot and " +
+      'turned the manifest red; after it, the snapshot holds its stored bytes and the edit ' +
+      'reaches only /oal/. If the rubric text is meant to change, that is a new version — ' +
+      'publish it, and this check stops comparing the old one the moment it is superseded.'
   );
 });
