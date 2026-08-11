@@ -272,6 +272,10 @@ function buildTokens() {
 
     version: oal.current,
     published: site.publicationDate,
+    // The registration belongs to the current legal person and does not survive
+    // incorporation, so it is read from the one record that holds the entity with it
+    // rather than typed anywhere. Check 25 asserts it was never typed.
+    vatNumber: site.legalEntity.vatNumber,
     domain: site.domain,
     email: site.email,
     elsewhereLabel: site.elsewhere.label,

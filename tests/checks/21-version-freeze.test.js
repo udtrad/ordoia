@@ -255,20 +255,30 @@ test('check 21 — the comparison still catches a changed, added and removed fil
 });
 
 /**
- * Prose as a reader receives it, with markup and whitespace collapsed away.
+ * The rubric's own prose, with markup and whitespace collapsed away.
  *
- * The two pages differ legitimately in their chrome — `assetBase` rewrites the
- * stylesheet and font URLs, the canonical link differs, the masthead marks a different
- * nav item current. None of that is the rubric. What must not differ is a word of the
- * methodology, so the comparison is over text and not over bytes.
+ * Scoped to `<main>`, and the scope is the substantive part. The two pages differ
+ * legitimately in their chrome: `assetBase` rewrites asset URLs, the canonical link
+ * differs, the masthead marks a different nav item current — and from row 50 the
+ * snapshot's footer is frozen at what it was published with, so a footer change makes
+ * the two differ *by design*. None of that is the methodology.
+ *
+ * Written unscoped first, and it failed on exactly that: the VAT footer landed and this
+ * went red at word 4,801, with words 0–4,800 identical. The failure was correct about
+ * the bytes and wrong about the claim, which is the difference between a check that
+ * measures what it says and one that measures what was easy to reach.
  */
-const prose = (html) =>
-  String(html)
+const RUBRIC = /<main[^>]*>([\s\S]*?)<\/main>/i;
+
+const prose = (html) => {
+  const body = RUBRIC.exec(String(html));
+  return String(body ? body[1] : '')
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]*>/g, ' ')
     .replace(/&(nbsp|middot|mdash|ndash|amp|quot|hellip|darr|times|gt|lt|#\d+);/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+};
 
 test('check 21 — a current version says the same thing at both of its addresses', async (t) => {
   if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);

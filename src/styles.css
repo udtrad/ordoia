@@ -565,6 +565,13 @@ td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
 .constraints { list-style: none; margin: 0; padding: 0; }
 .constraints li { padding: 0 0 1.5rem; }
 
+/* The basis block under the price grid. Spacing only — no marker, no border, no rule.
+   A free-standing rule on this site always means a scale, so the heading above this
+   list is what separates it from the grid. Tighter than .constraints because these are
+   three short statements rather than paragraphs. */
+.basis { list-style: none; margin: 0; padding: 0; }
+.basis li { padding: 0 0 0.5rem; }
+
 
 .changelog { list-style: none; margin: 0; padding: 0; }
 .changelog li { padding: 0 0 1.4rem; }
@@ -577,6 +584,14 @@ footer .sheet { align-items: start; }
 footer .foot { grid-column: 2; font-size: 0.78rem; color: var(--slate); }
 footer .foot a { color: var(--slate); }
 footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 1.2rem; }
+
+/* The legal field list. Fields wrap independently, and the separator is drawn between
+   them rather than written into the markup — this is a list, so the structure already
+   says where one field ends. It is not a rule: on this site a free-standing rule always
+   means a scale, and a middot between two fields is the same separator the stamp and
+   the rail use. `margin: 0` overrides the footer nav's bottom margin above. */
+footer ul.legal { gap: 0 0.75rem; margin: 0; }
+footer ul.legal li + li::before { content: "·"; margin-right: 0.75rem; color: var(--untravelled); }
 
 /* Named values for a screen reader where the visual design carries them by
    position. BRIEF §7 authorises this markup explicitly. */

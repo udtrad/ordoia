@@ -68,7 +68,22 @@
         <li><a href="/changelog/">Changelog</a></li>
         {%- endif %}
       </ul>
-      <p>{{ site.name }} &middot; {{ terminology.partyWord }} {{ site.tagline }} &middot; {{ site.country }}</p>
+      {#
+        A field list, not a sentence. Terms and Privacy come back as one field each
+        once the entity exists, and that has to be a diff rather than a re-layout —
+        the same principle the signatory block was built on. Adding a field is one
+        line in site.json and moves nothing here.
+
+        The separators are drawn in CSS rather than written into the markup: the
+        <ul>/<li> structure already carries the semantics, so the middot is purely
+        visual and nothing reads a stray character between fields.
+      #}
+      <ul class="legal">
+        <li>{{ site.name }}</li>
+        {%- for field in site.footerFields %}
+        <li>{% if field.href %}<a href="{{ field.href }}">{{ field.text | tok }}</a>{% else %}{{ field.text | tok }}{% endif %}</li>
+        {%- endfor %}
+      </ul>
     </div>
   </div>
 </footer>

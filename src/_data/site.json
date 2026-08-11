@@ -14,10 +14,54 @@
 
   "name": "Ordoia",
   "tagline": "assurance for LLM and agent systems",
-  "country": "United Kingdom",
 
   "domain": "ordoia.com",
   "email": "hello@ordoia.com",
+
+  "$legalEntityComment": [
+    "One record, on purpose. The VAT registration belongs to the CURRENT LEGAL PERSON",
+    "and does not survive incorporation — VAT68 is open — so the number has a known",
+    "expiry, and a number left behind after the entity changes is a false statement on",
+    "a public page. Keeping name, number and jurisdiction in one object is the same",
+    "shape as the population rule: it makes the thing you would otherwise forget",
+    "compulsory to walk past.",
+    "",
+    "Only `vatNumber` is rendered — the footer prints it and nothing else here. The",
+    "other two fields exist so that changing the entity cannot happen without seeing",
+    "the number. Check 25 holds the rendered footer to this value and, more usefully,",
+    "asserts no VAT-shaped literal was typed into a template: no check can know the",
+    "number is wrong, but every check can know it was not supposed to be typed.",
+    "",
+    "`registeredIn` is a country and not a companies registry because a sole trader is",
+    "VAT-registered without being company-registered. On incorporation this record",
+    "changes as one thing."
+  ],
+  "legalEntity": {
+    "name": "PENDING — the legal person's name, not the trading name",
+    "vatNumber": "524 8209 92",
+    "registeredIn": "United Kingdom"
+  },
+
+  "$footerComment": [
+    "The footer is a FIELD LIST, not a sentence, and that is structural rather than",
+    "stylistic. Terms and Privacy arrive as one field each once the entity exists, and",
+    "that has to be a diff rather than a re-layout — the principle the signatory block",
+    "was built on. Adding a field here is one line and moves nothing else.",
+    "",
+    "`text` runs through the copy-token vocabulary, so `{vatNumber}` resolves and an",
+    "unknown token still fails the build. `href` is optional: a field with one renders",
+    "as a link, which is how Terms and Privacy will arrive.",
+    "",
+    "`country` used to live above and its only consumer was the sentence this replaced.",
+    "It is gone rather than left dead — an unused value is how the retainer price drifted",
+    "out of the data (row 46)."
+  ],
+  "footerFields": [
+    { "text": "UK-based" },
+    { "text": "engagements under English law" },
+    { "text": "prices in GBP" },
+    { "text": "VAT registration no. {vatNumber}" }
+  ],
 
   "$formerDomainsComment": [
     "Domains this practice has previously published against. Nothing in the build",

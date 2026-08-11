@@ -35,6 +35,17 @@ description: Three engagements, published prices. Coverage and depth are two sep
       {{ grid(products) }}
       <p class="note">{{ c | frag("grid.note") | mdi | safe }}</p>
       {{ c | frag("grid.paths") | md | safe }}
+      {#
+        The scope unit. Services only — Home's equivalent section pulls prices.* from
+        home.md and never sees this key, which keeps Home's bottom third the grid and
+        the basis block and nothing else.
+
+        A bold run-in, deliberately not an <h3>: a heading here would manufacture a scan
+        target next to a priced grid, and if a reader counts five products instead of
+        four this has failed. No border, no rule, no price — the ~0.5x-per-path figure
+        stays unpublished, and only the drivers are stated.
+      #}
+      {{ c | frag("grid.scope") | md | safe }}
     </section>
 
     <section class="block" id="audit">
@@ -57,7 +68,12 @@ description: Three engagements, published prices. Coverage and depth are two sep
       {{ c | frag("review.threshold") | md | safe }}
       <p class="cap">{{ c | frag("review.method") | mdi | safe }}</p>
       {{ c | frag("review.receive") | md | safe }}
-      <p class="note">{{ c | frag("review.addressed") | mdi | safe }}</p>
+      {#
+        Card 2 ends on its list, and nothing replaces the paragraph that used to sit
+        here. Card 1 ends on an italic, cards 2 and 3 end on their lists; that
+        asymmetry is what the pass-two build shipped and accepted. Do not fill the
+        gap, do not re-treat the italics across the three cards, do not rebalance.
+      #}
     </section>
 
     <section class="block" id="retainer">

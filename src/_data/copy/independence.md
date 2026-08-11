@@ -15,7 +15,7 @@ What {partyWord} means here
 It is a set of constraints we accept, not an adjective we apply to ourselves.
 
 @@ intro
-Nobody asks whether their tracing vendor is independent. The question only arises when someone is being asked to rely on a judgement, and it is answered by what the person making the judgement has agreed not to do. So the constraints are published, in the order they bind.
+Nobody asks whether their tracing vendor is {partyWord}. The question only arises when someone is being asked to rely on a judgement, and it is answered by what the person making the judgement has agreed not to do. So the constraints are published, in the order they bind.
 
 @@ constraints
 - **We do not assess systems we have built or remediated, and we do not remediate systems we have assessed.** Specifying what needs building is assessment work; writing it is not ours to do, because next month we would be scoring our own code. Where we have done build work, the re-assessment belongs to someone else.
@@ -29,6 +29,8 @@ Nobody asks whether their tracing vendor is independent. The question only arise
 - **Each assessment is performed by a single assessor, and there is no second reviewer on the work.** No accreditation stands behind it either. What stands behind it is a published method, retained working papers, and a named person on every assessment.
 
 - **Working papers are retained for six years.** A competent assessor given the same papers should reach the same score. If they wouldn't, we've sold you an opinion.
+
+- **Scope of the method.** OAL assesses system behaviour. It does not assess clinical safety, medical-device classification, or regulatory classification of any kind. We do not currently take work that turns on DCB0129, DCB0160 or MHRA SaMD classification, and we say so rather than scope around it.
 
 - **We keep a conflict register**, and we say no when it says no.
 
