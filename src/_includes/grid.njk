@@ -29,7 +29,7 @@
         {%- for key in row.cells %}
         {%- if key %}
         {%- set p = products.products | product(key) %}
-        <td><span class="prod">{{ p.name }}</span><span class="scope">{{ p.price }} &middot; {{ p.duration }}</span></td>
+        <td><span class="prod">{{ p.name }}</span><span class="scope"><span class="v">{{ p | price }}</span>&nbsp;<span class="sep" aria-hidden="true">&middot;</span> <span class="v">{{ p.duration }}</span></span></td>
         {%- else %}
         <td class="none">{{ products.grid.notOffered }}</td>
         {%- endif %}
@@ -37,7 +37,7 @@
       </tr>
       {%- else %}
       <tr>
-        <th scope="row" class="rowhead"><span class="path">&darr; {{ path.name }} &middot; {{ path.price }} &middot; {{ path.duration }}</span></th>
+        <th scope="row" class="rowhead"><span class="path">&darr; {{ path.name }} &middot; {{ path | price }} &middot; {{ path.duration }}</span></th>
         <td class="path">{{ row.note }}</td>
         <td></td>
         <td></td>

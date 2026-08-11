@@ -44,6 +44,82 @@ import { pinnedDir, PINNED_ASSETS } from './tools/freeze-version.mjs';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const readJSON = (p) => JSON.parse(readFileSync(path.join(ROOT, p), 'utf8'));
 
+/* -------------------------------------------------------------------------- *
+ * Prices.
+ *
+ * One function renders every price on the site, from an amount that is a number.
+ *
+ * ── Why a filter and not careful editing ──────────────────────────────────────
+ *
+ * Adding `+ VAT` by hand meant editing twenty rendered strings (six on Home,
+ * fourteen on Services — the grid renders on both). The objection is not the
+ * tedium; it is that a hand-edited set has no membership rule, so the price
+ * somebody adds next month is added without the suffix and nothing notices.
+ * Card 3's header had already drifted out of the data this way — see CHANGES.md
+ * row 46, where a typed `From £3,000/month` sat beside an unused token.
+ *
+ * The retainer is why the ORDER is code rather than a convention: it renders
+ * `£3,000/month + VAT` and never `£3,000 + VAT/month`. Written down, that is a
+ * rule someone has to remember; written here, it is the only thing that can
+ * happen.
+ *
+ * ── Why plain text with NBSP, and not `<span class="price">` ──────────────────
+ *
+ * Draft 5 §4.1 asks for `<span class="price">…</span>` with a `white-space:
+ * nowrap` rule. Measured, that cannot work: a price reaches the page by two
+ * routes, and markup survives neither. Copy fragments run through markdown-it
+ * with `html: false`, which renders the span as `&lt;span class=&quot;price…`;
+ * and the three card headers use no `md` filter at all, so Nunjucks' own
+ * auto-escaping does the same. A `&nbsp;` entity is escaped to `&amp;nbsp;` on
+ * that second route and would print literally.
+ *
+ * A literal U+00A0 survives both routes intact, and non-breaking spaces are
+ * precisely the mechanism for "must never break after the `+`" — which is the
+ * requirement the span and the CSS rule were there to satisfy. So the guarantee
+ * is kept and the markup is dropped, rather than adding a second rendering path
+ * for copy that would defeat the point of having one filter.
+ * -------------------------------------------------------------------------- */
+
+const NBSP = ' ';
+
+/**
+ * A published rate, as a reader sees it.
+ *
+ * Throws rather than degrades: a price cell that quietly renders empty is a
+ * mis-sold engagement, and this file's header makes build failures the way
+ * conventions are enforced here.
+ */
+export function renderPrice(product) {
+  const label = product?.key ? `product "${product.key}"` : 'a product';
+  const amount = product?.amount;
+
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    throw new Error(
+      `${label} has no usable \`amount\` (got ${JSON.stringify(amount)}). Amounts in ` +
+        `products.json are plain numbers — no currency symbol, no comma, no "from", ` +
+        `no "/month". Those are rendering decisions and they live in renderPrice().`
+    );
+  }
+  if (product.period !== undefined && typeof product.period !== 'string') {
+    throw new Error(`${label} has a non-string \`period\`: ${JSON.stringify(product.period)}`);
+  }
+
+  const figure = `£${amount.toLocaleString('en-GB')}`;
+  // The floor word is joined with a non-breaking space for the same reason the suffix is.
+  // With an ordinary space the widened string broke there: measured at 1280px, the Review
+  // cell went from `from £9,000` / `· 3 weeks` to `from` / `£9,000 + VAT · 3` / `weeks`,
+  // orphaning "from" on its own line above the figure it modifies, where it means nothing.
+  const floor = product.from ? `from${NBSP}` : '';
+  const period = product.period ? `/${product.period}` : '';
+
+  // VAT is unconditional and has no opt-out parameter. Every published rate on this
+  // site excludes VAT, so a call site able to render one without the suffix is a call
+  // site able to be wrong — and an option defaulting the right way is still an option
+  // somebody can pass. The suffix goes last, after the period: `£3,000/month + VAT`,
+  // never `£3,000 + VAT/month`. That ordering is the whole reason this is a function.
+  return `${floor}${figure}${period}${NBSP}+${NBSP}VAT`;
+}
+
 const site = readJSON('src/_data/site.json');
 const oal = readJSON('src/_data/oal.json');
 const products = readJSON('src/_data/products.json');
@@ -187,23 +263,37 @@ function buildTokens() {
   const inScope = products.auditCoverage;
   const outOfScope = oal.dimensions.map((d) => d.number).filter((n) => !inScope.includes(n));
 
+  // A price that opens a unit needs its first letter up — card 3's header is a
+  // `·`-separated label strip and "from £3,000/month" would be the only field on the
+  // page starting lower case. The same shape as partyWord/partyWordCap below, and for
+  // the same reason: the capital is a rendering concern, so it does not go in the data
+  // where it would leak into the grid cell, which is mid-sentence and correct as is.
+  const capitalise = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+
   return {
     partyWord: terminology.partyWord,
     partyWordCap: terminology.partyWordCap,
 
     version: oal.current,
     published: site.publicationDate,
+    // The registration belongs to the current legal person and does not survive
+    // incorporation, so it is read from the one record that holds the entity with it
+    // rather than typed anywhere. Check 25 asserts it was never typed.
+    vatNumber: site.legalEntity.vatNumber,
     domain: site.domain,
     email: site.email,
     elsewhereLabel: site.elsewhere.label,
     elsewhereUrl: site.elsewhere.url,
 
-    'audit.price': byKey.audit.price,
+    // Every price token goes through the same renderer the templates use, so copy
+    // and markup cannot disagree about what a price looks like.
+    'audit.price': renderPrice(byKey.audit),
     'audit.duration': byKey.audit.duration,
-    'topup.price': byKey['top-up'].price,
-    'baseline.price': byKey.baseline.price,
-    'review.price': byKey.review.price,
-    'retainer.price': byKey.retainer.price,
+    'topup.price': renderPrice(byKey['top-up']),
+    'baseline.price': renderPrice(byKey.baseline),
+    'review.price': renderPrice(byKey.review),
+    'retainer.price': renderPrice(byKey.retainer),
+    'retainer.priceCap': capitalise(renderPrice(byKey.retainer)),
 
     // §8's outstanding reconciliation, closed structurally: both lists are derived
     // from products.json `auditCoverage` against the rubric's own names, so the
@@ -359,6 +449,12 @@ export default function (eleventyConfig) {
 
   eleventyConfig.addFilter('lower', (text) => String(text ?? '').toLowerCase());
 
+  /**
+   * A product's price, rendered. See renderPrice() at the top of this file for why
+   * the suffix rule lives in code and why the output carries no markup.
+   */
+  eleventyConfig.addFilter('price', (product) => renderPrice(product));
+
   /** One product by key. Unknown key is a build failure, not an empty price cell. */
   eleventyConfig.addFilter('product', (list, key) => {
     const found = list.find((p) => p.key === key);
@@ -444,10 +540,16 @@ export default function (eleventyConfig) {
    * rather than lenient. `tools/freeze-version.mjs` stores the bytes at the same moment
    * it records their hashes, which is what turns the first case on.
    *
-   * Still generated rather than pinned: `index.html` and `favicon.svg`. Editing a layout
-   * or the favicon will turn check 21 red and force this decision again, deliberately —
-   * full content-pinning is the pass-2 work `requirePublishableVersion` describes below.
-   * The line here is passthrough assets, which is where the silent re-derivation was.
+   * Since 2026-08-11 `index.html` and `favicon.svg` are pinned too (CHANGES.md row 50), so
+   * this loop now covers a published version's whole surface and `src/` cannot reach any of
+   * it. The prediction this paragraph used to carry — that a layout edit would turn check 21
+   * red and force the decision again — is what actually happened, one session later, when a
+   * footer carrying a VAT number reached the frozen page.
+   *
+   * A consequence worth stating, because the code does not make it obvious: for a published
+   * version Eleventy still renders `oal-version.njk` and the render is then overwritten by
+   * the stored bytes. `requirePublishableVersion` below therefore guards output that is
+   * discarded, and an edit to that template has no effect on any frozen version.
    *
    * Copied rather than passed through, for two reasons: Eleventy takes one target per
    * passthrough source, and a real `copyFile` puts byte-identical bytes at both paths

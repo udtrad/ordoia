@@ -613,9 +613,12 @@ into the frozen directory on every run, so "self-contained" was true of the snap
 was **the living stylesheet becoming un-editable**, because check 21 went red on any
 change to it. See `CHANGES.md` row 40.
 
-`index.html` and `favicon.svg` are still generated. Editing a layout or the favicon turns
-check 21 red and makes you decide, which is the design — but it is not the same as the
-snapshot being immutable by construction.
+`index.html` and `favicon.svg` **are pinned as well**, since 2026-08-11 — see `CHANGES.md`
+row 50. All four entries in `PINNED_ASSETS` are served from `versions/v<n>/`, so the
+snapshot is now immutable by construction across its whole surface rather than only its
+passthrough assets. What that costs is stated rather than discovered later: the frozen
+page's footer and nav hold the state they were published in, so a page added to the site
+later will not appear in v1.0's footer list. That is what frozen means.
 
 **Re-freezing a published version is not a procedure.** The manifest's own header says a
 changed byte means a new version, and that stands. It was done exactly once, on
@@ -644,11 +647,20 @@ Check 21 then fails on any later build that changes, adds or removes a single fi
 `requirePublishableVersion` in `eleventy.config.js` guards the other direction — it stops
 the build outright rather than regenerate a superseded version's page from a newer rubric.
 
-**Do this at publication, not before.** Nothing is frozen today, and that is correct: v1.0
-has not been published, and freezing a draft would claim a publication that has not
-happened. The italic re-subset of 2026-08-09 — which took the rubric pages from 151.5 KiB
-to 139.1 KiB — is exactly the kind of correction that has to stay free to land right up
-until the first production deploy, and would have been unrecoverable one commit later.
+**Do this at publication, not before.** Freezing a draft claims a publication that has not
+happened, and the italic re-subset of 2026-08-09 — which took the rubric pages from
+151.5 KiB to 139.1 KiB — is exactly the kind of correction that has to stay free to land
+right up until the first production deploy, and would have been unrecoverable one commit
+later.
+
+> **v1.0 has been frozen since 2026-08-11.** This paragraph read *"nothing is frozen
+> today, and that is correct: v1.0 has not been published"* for a day after it was, and the
+> same sentence sat in `tools/freeze-version.mjs`'s own header. Both are corrected, and
+> both are recorded rather than quietly edited: this is `CHANGES.md` row 42 a second time —
+> a correction landing in one place and not the others — and the interesting part remains
+> that the suite has no check which reads its own prose for consistency, and probably
+> cannot have one. `versions/v1.0.json` is the authority on what is frozen; a document is
+> not.
 
 Once frozen, `tools/freeze-version.mjs` refuses to re-freeze. Deleting the manifest by hand
 is the deliberate act that overrides it, and it should appear in `CHANGES.md` with a reason

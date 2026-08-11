@@ -74,12 +74,35 @@ export const pinnedDir = (version) => path.join(FROZEN_DIR, `v${version}`);
  * thing standing between a stylesheet edit and a silently-restated methodology document
  * was check 21 going red on a file the edit was not about.
  *
- * `index.html` and `favicon.svg` are deliberately absent: they are generated, and pinning
- * generated output is the larger pass-2 change `requirePublishableVersion` describes.
- * Check 21 still covers them, so a layout change is caught — it just has to be decided
- * rather than absorbed.
+ * ── 2026-08-11: `index.html` and `favicon.svg` joined the list ────────────────────
+ *
+ * They used to be deliberately absent, on the reasoning that they are generated and
+ * that pinning generated output was the larger pass-2 change `requirePublishableVersion`
+ * describes. The comment that stated this also predicted what would happen next: *"a
+ * layout change will turn check 21 red and force this decision again, deliberately."*
+ *
+ * That is exactly what arrived. The footer is not a partial — it is inline in the one
+ * layout, and `/oal/v1.0/index.html` is one of the nine pages that render it, so a
+ * footer carrying a VAT number moves the frozen snapshot's bytes. The decision was
+ * forced on schedule and taken the way the deferral anticipated.
+ *
+ * **Pinning is not re-freezing, and the difference is the whole point.** The bytes
+ * stored here are the bytes already in the manifest, so `versions/v1.0.json` does not
+ * change, `0289c300…` stays `0289c300…`, and check 21 is green before and after. A
+ * re-freeze would have re-recorded *different* bytes against a published address — the
+ * thing the manifest's own header forbids, done once deliberately (row 40) and recorded
+ * in `DEPLOY.md` as "not a precedent". This spends no exception at all.
+ *
+ * What it costs: the frozen page's footer and nav now hold the state they were
+ * published in, so a page added to the site in 2028 will not appear in v1.0's footer
+ * list. That is correct rather than regrettable — it is what "frozen" means, and the
+ * previous arrangement, where a methodology document's chrome silently tracked the
+ * live site, was the same defect class as the stylesheet coupling row 40 closed, one
+ * file over. `favicon.svg` comes too: it is generated from `--ground` and `--ink` read
+ * out of the *live* `src/styles.css`, so a colour token could reach the snapshot even
+ * though `styles.css` itself was pinned. That coupling was undocumented.
  */
-export const PINNED_ASSETS = ['styles.css', 'fonts'];
+export const PINNED_ASSETS = ['styles.css', 'fonts', 'index.html', 'favicon.svg'];
 
 /**
  * Copy a published version's assets out of the build and into the repository.

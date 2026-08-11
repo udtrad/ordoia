@@ -276,3 +276,267 @@ test('check 23 — restoring the pre-fix layout turns this check red (control)',
 
   s.report('the pre-fix stylesheet reproduces the collision this check exists to catch');
 });
+
+/* ================================================================================== *
+ * The priced surfaces.
+ *
+ * Draft 5 §5 says to "re-run check 23 at every breakpoint after the card headers grow —
+ * it is the only check that can see a header running under an adjacent element". That
+ * instruction could not be carried out as written, and the reason is worth recording:
+ *
+ *   **`/services/` contains no `figure.measure` at all.** Measured, not assumed — Home
+ *   has one, `/oal/` and `/oal/v1.0/` two each, `/scorecard/` eight, Services **zero**.
+ *   Everything above this line selects inside `figure.measure`, so re-running it after
+ *   the card headers grew would have rendered Services four more times and inspected
+ *   nothing on it. The check was green on that page for the same reason it would have
+ *   stayed green if every header had collapsed into the next: it was never looking.
+ *
+ * That is check 13's lesson arriving one layer up. Check 13 asked whether the question
+ * was *present* and never whether it was *readable*; this asks whether the collision
+ * detector *ran* and not merely whether it passed.
+ *
+ * So the detector's reach is extended to the surfaces that carry a price — the three
+ * card headers on Services and every cell of the coverage x depth grid on both pages
+ * that render it. The arithmetic is unchanged; only what it is pointed at is new.
+ * ================================================================================== */
+
+/** Text-bearing parts of a priced surface, within one section or one grid cell. */
+const PRICED_PARTS = 'h2, .note, .prod, .scope .v, .rowhead, .path';
+
+/**
+ * Every priced surface on the page, as plain rectangles.
+ *
+ * A "surface" is one card section or one grid cell — the unit inside which two pieces of
+ * text printing over each other would be the defect. Comparing across surfaces would
+ * report every adjacent card as a collision.
+ *
+ * ── Two corrections this needed, both found by running it ─────────────────────────
+ *
+ * The first draft of this reported eleven collisions on a correct page, and neither
+ * cause was a defect. Both are recorded because both are ways a rectangle-based
+ * detector lies, and the existing measure arm never met either — its parts are
+ * block-level siblings, so it had no occasion to.
+ *
+ *   1. **A container always "overlaps" its own descendant.** `.path` lives inside
+ *      `.rowhead`, so comparing both reported 53.9px x 125.7px of overlap on every
+ *      render. Fixed by taking only the innermost matching element, the same filter
+ *      check 12 applies to prose blocks and for the same reason.
+ *
+ *   2. **`getBoundingClientRect()` on an inline element spanning two lines returns the
+ *      union of its line boxes**, which covers horizontal space the element never
+ *      paints on. `from £3,000/month + VAT` wraps after "from" inside a grid cell, so
+ *      its rect swallowed the line below it and reported a 17px x 119.8px collision
+ *      with a sibling that is simply on the next line. Fixed with `getClientRects()`,
+ *      which returns one rect per line box: a wrapped element becomes several parts,
+ *      each compared where it is actually drawn.
+ *
+ * Neither is a weakening. A real overlap is still a real overlap on the line where it
+ * happens, and the control below proves the detector still catches one.
+ */
+const readPricedSurfaces = (page) =>
+  page.evaluate((selector) => {
+    const surfaces = [
+      ...[...document.querySelectorAll('main section.block')].map((el) => ({ el, kind: 'section' })),
+      ...[...document.querySelectorAll('table.grid td, table.grid th')].map((el) => ({ el, kind: 'cell' })),
+    ];
+    return surfaces
+      .map(({ el: root, kind }) => ({
+        kind,
+        label: (root.querySelector('h2, .prod, .rowhead')?.textContent || root.textContent || '')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .slice(0, 44),
+        parts: [...root.querySelectorAll(selector)]
+          .filter((el) => (el.textContent || '').trim().length > 0)
+          // Innermost only: a container and its own descendant are not two things.
+          .filter((el) => !el.querySelector(selector))
+          // A section.block encloses the grid, so without this every cell's parts were
+          // compared again inside the section — 210 extra cross-cell pairs per render on
+          // Home, every one of them the cross-surface comparison this function's own
+          // comment rules out. Harmless only because table cells never overlap.
+          .filter((el) => kind === 'cell' || !el.closest('table.grid'))
+          .flatMap((el) => {
+            const name =
+              `.${(typeof el.className === 'string' ? el.className : '')
+                .split(/\s+/)
+                .filter(Boolean)
+                .join('.')}`.replace(/^\.$/, el.tagName.toLowerCase());
+            const text = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+            // One rect per line box, so a wrapped inline element is compared where it
+            // is drawn rather than across the union of the lines it touches.
+            return [...el.getClientRects()].map((r, line, all) => ({
+              label: all.length > 1 ? `${name}[line ${line + 1}]` : name,
+              text,
+              rect: {
+                top: r.top,
+                right: r.right,
+                bottom: r.bottom,
+                left: r.left,
+                width: r.width,
+                height: r.height,
+              },
+            }));
+          }),
+      }))
+      .filter((s) => s.parts.length > 1);
+  }, PRICED_PARTS);
+
+test('check 23 — no two text-bearing parts of a priced surface are printed over each other', async () => {
+  const clashes = [];
+  const s = survey({
+    renders: 'page renders measured (pages x viewports)',
+    surfaces: 'priced surfaces inspected — card sections and grid cells',
+    pairs: 'pairs of text-bearing parts compared',
+  });
+
+  await withSite(async ({ origin, pages, browser }) => {
+    const page = await browser.newPage();
+
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      for (const { url } of pages) {
+        await page.goto(origin + url, { waitUntil: 'load' });
+        await settled(page);
+        s.count('renders');
+
+        for (const surface of await readPricedSurfaces(page)) {
+          s.count('surfaces');
+          const { findings, compared } = collisions(surface.parts, (p) => p.label);
+          s.count('pairs', compared);
+          for (const f of findings) {
+            clashes.push(`${url} at ${viewport.width}px, "${surface.label}": ${f}`);
+          }
+        }
+      }
+    }
+
+    await page.close();
+  });
+
+  s.failAll(clashes);
+  s.report(
+    `text printed over text on a surface that carries a price:\n  ${clashes.join('\n  ')}\n\n` +
+      'A price a reader cannot read is worse than a price that is missing, because the ' +
+      'page looks finished. This is the same arithmetic the measure is held to, pointed ' +
+      'at the card headers and the grid — which nothing was looking at until 2026-08-11, ' +
+      'because the only collision detector in the suite selected inside figure.measure ' +
+      'and Services has none.'
+  );
+});
+
+test('check 23 — the priced-surface detector catches a header run under (control)', async () => {
+  /**
+   * The control that makes the test above worth its runtime.
+   *
+   * Card headers sit in normal flow, so today they cannot overlap — which means a green
+   * result proves nothing on its own, and a selector that silently stopped matching
+   * would look exactly the same. This plants the failure the extension exists to catch:
+   * one absolutely-positioned header pulled up over the paragraph beneath it, which is
+   * precisely the shape of the defect that survived a design pass, a brand review and a
+   * launch on the measure.
+   *
+   * `addStyleTag` mutates only the loaded page and never the working tree.
+   */
+  const RUN_UNDER_CSS = `
+    section.block { position: relative; }
+    section.block > h2 { position: absolute; top: 2.2rem; left: 0; right: 0; margin: 0; }
+    table.grid td { position: relative; }
+    table.grid td .prod { position: absolute; top: 1.2rem; left: 0; right: 0; }
+  `;
+
+  const s = survey({
+    renders: 'page renders measured with a header pulled out of flow',
+    sections: 'card sections carrying a heading the planted CSS can move',
+    cells: 'grid cells carrying a product name the planted CSS can move',
+  });
+  let reproducedSection = 0;
+  let reproducedCell = 0;
+
+  await withSite(async ({ origin, pages, browser }) => {
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 900 });
+
+    for (const { url } of pages) {
+      await page.goto(origin + url, { waitUntil: 'load' });
+      await page.addStyleTag({ content: RUN_UNDER_CSS });
+      await settled(page);
+      s.count('renders');
+
+      for (const surface of await readPricedSurfaces(page)) {
+        // Count only surfaces the planted CSS can actually perturb. The handover has two
+        // `table.grid` cells, but they carry no `.prod` — so a population of "cells that
+        // exist" asserted that a frozen 2026 artifact contains markup it never had, and
+        // turned the handover baseline 9 -> 10 for a reason that was about the fixture
+        // rather than the detector. The population has to be the thing the control moves.
+        const movable =
+          surface.kind === 'cell'
+            ? surface.parts.some((part) => part.label.includes('prod'))
+            : surface.parts.some((part) => part.label === 'h2' || part.label.includes('h2'));
+        if (movable) s.count(surface.kind === 'cell' ? 'cells' : 'sections');
+        const { findings } = collisions(surface.parts, (p) => p.label);
+        if (findings.length === 0) continue;
+        if (surface.kind === 'cell') reproducedCell += 1;
+        else reproducedSection += 1;
+      }
+    }
+
+    await page.close();
+  });
+
+  // The collisions are the point here, so they are counted rather than failed.
+  //
+  // Each arm is asserted SEPARATELY and only where that surface exists. Both halves of
+  // that matter. Asserting only the section arm — the first version of this control —
+  // let `table.grid td`, `.prod` or `.scope .v` all stop matching with the main test's
+  // population still healthy and this control still green, and the grid is exactly half
+  // of what the extension was written to reach. But asserting the grid arm
+  // *unconditionally* fails on the designer handover, which has no `table.grid` with
+  // these classes and never did: that would be this control asserting a fact about a
+  // frozen 2026 artifact rather than about the detector. Conditioning on the surface
+  // population is the honest form — where the structure exists, perturbing it must
+  // reproduce a collision; where it does not, there is nothing to prove.
+  // A target legitimately without one of these structures is not a target that measured
+  // nothing — it is a target the planted CSS has no purchase on. `mayBeEmpty` is the
+  // harness's own way of saying so out loud, the same way check 21 says it about an
+  // unpublished version, rather than letting an empty population read as a silent pass.
+  if (s.size('sections') === 0) {
+    s.mayBeEmpty(
+      'sections',
+      'this target renders no section.block carrying an h2, so there is no heading for ' +
+        'the planted CSS to pull out of flow and nothing about the detector to prove here'
+    );
+  }
+  if (s.size('cells') === 0) {
+    s.mayBeEmpty(
+      'cells',
+      'this target renders no grid cell carrying a .prod product name — the designer ' +
+        'handover has table cells but never had that markup — so the grid arm of the ' +
+        'planted CSS has nothing to move and proves nothing on this target'
+    );
+  }
+
+  if (s.size('sections') > 0) {
+    assert.ok(
+      reproducedSection > 0,
+      `${s.size('sections')} card sections carrying a movable heading were found, but ` +
+        'pulling a section heading out ' +
+        'of flow produced no collision in any of them — so this detector cannot be shown ' +
+        'to see a header running under an adjacent element, which is the only thing §5 ' +
+        'asked it for. Either PRICED_PARTS no longer matches the real elements or the ' +
+        'surfaces list has drifted, and either way the green above means nothing.'
+    );
+  }
+  if (s.size('cells') > 0) {
+    assert.ok(
+      reproducedCell > 0,
+      `${s.size('cells')} grid cells carrying a product name were found, but pulling it ` +
+        'out of flow ' +
+        'produced no collision in any of them, so the grid half of this detector is ' +
+        'unproven. The grid is where every price on the site is rendered; a selector that ' +
+        'silently stopped matching there would leave the main test green over an ' +
+        'unreadable price.'
+    );
+  }
+
+  s.report('a header and a product name pulled out of flow reproduce the collisions this extension exists to catch');
+});

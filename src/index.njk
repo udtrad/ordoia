@@ -76,7 +76,17 @@ eleventyComputed:
       <h2>{{ c | frag("prices.heading") }}</h2>
       {{ c | frag("prices.body") | md | safe }}
       {{ grid(products) }}
-      <p class="note">{{ c | frag("prices.note") | mdi | safe }}</p>
+      {#
+        The basis block. No rule above the heading: a free-standing rule on this site
+        always means a scale, never a separator, so the heading carries the separation.
+        The list class is spacing and nothing else — lists carry no rules.
+
+        Three bullets, and the absent fourth is deliberate. The expenses question is
+        recorded as flagged-and-left in CHANGES.md rather than answered here; the
+        reliance bullet arrives with the engagement letter, as its own change.
+      #}
+      <h3>{{ c | frag("basis.heading") }}</h3>
+      {{ c | frag("basis.list") | mdList("basis") | safe }}
       <p><a href="/services/">{{ c | frag("prices.link") }}</a></p>
     </section>
 

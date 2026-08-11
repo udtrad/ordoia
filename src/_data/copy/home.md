@@ -9,7 +9,7 @@ Nothing else in these files is interpreted.
 Your agent works in the demo. The question is what it does in front of a client.
 
 @@ hero.sub
-{partyWordCap} assurance for LLM and agent systems. We assess grounding, reliability and production readiness for UK financial services, private equity and professional services firms who have already built or bought one — and now have to put it in front of clients, auditors or regulators.
+{partyWordCap} assurance for LLM and agent systems. We assess grounding, reliability and production readiness for financial services, private equity and professional services firms who have already built or bought one — and now have to put it in front of clients, auditors or regulators.
 
 @@ measure.caption
 one of eight dimensions
@@ -66,6 +66,8 @@ The instrument is published
 @@ instrument.body
 Every engagement scores your system against the same eight dimensions, on the same four levels — from a behaviour that is merely asserted in a prompt, to one enforced in code, to one evidenced by continuous verification. The rubric is published in full, free, with no email wall, because a prospect recognising their own system at OAL 1 is the whole qualification mechanism and a gate blocks precisely that recognition.
 
+The dimensions describe how a system behaves, not what industry it serves. We concentrate in financial services, private equity and professional services because that is where the obligation to evidence a decision is heaviest — nothing in the rubric is sector-specific.
+
 We publish no aggregate score. An OAL 0 on authorisation is not offset by an OAL 3 on cost control, and a single number would invite exactly that trade. You get a level per dimension, the depth of evidence behind each one, and the reasoning. If you need one number for a board, take the lowest.
 
 @@ instrument.link
@@ -77,8 +79,13 @@ What it costs
 @@ prices.body
 Coverage and depth are two separate axes: how many dimensions, and how far we go on each. Prices are fixed before we start and are never contingent on the score.
 
-@@ prices.note
-There is no wrong entry point and no penalty for starting small. Every assessment can be followed by any other. What the audit does not cover appears on your scorecard as *not assessed*, with the maximum level that scope could have obtained printed next to it.
+@@ basis.heading
+About these prices
+
+@@ basis.list
+- Prices exclude VAT.
+- VAT is added at the prevailing UK rate where applicable.
+- Fees are fixed before we start, and are never contingent on the score.
 
 @@ prices.link
 What each engagement includes

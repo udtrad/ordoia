@@ -24,17 +24,29 @@
  * build from the other direction — generating a superseded version's page out of a newer
  * rubric — and the two guards meet in the middle.
  *
- * ── Nothing is frozen yet, and that is the correct state ───────────────────────────
+ * ── v1.0 is frozen, since 2026-08-11 ──────────────────────────────────────────────
  *
- * A version is frozen when it has a manifest under `versions/`. v1.0 has none, because it
- * has not been published: freezing a draft would claim a publication that has not
- * happened, and the italic re-subset of 2026-08-09 is exactly the kind of correction that
- * has to stay free to land until the first deploy. So today this check verifies the rule
- * that *is* live — no superseded version may be unfrozen — and says plainly, through
- * `mayBeEmpty`, that the comparison population is empty and why.
+ * A version is frozen when it has a manifest under `versions/`. This header said
+ * "nothing is frozen yet" for a day after that stopped being true — the same shape as
+ * row 42, a correction landing in one place and not the others.
  *
- * `tools/freeze-version.mjs 1.0` is the one command that changes that, and DEPLOY.md
- * carries it as a publication step.
+ * `tools/freeze-version.mjs 1.0` is the command that writes the first manifest, and
+ * DEPLOY.md carries it as a publication step.
+ *
+ * ── The hole that pinning `index.html` opened, and the fourth test ────────────────
+ *
+ * Pinning `index.html` (row 50) closed a coupling and opened a quieter one. Before it,
+ * `/oal/v1.0/index.html` was regenerated from live `oal.md` on every build, so editing
+ * the rubric's copy turned this check red and forced a decision. After it, the snapshot
+ * is served from stored bytes — so the same edit changes `/oal/`, leaves `/oal/v1.0/`
+ * alone, and **check 21 stays green while one version number names two different
+ * documents.**
+ *
+ * That is worse than what pinning fixed, because it is silent. While a version's status
+ * is `Current`, the live rubric page and its snapshot are the same document by
+ * definition, and the last test in this file asserts exactly that. When v1.1 publishes
+ * and v1.0 becomes `Superseded`, the assertion stops applying to v1.0 on its own — which
+ * is correct, and is the moment the two are *supposed* to diverge.
  */
 
 import test from 'node:test';
@@ -151,7 +163,24 @@ test('check 21 — a published version is served from its stored bytes, not from
     for (const asset of PINNED_ASSETS) {
       const stored = path.join(pinned, asset);
       const output = path.join(built, asset);
-      if (!existsSync(stored) || !existsSync(output)) continue;
+
+      // A PINNED_ASSET missing from versions/v<n>/ is precisely the state this test
+      // claims to detect, and skipping it made the test pass green while the snapshot
+      // was provably being re-derived from src/. Demonstrated: move
+      // versions/v1.0/favicon.svg away, rebuild — all five tests passed, and the only
+      // symptom was the manifest arm going red on a *stylesheet* edit, which is the
+      // un-editable-stylesheet problem row 40 closed. `storePublishedAssets` cannot
+      // catch it either: main() throws on an existing manifest long before reaching it.
+      if (!existsSync(stored)) {
+        s.count('assets');
+        s.fail(
+          `v${version}: ${asset} is in PINNED_ASSETS but absent from ` +
+            `${path.relative(REPO_ROOT, pinned)}/, so the build falls back to src/ for it ` +
+            `and that part of the snapshot is re-derived from the living site every build.`
+        );
+        continue;
+      }
+      if (!existsSync(output)) continue;
       if (statSync(stored).isDirectory()) continue;
       s.count('assets');
 
@@ -239,5 +268,96 @@ test('check 21 — the comparison still catches a changed, added and removed fil
     compareToManifest({ version: '1.0', files: {} }, { 'index.html': 'f'.repeat(64) })[0],
     /lists no files/,
     'a manifest recording nothing must fail rather than vacuously pass'
+  );
+});
+
+/**
+ * The rubric's own prose, with markup and whitespace collapsed away.
+ *
+ * Scoped to `<main>`, and the scope is the substantive part. The two pages differ
+ * legitimately in their chrome: `assetBase` rewrites asset URLs, the canonical link
+ * differs, the masthead marks a different nav item current — and from row 50 the
+ * snapshot's footer is frozen at what it was published with, so a footer change makes
+ * the two differ *by design*. None of that is the methodology.
+ *
+ * Written unscoped first, and it failed on exactly that: the VAT footer landed and this
+ * went red at word 4,801, with words 0–4,800 identical. The failure was correct about
+ * the bytes and wrong about the claim, which is the difference between a check that
+ * measures what it says and one that measures what was easy to reach.
+ */
+const RUBRIC = /<main[^>]*>([\s\S]*?)<\/main>/i;
+
+const prose = (html) => {
+  const body = RUBRIC.exec(String(html));
+  return String(body ? body[1] : '')
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(nbsp|middot|mdash|ndash|amp|quot|hellip|darr|times|gt|lt|#\d+);/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+test('check 21 — a current version says the same thing at both of its addresses', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  const s = survey({
+    current: 'versions whose status is Current',
+    words: 'words of rubric prose compared between the live page and the snapshot',
+  });
+
+  for (const v of oal.versions) {
+    if (String(v.status).toLowerCase() !== 'current') continue;
+    s.count('current');
+
+    const live = path.join(TARGET, 'oal', 'index.html');
+    const snapshot = path.join(TARGET, versionDir(v.version), 'index.html');
+
+    if (!existsSync(live) || !existsSync(snapshot)) {
+      s.fail(
+        `v${v.version} is Current but ${!existsSync(live) ? '/oal/' : versionDir(v.version)}` +
+          `/index.html was not generated, so the two addresses cannot be compared.`
+      );
+      continue;
+    }
+
+    const a = prose(await readFile(live, 'utf8'));
+    const b = prose(await readFile(snapshot, 'utf8'));
+
+    // A page with no <main> yields '', and '' === '' would pass having compared nothing —
+    // the vacuous green this suite exists to refuse. The population guard does not catch
+    // it either: ''.split(' ').length is 1, not 0, so report()'s empty-population test
+    // never fires. Both halves are closed here.
+    if (!a || !b) {
+      s.fail(
+        `v${v.version}: no <main> found on ${!a ? '/oal/' : `/${versionDir(v.version)}/`}, ` +
+          `so the two addresses cannot be compared. An extraction that silently returns ` +
+          `nothing would make this check pass over any divergence.`
+      );
+      continue;
+    }
+    s.count('words', b.split(' ').filter(Boolean).length);
+
+    if (a === b) continue;
+
+    // Name the first divergence rather than printing two documents at each other.
+    const wa = a.split(' ');
+    const wb = b.split(' ');
+    let i = 0;
+    while (i < wa.length && i < wb.length && wa[i] === wb[i]) i += 1;
+    s.fail(
+      `v${v.version} reads differently at /oal/ and /${versionDir(v.version)}/, from word ` +
+        `${i}:\n      live:     …${wa.slice(Math.max(0, i - 6), i + 12).join(' ')}…\n` +
+        `      snapshot: …${wb.slice(Math.max(0, i - 6), i + 12).join(' ')}…`
+    );
+  }
+
+  s.report(
+    'the current rubric version states different things at its two addresses. While a ' +
+      'version is Current those are the same document, and a scorecard citing it does not ' +
+      'say which address the reader should have used. This is the failure mode pinning ' +
+      "index.html introduced: before it, editing the rubric's copy moved the snapshot and " +
+      'turned the manifest red; after it, the snapshot holds its stored bytes and the edit ' +
+      'reaches only /oal/. If the rubric text is meant to change, that is a new version — ' +
+      'publish it, and this check stops comparing the old one the moment it is superseded.'
   );
 });

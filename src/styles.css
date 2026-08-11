@@ -496,6 +496,21 @@ td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
 .grid td { border-bottom: 1px solid var(--untravelled); padding: 1rem 1rem 1rem 0; }
 .grid .prod { display: block; font-weight: 600; font-size: 0.95rem; }
 .grid .scope { display: block; color: var(--slate); font-size: 0.8rem; margin-top: 0.2rem; }
+/* The meta line is composed from fields with a template-emitted separator rather than
+   one pre-joined string, so the narrow-width rule can take the separator out and let
+   each field have its own line. The separator is aria-hidden: it is punctuation between
+   two values, not a word.
+
+   It carries NO declarations of its own, and both halves of that are deliberate.
+
+   Colour: it inherits `.scope`'s --slate. Setting it to --untravelled looked right and
+   was caught by check 7 at **1.37:1** — that token draws rules and fills, and row 5
+   moved text off it for exactly this reason. A separator is text.
+
+   Spacing: real whitespace in the markup, not a margin. With a margin, hiding the dot
+   at narrow widths left the two values touching in the accessibility tree — measured on
+   the built page, a screen reader read "Audit£2,500 + VAT1 week". Whitespace survives
+   `display: none`; a margin does not. */
 .grid .none { color: var(--slate); }
 .grid .path { color: var(--slate); font-size: 0.78rem; }
 
@@ -565,6 +580,19 @@ td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
 .constraints { list-style: none; margin: 0; padding: 0; }
 .constraints li { padding: 0 0 1.5rem; }
 
+/* The basis block under the price grid. Spacing only — no marker, no border, no rule.
+   A free-standing rule on this site always means a scale, so the heading above this
+   list is what separates it from the grid. Tighter than .constraints because these are
+   three short statements rather than paragraphs. */
+/* `margin-bottom` only, not the `margin` shorthand. The shorthand cancelled
+   `.block > * + *`'s 1.1rem top margin at equal specificity, which glued the list to its
+   own heading: measured 2.2px from "About these prices" to bullet one against 11.2px
+   between bullets, so bullet one read as a deck under the heading rather than the first
+   of three peers. `.constraints` carries the same shorthand safely because it is always a
+   first child; this is the first list on the site placed after a sibling heading. */
+.basis { list-style: none; margin-bottom: 0; padding: 0; }
+.basis li { padding: 0 0 0.5rem; }
+
 
 .changelog { list-style: none; margin: 0; padding: 0; }
 .changelog li { padding: 0 0 1.4rem; }
@@ -577,6 +605,27 @@ footer .sheet { align-items: start; }
 footer .foot { grid-column: 2; font-size: 0.78rem; color: var(--slate); }
 footer .foot a { color: var(--slate); }
 footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 1.2rem; }
+
+/* The legal field list. Fields wrap independently, and the separator is drawn between
+   them rather than written into the markup — this is a list, so the structure already
+   says where one field ends. It is not a rule: on this site a free-standing rule always
+   means a scale, and a middot between two fields is the same separator the stamp and
+   the rail use. `margin: 0` overrides the footer nav's bottom margin above. */
+/* The separator is bound to the PRECEDING field, not the following one, so it can only
+   ever trail a line. Bound to the following field it always landed at the start of a
+   wrapped line — measured at 1280px, where this list already wraps: line 2 opened with a
+   middot hanging in the left margin. Terms and Privacy add two more fields, so it will
+   wrap more, not less.
+
+   No `color` here. It inherits `footer .foot`'s --slate (6.21:1). Setting it to
+   --untravelled measured 1.37:1 on rendered text — the same violation this file records
+   at .grid .scope .sep, and check 7 cannot see it because generated content is not a DOM
+   text node, so the suite stays green over it.
+
+   Non-zero row-gap: with `gap: 0 0.75rem` the wrapped rows of this list were tighter than
+   the nav list directly above it. */
+footer ul.legal { gap: 0.25rem 0.75rem; margin: 0; }
+footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem; }
 
 /* Named values for a screen reader where the visual design carries them by
    position. BRIEF §7 authorises this markup explicitly. */
@@ -665,6 +714,15 @@ footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-
   .na__t { white-space: normal; }
   .measure__rule + .stamp { margin-top: 1.6rem; }
   table, .grid { font-size: 0.8rem; }
+  /* Vertical flow instead of horizontal scroll. Below this width the meta line's two
+     fields each take their own line and the separator goes, which drops the cell's
+     min-content width from "price · duration" to the longer of the two. The table is
+     narrower by that much, and the measured consequence is what matters: at 320px the
+     retainer column was entirely outside the scroller at rest, so the last product on
+     the ladder was invisible to anyone who did not discover the horizontal scroll. */
+  .grid .scope .v { display: block; }
+  .grid .scope .sep { display: none; }
+  .grid th.rowhead { width: auto; }
   .cta { grid-auto-flow: row; gap: 0.35rem; }
   .cta .f + .f { border-left: 0; padding-left: 0; }
 }

@@ -91,7 +91,22 @@ export function printedAddresses(html, into = new Set()) {
   return into;
 }
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'graphify-out', '_site', 'tests']);
+/**
+ * `versions/` is here for the same reason `_site` is: it holds build *output*, not site
+ * source. It stores the bytes a published rubric version went out with, and from
+ * 2026-08-11 that includes an `index.html`.
+ *
+ * Leaving it in was measured rather than reasoned about. The handover target is the repo
+ * root, so the moment `versions/v1.0/index.html` existed the handover run began scanning
+ * a fully-built rubric page and evaluating it against the *handover's* stylesheet — a
+ * comparison between two unrelated things, which turned checks 2, 4 and 9 red and moved
+ * the handover baseline 9 → 12 for no reason anybody could have named. Those bytes are
+ * frozen and could never be fixed in response, so the reds would have been permanent.
+ *
+ * The stored snapshot is not unguarded by this: check 21 holds every byte of it to the
+ * manifest, which is a stronger statement than any of these checks make.
+ */
+const SKIP_DIRS = new Set(['node_modules', '.git', 'graphify-out', '_site', 'tests', 'versions']);
 
 /** Every .html file under the target, as target-relative paths. */
 export async function htmlFiles(dir = TARGET, base = TARGET) {

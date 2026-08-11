@@ -8,7 +8,21 @@
     "both, which is the only way they stay identical.",
     "",
     "`notOffered` cells are data, not absence. RATIONALE.md: absence is always labelled",
-    "and always legible, and that includes the commercial ladder."
+    "and always legible, and that includes the commercial ladder.",
+    "",
+    "An amount is a NUMBER here, and carries no currency symbol, no thousands comma,",
+    "no `from`, no `/month` and no VAT suffix. Every one of those is a rendering",
+    "decision, and all of them now live in the `price` filter in eleventy.config.js.",
+    "",
+    "That is not tidiness. Until 2026-08-11 these fields held display strings with the",
+    "symbol, the comma, the floor and the period all baked in, and the consequence was",
+    "that adding a VAT suffix meant editing twenty rendered strings by hand — a set with",
+    "no membership rule, so the next price somebody adds is added without the suffix and",
+    "nothing notices. `from` and `period` are structured here so that the suffix ORDER is",
+    "a property of the code: the period binds to the amount and VAT comes last, never the",
+    "other way round. Check 26 keeps the symbol out of this file and every other one.",
+    "",
+    "`from` marks a floor. `period` marks a recurring charge. Absent means neither."
   ],
 
   "products": [
@@ -17,7 +31,7 @@
       "name": "Audit",
       "dimensions": 4,
       "depth": "inspected",
-      "price": "£2,500",
+      "amount": 2500,
       "duration": "1 week"
     },
     {
@@ -25,7 +39,7 @@
       "name": "baseline top-up",
       "dimensions": 4,
       "depth": "inspected",
-      "price": "£2,500",
+      "amount": 2500,
       "duration": "~1 week"
     },
     {
@@ -33,7 +47,7 @@
       "name": "Baseline",
       "dimensions": 8,
       "depth": "inspected",
-      "price": "£5,000",
+      "amount": 5000,
       "duration": "2 weeks"
     },
     {
@@ -41,7 +55,8 @@
       "name": "Review",
       "dimensions": 8,
       "depth": "tested",
-      "price": "from £9,000",
+      "amount": 9000,
+      "from": true,
       "duration": "3 weeks"
     },
     {
@@ -49,7 +64,9 @@
       "name": "Retainer",
       "dimensions": 8,
       "depth": "sustained",
-      "price": "from £3,000/month",
+      "amount": 3000,
+      "from": true,
+      "period": "month",
       "duration": "6-month minimum"
     }
   ],

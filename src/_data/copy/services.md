@@ -26,6 +26,11 @@ The cells marked *not offered* are not gaps waiting to be filled. Tested and sus
 @@ grid.paths
 There is no wrong entry point and no penalty for starting small. The audit ({audit.price}) plus a later top-up of the remaining four dimensions ({topup.price}) reaches exactly the same place as a baseline taken directly ({baseline.price}). Every assessment can be followed by any other.
 
+@@ grid.scope
+**One assessment covers one system**: one entry point, one tool set, one authorisation boundary, one deployment.
+
+Where several agents run in a chain, three things change the size of the work without changing the method — whether one agent inherits another's identity and permissions, whether one agent's output arrives at the next as untrusted input, and whether a wrong answer can be attributed to the hop that caused it. All three are already scored inside the eight dimensions. What they change is scope, and additional agent paths are priced at scoping.
+
 @@ audit.heading
 1 · Agent grounding and readiness audit
 
@@ -74,14 +79,11 @@ Method note: our evaluation harness pattern scores the distribution across repea
 @@ review.receive
 **You receive:** the full eight-dimension assessment at tested depth, a defect register with evidence, a prioritised remediation plan your own engineers can execute, a written readiness position against each threshold, and an eval suite wired for CI.
 
-@@ review.addressed
-Reports are addressed to you. If you need to put an assessment in front of a third party — your own client, an investor, a regulator — tell us at scoping, so it can be scoped and priced properly rather than assumed.
-
 @@ retainer.heading
 3 · Agent reliability retainer
 
 @@ retainer.terms
-From £3,000/month · six-month minimum · eight dimensions · sustained depth
+{retainer.priceCap} · six-month minimum · eight dimensions · sustained depth
 
 @@ retainer.lede
 For systems already in front of users. The question is no longer what level you're at — it's whether you're still there.
@@ -102,7 +104,9 @@ The retainer needs a baseline to trend against. It follows a review, or opens wi
 How we work
 
 @@ how.body
-Fixed scope, fixed price, named deliverables, and a written go/no-go at the end of every engagement. Every engagement is led end-to-end by a named senior architect — no handoff to a delivery team you never met.
+Fixed scope, fixed price, named deliverables, and a written go/no-go at the end of every engagement. Every engagement is led end-to-end by the senior architect named on the scorecard — no handoff to a delivery team you never met.
+
+We work read-only. We do not write to your systems, we do not change production, and access is scoped to what the assessment needs.
 
 We don't sell day rates. We don't take greenfield "build us an agent" work where nobody owns the data governance. We don't price by volume of code.
 
