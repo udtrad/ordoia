@@ -34,16 +34,41 @@ the evidence that the suite works.
 `test:live-local` is the only one that exercises check 15 without a deployment; it boots
 `_site` behind a Cloudflare-shaped origin, so nothing skips.
 
-**Current figures, 2026-08-11**, after checks 23 and 24 were added:
+**Current figures, 2026-08-11**, after checks 25 and 26 were added, check 21 gained a
+fifth test and check 23 gained two:
 
 | Target | Tests | Pass | Fail | Skip |
 |---|---:|---:|---:|---:|
-| build | 80 | 71 | 0 | 9 |
-| `test:live-local` | 80 | 78 | 0 | 2 |
-| handover (B) | 80 | 53 | **9** | 18 |
-| empty (D) | 80 | 30 | **41** | 9 |
+| build | 88 | 79 | 0 | 9 |
+| `test:live-local` | 88 | 86 | 0 | 2 |
+| handover (B) | 88 | 59 | **9** | 20 |
+| empty (D) | 88 | 34 | **45** | 9 |
 
-With `ORDOIA_MONITOR_CHECK=1` and credentials the build target is **80 / 72 / 0 / 8**.
+<details>
+<summary>The eight added tests, and where each delta went</summary>
+
+Every target was predicted before it was run, and one prediction was wrong in a way that
+found a defect — see the handover note below.
+
+| Added | build | handover (B) | empty (D) |
+|---|---|---|---|
+| check 26, 2 tests | +2 pass | +2 pass | +2 pass |
+| check 21, 5th test | +1 pass | +1 skip | +1 fail |
+| check 25, 3 tests | +3 pass | +2 pass, +1 skip | +2 pass, +1 fail |
+| check 23, 2 tests | +2 pass | +2 pass | +2 fail |
+
+Checks 25's second half and **all of check 26 read `src/` rather than the target**, so
+they answer identically on every target — which is why the handover gains passes rather
+than failures from them. Check 21's fifth test and check 23's two new tests reach the
+built site, so Baseline D turns them red through the population rule: an empty target
+means an empty population, and `report()` refuses to pass on nothing.
+
+</details>
+
+The previous figures, for comparison: build **80 / 71 / 0 / 9**, `test:live-local`
+**80 / 78 / 0 / 2**, handover **80 / 53 / 9 / 18**, empty **80 / 30 / 41 / 9**.
+
+With `ORDOIA_MONITOR_CHECK=1` and credentials the build target is **88 / 80 / 0 / 8**.
 
 **The number to watch when adding a check is the handover's failure count, not the pass
 count.** It had been 8 across four sessions and fifteen added tests, and that was the
@@ -56,6 +81,27 @@ faithfully rebuilt — so a check that detects it must fail there. This is the f
 check in five sessions to find a *new* way to fail against a frozen build, which is exactly
 the evidence that it measures a defect rather than a shape. A check that added a handover
 failure without being able to name the bytes causing it would be the opposite finding.
+
+**Later the same day it held at 9 across eight more tests — but only after a wrong
+prediction was chased down.** Checks 25 and 26, check 21's fifth test and check 23's two
+new tests were all predicted to leave the handover's failure count alone. The measurement
+said **12**, and the three new failures were checks 2, 4 and 9.
+
+None of them was a defect. Pinning `index.html` put an `.html` file inside `versions/`
+for the first time, the handover target *is* the repo root, and `htmlFiles()` did not skip
+`versions/` — so the handover run began scanning a fully-built rubric page and judging it
+against the **handover's own stylesheet**. Two unrelated artifacts compared to each other.
+Those bytes are frozen and could never be fixed in response, so the reds would have been
+permanent noise on the one number this section says to watch. `versions/` now sits in
+`SKIP_DIRS` beside `_site`, for the same reason: it holds output, not source. Check 21
+still holds every byte of it to the manifest, which is a stronger claim than any of the
+checks that were firing.
+
+The generalisable part is not the fix. It is that **the prediction was written down before
+the run**, so a three-failure move was visible as a disagreement rather than absorbed as
+the new normal. Had the number simply been recorded after the fact, the handover baseline
+would have carried three permanent unexplained failures and the sentence at the top of this
+section would have quietly stopped being true.
 
 The other movements, each with its reason: Baseline D 39 → 41 (check 23's two site-touching
 tests fail against an empty directory, correctly); skips +1 everywhere (check 24's live test

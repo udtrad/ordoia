@@ -644,11 +644,20 @@ Check 21 then fails on any later build that changes, adds or removes a single fi
 `requirePublishableVersion` in `eleventy.config.js` guards the other direction — it stops
 the build outright rather than regenerate a superseded version's page from a newer rubric.
 
-**Do this at publication, not before.** Nothing is frozen today, and that is correct: v1.0
-has not been published, and freezing a draft would claim a publication that has not
-happened. The italic re-subset of 2026-08-09 — which took the rubric pages from 151.5 KiB
-to 139.1 KiB — is exactly the kind of correction that has to stay free to land right up
-until the first production deploy, and would have been unrecoverable one commit later.
+**Do this at publication, not before.** Freezing a draft claims a publication that has not
+happened, and the italic re-subset of 2026-08-09 — which took the rubric pages from
+151.5 KiB to 139.1 KiB — is exactly the kind of correction that has to stay free to land
+right up until the first production deploy, and would have been unrecoverable one commit
+later.
+
+> **v1.0 has been frozen since 2026-08-11.** This paragraph read *"nothing is frozen
+> today, and that is correct: v1.0 has not been published"* for a day after it was, and the
+> same sentence sat in `tools/freeze-version.mjs`'s own header. Both are corrected, and
+> both are recorded rather than quietly edited: this is `CHANGES.md` row 42 a second time —
+> a correction landing in one place and not the others — and the interesting part remains
+> that the suite has no check which reads its own prose for consistency, and probably
+> cannot have one. `versions/v1.0.json` is the authority on what is frozen; a document is
+> not.
 
 Once frozen, `tools/freeze-version.mjs` refuses to re-freeze. Deleting the manifest by hand
 is the deliberate act that overrides it, and it should appear in `CHANGES.md` with a reason

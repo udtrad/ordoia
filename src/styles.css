@@ -496,6 +496,21 @@ td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
 .grid td { border-bottom: 1px solid var(--untravelled); padding: 1rem 1rem 1rem 0; }
 .grid .prod { display: block; font-weight: 600; font-size: 0.95rem; }
 .grid .scope { display: block; color: var(--slate); font-size: 0.8rem; margin-top: 0.2rem; }
+/* The meta line is composed from fields with a template-emitted separator rather than
+   one pre-joined string, so the narrow-width rule can take the separator out and let
+   each field have its own line. The separator is aria-hidden: it is punctuation between
+   two values, not a word.
+
+   It carries NO declarations of its own, and both halves of that are deliberate.
+
+   Colour: it inherits `.scope`'s --slate. Setting it to --untravelled looked right and
+   was caught by check 7 at **1.37:1** — that token draws rules and fills, and row 5
+   moved text off it for exactly this reason. A separator is text.
+
+   Spacing: real whitespace in the markup, not a margin. With a margin, hiding the dot
+   at narrow widths left the two values touching in the accessibility tree — measured on
+   the built page, a screen reader read "Audit£2,500 + VAT1 week". Whitespace survives
+   `display: none`; a margin does not. */
 .grid .none { color: var(--slate); }
 .grid .path { color: var(--slate); font-size: 0.78rem; }
 
@@ -680,6 +695,15 @@ footer ul.legal li + li::before { content: "·"; margin-right: 0.75rem; color: v
   .na__t { white-space: normal; }
   .measure__rule + .stamp { margin-top: 1.6rem; }
   table, .grid { font-size: 0.8rem; }
+  /* Vertical flow instead of horizontal scroll. Below this width the meta line's two
+     fields each take their own line and the separator goes, which drops the cell's
+     min-content width from "price · duration" to the longer of the two. The table is
+     narrower by that much, and the measured consequence is what matters: at 320px the
+     retainer column was entirely outside the scroller at rest, so the last product on
+     the ladder was invisible to anyone who did not discover the horizontal scroll. */
+  .grid .scope .v { display: block; }
+  .grid .scope .sep { display: none; }
+  .grid th.rowhead { width: auto; }
   .cta { grid-auto-flow: row; gap: 0.35rem; }
   .cta .f + .f { border-left: 0; padding-left: 0; }
 }
