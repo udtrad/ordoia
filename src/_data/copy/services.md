@@ -81,7 +81,7 @@ Reports are addressed to you. If you need to put an assessment in front of a thi
 3 · Agent reliability retainer
 
 @@ retainer.terms
-From £3,000/month · six-month minimum · eight dimensions · sustained depth
+{retainer.priceCap} · six-month minimum · eight dimensions · sustained depth
 
 @@ retainer.lede
 For systems already in front of users. The question is no longer what level you're at — it's whether you're still there.

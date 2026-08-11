@@ -187,6 +187,13 @@ function buildTokens() {
   const inScope = products.auditCoverage;
   const outOfScope = oal.dimensions.map((d) => d.number).filter((n) => !inScope.includes(n));
 
+  // A price that opens a unit needs its first letter up — card 3's header is a
+  // `·`-separated label strip and "from £3,000/month" would be the only field on the
+  // page starting lower case. The same shape as partyWord/partyWordCap below, and for
+  // the same reason: the capital is a rendering concern, so it does not go in the data
+  // where it would leak into the grid cell, which is mid-sentence and correct as is.
+  const capitalise = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+
   return {
     partyWord: terminology.partyWord,
     partyWordCap: terminology.partyWordCap,
@@ -204,6 +211,7 @@ function buildTokens() {
     'baseline.price': byKey.baseline.price,
     'review.price': byKey.review.price,
     'retainer.price': byKey.retainer.price,
+    'retainer.priceCap': capitalise(byKey.retainer.price),
 
     // §8's outstanding reconciliation, closed structurally: both lists are derived
     // from products.json `auditCoverage` against the rubric's own names, so the
