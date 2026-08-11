@@ -89,7 +89,7 @@ const NBSP = ' ';
  * mis-sold engagement, and this file's header makes build failures the way
  * conventions are enforced here.
  */
-export function renderPrice(product, { vat = false } = {}) {
+export function renderPrice(product) {
   const label = product?.key ? `product "${product.key}"` : 'a product';
   const amount = product?.amount;
 
@@ -107,10 +107,13 @@ export function renderPrice(product, { vat = false } = {}) {
   const figure = `£${amount.toLocaleString('en-GB')}`;
   const floor = product.from ? 'from ' : '';
   const period = product.period ? `/${product.period}` : '';
-  // The suffix goes last, after the period. This ordering is the rule.
-  const suffix = vat ? `${NBSP}+${NBSP}VAT` : '';
 
-  return `${floor}${figure}${period}${suffix}`;
+  // VAT is unconditional and has no opt-out parameter. Every published rate on this
+  // site excludes VAT, so a call site able to render one without the suffix is a call
+  // site able to be wrong — and an option defaulting the right way is still an option
+  // somebody can pass. The suffix goes last, after the period: `£3,000/month + VAT`,
+  // never `£3,000 + VAT/month`. That ordering is the whole reason this is a function.
+  return `${floor}${figure}${period}${NBSP}+${NBSP}VAT`;
 }
 
 const site = readJSON('src/_data/site.json');
