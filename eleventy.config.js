@@ -44,6 +44,75 @@ import { pinnedDir, PINNED_ASSETS } from './tools/freeze-version.mjs';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const readJSON = (p) => JSON.parse(readFileSync(path.join(ROOT, p), 'utf8'));
 
+/* -------------------------------------------------------------------------- *
+ * Prices.
+ *
+ * One function renders every price on the site, from an amount that is a number.
+ *
+ * ── Why a filter and not careful editing ──────────────────────────────────────
+ *
+ * Adding `+ VAT` by hand meant editing twenty rendered strings (six on Home,
+ * fourteen on Services — the grid renders on both). The objection is not the
+ * tedium; it is that a hand-edited set has no membership rule, so the price
+ * somebody adds next month is added without the suffix and nothing notices.
+ * Card 3's header had already drifted out of the data this way — see CHANGES.md
+ * row 46, where a typed `From £3,000/month` sat beside an unused token.
+ *
+ * The retainer is why the ORDER is code rather than a convention: it renders
+ * `£3,000/month + VAT` and never `£3,000 + VAT/month`. Written down, that is a
+ * rule someone has to remember; written here, it is the only thing that can
+ * happen.
+ *
+ * ── Why plain text with NBSP, and not `<span class="price">` ──────────────────
+ *
+ * Draft 5 §4.1 asks for `<span class="price">…</span>` with a `white-space:
+ * nowrap` rule. Measured, that cannot work: a price reaches the page by two
+ * routes, and markup survives neither. Copy fragments run through markdown-it
+ * with `html: false`, which renders the span as `&lt;span class=&quot;price…`;
+ * and the three card headers use no `md` filter at all, so Nunjucks' own
+ * auto-escaping does the same. A `&nbsp;` entity is escaped to `&amp;nbsp;` on
+ * that second route and would print literally.
+ *
+ * A literal U+00A0 survives both routes intact, and non-breaking spaces are
+ * precisely the mechanism for "must never break after the `+`" — which is the
+ * requirement the span and the CSS rule were there to satisfy. So the guarantee
+ * is kept and the markup is dropped, rather than adding a second rendering path
+ * for copy that would defeat the point of having one filter.
+ * -------------------------------------------------------------------------- */
+
+const NBSP = ' ';
+
+/**
+ * A published rate, as a reader sees it.
+ *
+ * Throws rather than degrades: a price cell that quietly renders empty is a
+ * mis-sold engagement, and this file's header makes build failures the way
+ * conventions are enforced here.
+ */
+export function renderPrice(product, { vat = false } = {}) {
+  const label = product?.key ? `product "${product.key}"` : 'a product';
+  const amount = product?.amount;
+
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+    throw new Error(
+      `${label} has no usable \`amount\` (got ${JSON.stringify(amount)}). Amounts in ` +
+        `products.json are plain numbers — no currency symbol, no comma, no "from", ` +
+        `no "/month". Those are rendering decisions and they live in renderPrice().`
+    );
+  }
+  if (product.period !== undefined && typeof product.period !== 'string') {
+    throw new Error(`${label} has a non-string \`period\`: ${JSON.stringify(product.period)}`);
+  }
+
+  const figure = `£${amount.toLocaleString('en-GB')}`;
+  const floor = product.from ? 'from ' : '';
+  const period = product.period ? `/${product.period}` : '';
+  // The suffix goes last, after the period. This ordering is the rule.
+  const suffix = vat ? `${NBSP}+${NBSP}VAT` : '';
+
+  return `${floor}${figure}${period}${suffix}`;
+}
+
 const site = readJSON('src/_data/site.json');
 const oal = readJSON('src/_data/oal.json');
 const products = readJSON('src/_data/products.json');
@@ -205,13 +274,15 @@ function buildTokens() {
     elsewhereLabel: site.elsewhere.label,
     elsewhereUrl: site.elsewhere.url,
 
-    'audit.price': byKey.audit.price,
+    // Every price token goes through the same renderer the templates use, so copy
+    // and markup cannot disagree about what a price looks like.
+    'audit.price': renderPrice(byKey.audit),
     'audit.duration': byKey.audit.duration,
-    'topup.price': byKey['top-up'].price,
-    'baseline.price': byKey.baseline.price,
-    'review.price': byKey.review.price,
-    'retainer.price': byKey.retainer.price,
-    'retainer.priceCap': capitalise(byKey.retainer.price),
+    'topup.price': renderPrice(byKey['top-up']),
+    'baseline.price': renderPrice(byKey.baseline),
+    'review.price': renderPrice(byKey.review),
+    'retainer.price': renderPrice(byKey.retainer),
+    'retainer.priceCap': capitalise(renderPrice(byKey.retainer)),
 
     // §8's outstanding reconciliation, closed structurally: both lists are derived
     // from products.json `auditCoverage` against the rubric's own names, so the
@@ -366,6 +437,12 @@ export default function (eleventyConfig) {
   );
 
   eleventyConfig.addFilter('lower', (text) => String(text ?? '').toLowerCase());
+
+  /**
+   * A product's price, rendered. See renderPrice() at the top of this file for why
+   * the suffix rule lives in code and why the output carries no markup.
+   */
+  eleventyConfig.addFilter('price', (product) => renderPrice(product));
 
   /** One product by key. Unknown key is a build failure, not an empty price cell. */
   eleventyConfig.addFilter('product', (list, key) => {
