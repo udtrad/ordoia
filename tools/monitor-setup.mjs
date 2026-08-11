@@ -42,23 +42,55 @@ export const PLAN = JSON.parse(
 );
 
 /**
- * The fields this repository has an opinion about.
+ * The mutable fields this repository has an opinion about.
  *
  * Anything Better Stack adds that is not in here is left alone — the plan says what must
  * be true, not what must be absent, and a tool that reverted every unlisted field would
  * fight the UI over things nobody here has decided.
+ *
+ * `url`, `monitor_type` and `required_keyword` are deliberately ABSENT: they are the
+ * identity triple, so a monitor matched by `identity()` already agrees on all three and
+ * comparing them could never fire. Listing them would read as coverage and be dead code.
+ * They are checked by matching, not by comparison — a change to any of them shows up as
+ * the old monitor missing, which is the correct reading.
+ *
+ * `sms`, `call` and `regions` are here because `monitors.json` argues about them. Before
+ * they were listed, check 24 passed with SMS and phone alerting switched on at the
+ * provider — the exact state the plan file spends a paragraph rejecting. An opinion
+ * written in a comment and not in this array is an opinion nothing enforces.
  */
 export const COMPARED = [
-  'url',
-  'monitor_type',
-  'required_keyword',
   'check_frequency',
+  'request_timeout',
   'follow_redirects',
   'verify_ssl',
   'ssl_expiration',
   'domain_expiration',
   'email',
+  'sms',
+  'call',
+  'regions',
 ];
+
+/**
+ * Compare two field values.
+ *
+ * Arrays are compared as sorted sets — `regions` comes back in whatever order the API
+ * feels like, and reporting drift over `["us","eu"]` versus `["eu","us"]` would make the
+ * tool cry wolf on every run until someone deleted the check.
+ *
+ * A field the API omits entirely is NOT equal to a value we asked for. That direction
+ * matters: `String(undefined)` quietly equals nothing, and treating absence as agreement
+ * is how a setting we believe we configured turns out never to have been sent.
+ */
+export function sameValue(found, want) {
+  if (Array.isArray(want) || Array.isArray(found)) {
+    const norm = (v) => (Array.isArray(v) ? [...v].map(String).sort().join(',') : String(v ?? ''));
+    return norm(found) === norm(want);
+  }
+  if (found === undefined || found === null) return false;
+  return String(found) === String(want);
+}
 
 /** The API token, or a thrown sentence saying where it comes from. */
 export function apiToken() {
@@ -162,10 +194,13 @@ export function diff(existing, plan) {
       missing.push(want);
       continue;
     }
-    const fields = COMPARED.filter(
-      (f) => want[f] !== undefined && String(found[f]) !== String(want[f])
-    ).map((f) => `${f}: ${JSON.stringify(found[f])} should be ${JSON.stringify(want[f])}`);
-    if (fields.length) drifted.push({ found, want, fields });
+    const changed = COMPARED.filter(
+      (f) => want[f] !== undefined && !sameValue(found[f], want[f])
+    );
+    const fields = changed.map(
+      (f) => `${f}: ${JSON.stringify(found[f])} should be ${JSON.stringify(want[f])}`
+    );
+    if (changed.length) drifted.push({ found, want, changed, fields });
   }
 
   return { missing, drifted };
@@ -210,8 +245,13 @@ async function main([command, ...rest]) {
     process.stdout.write(`  created  ${identity(m)} (id ${created?.data?.id})\n`);
   }
   for (const d of drifted) {
-    await call('PATCH', `/monitors/${d.found.id}`, d.want);
-    process.stdout.write(`  updated  ${identity(d.want)}\n`);
+    // Only the fields `status` just printed as drifted. Sending the whole planned object
+    // would also overwrite `pronounceable_name`, which is deliberately outside both
+    // `identity()` and COMPARED because names are prose and someone will improve one —
+    // and it would contradict COMPARED's own promise that unlisted fields are left alone.
+    const patch = Object.fromEntries(d.changed.map((f) => [f, d.want[f]]));
+    await call('PATCH', `/monitors/${d.found.id}`, patch);
+    process.stdout.write(`  updated  ${identity(d.want)} — ${d.changed.join(', ')}\n`);
   }
   process.stdout.write('done\n');
 }

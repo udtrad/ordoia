@@ -43,7 +43,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { survey } from '../lib/population.js';
 import { SITE } from '../lib/harness.js';
-import { PLAN, COMPARED, diff, identity, wanted, listMonitors } from '../../tools/monitor-setup.mjs';
+import {
+  PLAN,
+  COMPARED,
+  diff,
+  identity,
+  wanted,
+  listMonitors,
+  sameValue,
+} from '../../tools/monitor-setup.mjs';
 
 const WANTED = process.env.ORDOIA_MONITOR_CHECK;
 const SKIP =
@@ -65,9 +73,21 @@ test('check 24 — the external monitor watches what the plan says it watches', 
   s.count('planned', plan.length);
   s.count('existing', existing.length);
 
-  // Deliberately NOT `mayBeEmpty`. An account that returns nothing is the exact state
-  // this check exists to catch, so an empty population here must reach the findings
-  // assertion as a finding rather than excuse itself.
+  // `report()` asserts populations BEFORE findings (tests/lib/population.js), so without
+  // this the empty account — the exact state this check exists to catch — dies on "this
+  // check measured nothing" and never prints which monitors are gone. The check goes red
+  // either way; the difference is whether it names a deleted monitor or a broken harness.
+  //
+  // The population is allowed to be empty precisely because `diff()` turns empty into
+  // four findings. It is excused from the population rule by satisfying it elsewhere,
+  // which is the only honest reason to use this escape hatch.
+  s.mayBeEmpty(
+    'existing',
+    'an account with no monitors is the failure this check exists to report, and diff() ' +
+      'converts it into one finding per planned monitor — so the findings assertion below ' +
+      'is what must be allowed to speak, not the population guard'
+  );
+
   const { missing, drifted } = diff(existing, plan);
 
   s.failAll(
@@ -192,4 +212,37 @@ test('check 24 — the evaluator still catches a deleted and a drifted monitor (
   const extra = diff([...plan.map((m) => asFound(m)), asFound({ ...plan[0], url: 'https://elsewhere.test/' })], plan);
   assert.deepEqual(extra.missing, []);
   assert.deepEqual(extra.drifted, []);
+});
+
+test('check 24 — a field the API omits is drift, and array order is not (controls)', () => {
+  /**
+   * `asFound` builds every fixture by spreading the plan, so on its own it can only ever
+   * produce a monitor that already agrees. These are the two shapes a real API response
+   * differs in, and they fail in opposite directions:
+   *
+   *   - a field the provider does not return must read as DRIFT, not as agreement. Absence
+   *     is how a setting we believe we configured turns out never to have been sent, and
+   *     `String(undefined)` compares equal to nothing at all.
+   *   - `regions` comes back in whatever order the provider likes. Reporting drift over
+   *     ["us","eu"] versus ["eu","us"] would make the tool cry wolf on every single run,
+   *     and a check that is always red is a check that gets deleted.
+   */
+  const plan = wanted();
+
+  assert.equal(sameValue(undefined, true), false, 'an omitted field is not agreement');
+  assert.equal(sameValue(null, 14), false, 'nor is a null one');
+  assert.equal(sameValue('true', true), true, 'a stringified boolean is the same value');
+  assert.equal(sameValue(['eu', 'us'], ['us', 'eu']), true, 'array order is not drift');
+  assert.equal(sameValue(['us'], ['us', 'eu']), false, 'a missing region is drift');
+
+  // End to end through diff(): drop one compared field from the response entirely.
+  const { email: _dropped, ...withoutEmail } = asFound(plan[0]);
+  const partial = diff([withoutEmail, ...plan.slice(1).map((m) => asFound(m))], plan);
+  assert.equal(partial.missing.length, 0, 'identity is intact, so it is not missing');
+  assert.equal(partial.drifted.length, 1, 'but the absent field is drift');
+  assert.ok(partial.drifted[0].changed.includes('email'));
+
+  // And the PATCH sends only what drifted — not the whole planned object, which would
+  // overwrite pronounceable_name and every other field COMPARED promises to leave alone.
+  assert.deepEqual(partial.drifted[0].changed, ['email']);
 });
