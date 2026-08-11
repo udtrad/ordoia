@@ -163,7 +163,24 @@ test('check 21 — a published version is served from its stored bytes, not from
     for (const asset of PINNED_ASSETS) {
       const stored = path.join(pinned, asset);
       const output = path.join(built, asset);
-      if (!existsSync(stored) || !existsSync(output)) continue;
+
+      // A PINNED_ASSET missing from versions/v<n>/ is precisely the state this test
+      // claims to detect, and skipping it made the test pass green while the snapshot
+      // was provably being re-derived from src/. Demonstrated: move
+      // versions/v1.0/favicon.svg away, rebuild — all five tests passed, and the only
+      // symptom was the manifest arm going red on a *stylesheet* edit, which is the
+      // un-editable-stylesheet problem row 40 closed. `storePublishedAssets` cannot
+      // catch it either: main() throws on an existing manifest long before reaching it.
+      if (!existsSync(stored)) {
+        s.count('assets');
+        s.fail(
+          `v${version}: ${asset} is in PINNED_ASSETS but absent from ` +
+            `${path.relative(REPO_ROOT, pinned)}/, so the build falls back to src/ for it ` +
+            `and that part of the snapshot is re-derived from the living site every build.`
+        );
+        continue;
+      }
+      if (!existsSync(output)) continue;
       if (statSync(stored).isDirectory()) continue;
       s.count('assets');
 
@@ -305,7 +322,20 @@ test('check 21 — a current version says the same thing at both of its addresse
 
     const a = prose(await readFile(live, 'utf8'));
     const b = prose(await readFile(snapshot, 'utf8'));
-    s.count('words', b.split(' ').length);
+
+    // A page with no <main> yields '', and '' === '' would pass having compared nothing —
+    // the vacuous green this suite exists to refuse. The population guard does not catch
+    // it either: ''.split(' ').length is 1, not 0, so report()'s empty-population test
+    // never fires. Both halves are closed here.
+    if (!a || !b) {
+      s.fail(
+        `v${v.version}: no <main> found on ${!a ? '/oal/' : `/${versionDir(v.version)}/`}, ` +
+          `so the two addresses cannot be compared. An extraction that silently returns ` +
+          `nothing would make this check pass over any divergence.`
+      );
+      continue;
+    }
+    s.count('words', b.split(' ').filter(Boolean).length);
 
     if (a === b) continue;
 

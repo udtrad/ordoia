@@ -51,6 +51,7 @@ import { TARGET, IS_HANDOVER, REPO_ROOT, htmlFiles, urlFor } from '../lib/harnes
 import { survey } from '../lib/population.js';
 import site from '../../src/_data/site.json' with { type: 'json' };
 import oal from '../../src/_data/oal.json' with { type: 'json' };
+import { readManifest } from '../../tools/freeze-version.mjs';
 
 const SRC = path.join(REPO_ROOT, 'src');
 const CONFIGURED = String(site.legalEntity?.vatNumber ?? '');
@@ -72,7 +73,23 @@ const HANDOVER_SKIP =
  * oversight — the exact-value arm below catches the configured number in any form, so
  * the only thing this shape arm has to catch is somebody typing a *different* one.
  */
-const VAT_SHAPED = /\bGB[  ]?\d{9}\b|\b(?:GB[  ]?)?\d{3}[  ]\d{4}[  ]\d{2}\b/gi;
+const VAT_PATTERN = String.raw`\bGB[ \u00a0]?\d{9}\b|\b(?:GB[ \u00a0]?)?\d{3}[ \u00a0]\d{4}[ \u00a0]\d{2}\b`;
+
+/**
+ * A FRESH instance per call. Never a shared module-level regex.
+ *
+ * A `g`-flagged regex carries `lastIndex` between calls: `.test()` advances it and
+ * `.matchAll()` copies it. Measured — one `assert.match(CONFIGURED, ...)` left `lastIndex`
+ * at 11, after which `'524 8209 92'.matchAll(...)` returned **nothing**. That was inert
+ * only by ordering accident: the assertion happened to be last and node:test runs
+ * top-level tests serially. Reorder them, add a fourth, or set concurrency, and the scan
+ * silently stops finding typed VAT numbers while `files` stays non-zero — green having
+ * measured nothing, which is the exact failure this file's header refuses.
+ *
+ * The pattern also uses `\\u00a0` rather than a literal non-breaking space, so the
+ * character class is readable instead of two invisible bytes.
+ */
+const vatShaped = () => new RegExp(VAT_PATTERN, 'gi');
 
 /** Every file that must not contain the number, as repo-relative paths, sorted. */
 async function scannedFiles() {
@@ -84,9 +101,20 @@ async function scannedFiles() {
     .sort();
 }
 
-/** Frozen snapshot URLs, which carry the footer they were published with. */
+/**
+ * Frozen snapshot URLs, which carry the footer they were published with.
+ *
+ * Keyed on **manifest presence**, which is this repo's own definition of frozen
+ * (`freeze-version.mjs`: "The manifest for a version, or null if that version is not
+ * frozen"), not on membership of `oal.versions`. Those are different sets: the build's
+ * `eleventy.after` hook copies a version directory from live `src/` whenever no stored
+ * bytes exist, so a version listed in `oal.json` but not yet passed to
+ * `tools/freeze-version.mjs` renders with the LIVE footer — and excluding it by version
+ * number would skip a page that genuinely must carry the VAT field, before it was even
+ * counted.
+ */
 const isFrozenSnapshot = (url) =>
-  oal.versions.some((v) => url.startsWith(`/oal/v${v.version}/`));
+  oal.versions.some((v) => readManifest(v.version) && url.startsWith(`/oal/v${v.version}/`));
 
 test('check 25 — the rendered footer states the configured VAT registration', async (t) => {
   if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
@@ -120,7 +148,7 @@ test('check 25 — the rendered footer states the configured VAT registration', 
     s.count('footers');
 
     if (!text.includes(CONFIGURED)) {
-      const shown = text.match(VAT_SHAPED)?.join(', ') ?? '(no number at all)';
+      const shown = text.match(vatShaped())?.join(', ') ?? '(no number at all)';
       findings.push(
         `${url}: footer states ${shown}, site.json says ${CONFIGURED}`
       );
@@ -155,7 +183,7 @@ test('check 25 — no VAT registration is typed into a template or a copy fragme
         findings.push(`${rel}:${i + 1} — the configured VAT number is typed out here`);
         continue;
       }
-      for (const m of lines[i].matchAll(VAT_SHAPED)) {
+      for (const m of lines[i].matchAll(vatShaped())) {
         findings.push(`${rel}:${i + 1} — a VAT-shaped literal "${m[0]}"`);
       }
     }
@@ -177,7 +205,7 @@ test('check 25 — the detector still tells a registration from an ordinary numb
   // Both halves above are permissive in one direction and strict in the other, so the
   // judgement is pinned here against synthetic input. Without this a broken pattern
   // reports green over a page full of typed numbers.
-  const catches = (text) => (String(text).match(VAT_SHAPED) ?? []).length > 0;
+  const catches = (text) => (String(text).match(vatShaped()) ?? []).length > 0;
 
   const mustCatch = [
     ['the spaced UK grouping', 'VAT registration no. 524 8209 92'],
@@ -208,7 +236,7 @@ test('check 25 — the detector still tells a registration from an ordinary numb
   // The number has to be somewhere, or the first test is comparing against nothing.
   assert.match(
     CONFIGURED,
-    VAT_SHAPED,
+    vatShaped(),
     `site.json's legalEntity.vatNumber ("${CONFIGURED}") is not VAT-shaped, so either the ` +
       `value is wrong or this detector would not recognise the real one if it were typed.`
   );

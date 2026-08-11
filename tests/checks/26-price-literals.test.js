@@ -54,7 +54,7 @@ const SRC = path.join(REPO_ROOT, 'src');
  * because `£ 2,500` is the same mistake with a space in it, and a check that reads
  * only the tight form teaches people to type the loose one.
  */
-const PRICE_LITERAL = /(?:£|&pound;|&#163;|&#xA3;)\s*\d/gi;
+const PRICE_LITERAL = /(?:£|&pound;|&#0*163;|&#[xX]0*A3;)\s*\d/gi;
 
 /**
  * Every price literal in one file's raw text, with the line it sits on.
@@ -135,6 +135,8 @@ test('check 26 — the scan still finds a typed price, and still permits prose (
     ['a space after the sign', 'from £ 9,000 before we start'],
     ['the named entity, as the handover writes it', '<span>&pound;2,500</span>'],
     ['the decimal entity', '&#163;3,000/month'],
+    ['a zero-padded decimal entity', '&#0163;2,500'],
+    ['a zero-padded hex entity', '&#x00A3;2,500'],
     ['the hex entity', '&#xA3;5,000'],
     ['inside a Nunjucks comment', '{# a buyer reads this before spending £2,500 #}'],
     ['inside a markdown fragment', '@@ audit.terms\nOne week · £2,500 fixed'],

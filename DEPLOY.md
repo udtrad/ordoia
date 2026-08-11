@@ -613,9 +613,12 @@ into the frozen directory on every run, so "self-contained" was true of the snap
 was **the living stylesheet becoming un-editable**, because check 21 went red on any
 change to it. See `CHANGES.md` row 40.
 
-`index.html` and `favicon.svg` are still generated. Editing a layout or the favicon turns
-check 21 red and makes you decide, which is the design — but it is not the same as the
-snapshot being immutable by construction.
+`index.html` and `favicon.svg` **are pinned as well**, since 2026-08-11 — see `CHANGES.md`
+row 50. All four entries in `PINNED_ASSETS` are served from `versions/v<n>/`, so the
+snapshot is now immutable by construction across its whole surface rather than only its
+passthrough assets. What that costs is stated rather than discovered later: the frozen
+page's footer and nav hold the state they were published in, so a page added to the site
+later will not appear in v1.0's footer list. That is what frozen means.
 
 **Re-freezing a published version is not a procedure.** The manifest's own header says a
 changed byte means a new version, and that stands. It was done exactly once, on

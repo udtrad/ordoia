@@ -336,11 +336,12 @@ const PRICED_PARTS = 'h2, .note, .prod, .scope .v, .rowhead, .path';
 const readPricedSurfaces = (page) =>
   page.evaluate((selector) => {
     const surfaces = [
-      ...document.querySelectorAll('main section.block'),
-      ...document.querySelectorAll('table.grid td, table.grid th'),
+      ...[...document.querySelectorAll('main section.block')].map((el) => ({ el, kind: 'section' })),
+      ...[...document.querySelectorAll('table.grid td, table.grid th')].map((el) => ({ el, kind: 'cell' })),
     ];
     return surfaces
-      .map((root) => ({
+      .map(({ el: root, kind }) => ({
+        kind,
         label: (root.querySelector('h2, .prod, .rowhead')?.textContent || root.textContent || '')
           .trim()
           .replace(/\s+/g, ' ')
@@ -349,6 +350,11 @@ const readPricedSurfaces = (page) =>
           .filter((el) => (el.textContent || '').trim().length > 0)
           // Innermost only: a container and its own descendant are not two things.
           .filter((el) => !el.querySelector(selector))
+          // A section.block encloses the grid, so without this every cell's parts were
+          // compared again inside the section — 210 extra cross-cell pairs per render on
+          // Home, every one of them the cross-surface comparison this function's own
+          // comment rules out. Harmless only because table cells never overlap.
+          .filter((el) => kind === 'cell' || !el.closest('table.grid'))
           .flatMap((el) => {
             const name =
               `.${(typeof el.className === 'string' ? el.className : '')
@@ -434,11 +440,14 @@ test('check 23 — the priced-surface detector catches a header run under (contr
   const RUN_UNDER_CSS = `
     section.block { position: relative; }
     section.block > h2 { position: absolute; top: 2.2rem; left: 0; right: 0; margin: 0; }
+    table.grid td { position: relative; }
+    table.grid td .prod { position: absolute; top: 1.2rem; left: 0; right: 0; }
   `;
 
   const s = survey({
     renders: 'page renders measured with a header pulled out of flow',
-    reproduced: 'priced surfaces in which the planted collision appeared',
+    reproducedSection: 'card sections in which the planted collision appeared',
+    reproducedCell: 'grid cells in which the planted collision appeared',
   });
 
   await withSite(async ({ origin, pages, browser }) => {
@@ -453,7 +462,8 @@ test('check 23 — the priced-surface detector catches a header run under (contr
 
       for (const surface of await readPricedSurfaces(page)) {
         const { findings } = collisions(surface.parts, (p) => p.label);
-        if (findings.length > 0) s.count('reproduced');
+        if (findings.length === 0) continue;
+        s.count(surface.kind === 'cell' ? 'reproducedCell' : 'reproducedSection');
       }
     }
 
@@ -461,14 +471,27 @@ test('check 23 — the priced-surface detector catches a header run under (contr
   });
 
   // The collisions are the point here, so they are counted rather than failed.
+  //
+  // BOTH arms are asserted separately, and that is the whole value of this control. The
+  // first version planted a collision only in `section.block`, so `table.grid td`,
+  // `.prod` or `.scope .v` could all have stopped matching with the main test's surface
+  // population still healthy and this control still green — the grid being exactly half
+  // of what the extension was written to reach.
   assert.ok(
-    s.size('reproduced') > 0,
-    'pulling a section heading out of flow produced no collision anywhere, so this ' +
-      'detector cannot be shown to see a header running under an adjacent element — ' +
-      'which is the only thing §5 asked it for. Either PRICED_PARTS no longer matches ' +
-      'the real elements or the surfaces list has drifted, and in both cases the green ' +
-      'above means nothing.'
+    s.size('reproducedSection') > 0,
+    'pulling a section heading out of flow produced no collision in any card section, so ' +
+      'this detector cannot be shown to see a header running under an adjacent element — ' +
+      'which is the only thing §5 asked it for. Either PRICED_PARTS no longer matches the ' +
+      'real elements or the surfaces list has drifted, and either way the green above ' +
+      'means nothing.'
+  );
+  assert.ok(
+    s.size('reproducedCell') > 0,
+    'pulling a product name out of flow produced no collision in any grid cell, so the ' +
+      'grid half of this detector is unproven. The grid is where every price on the site ' +
+      'is rendered; a selector that silently stopped matching there would leave the main ' +
+      'test green over an unreadable price.'
   );
 
-  s.report('a header pulled out of flow reproduces the collision this extension exists to catch');
+  s.report('a header and a product name pulled out of flow reproduce the collisions this extension exists to catch');
 });

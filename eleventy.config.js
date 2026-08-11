@@ -105,7 +105,11 @@ export function renderPrice(product) {
   }
 
   const figure = `£${amount.toLocaleString('en-GB')}`;
-  const floor = product.from ? 'from ' : '';
+  // The floor word is joined with a non-breaking space for the same reason the suffix is.
+  // With an ordinary space the widened string broke there: measured at 1280px, the Review
+  // cell went from `from £9,000` / `· 3 weeks` to `from` / `£9,000 + VAT · 3` / `weeks`,
+  // orphaning "from" on its own line above the figure it modifies, where it means nothing.
+  const floor = product.from ? `from${NBSP}` : '';
   const period = product.period ? `/${product.period}` : '';
 
   // VAT is unconditional and has no opt-out parameter. Every published rate on this
@@ -536,10 +540,16 @@ export default function (eleventyConfig) {
    * rather than lenient. `tools/freeze-version.mjs` stores the bytes at the same moment
    * it records their hashes, which is what turns the first case on.
    *
-   * Still generated rather than pinned: `index.html` and `favicon.svg`. Editing a layout
-   * or the favicon will turn check 21 red and force this decision again, deliberately —
-   * full content-pinning is the pass-2 work `requirePublishableVersion` describes below.
-   * The line here is passthrough assets, which is where the silent re-derivation was.
+   * Since 2026-08-11 `index.html` and `favicon.svg` are pinned too (CHANGES.md row 50), so
+   * this loop now covers a published version's whole surface and `src/` cannot reach any of
+   * it. The prediction this paragraph used to carry — that a layout edit would turn check 21
+   * red and force the decision again — is what actually happened, one session later, when a
+   * footer carrying a VAT number reached the frozen page.
+   *
+   * A consequence worth stating, because the code does not make it obvious: for a published
+   * version Eleventy still renders `oal-version.njk` and the render is then overwritten by
+   * the stored bytes. `requirePublishableVersion` below therefore guards output that is
+   * discarded, and an edit to that template has no effect on any frozen version.
    *
    * Copied rather than passed through, for two reasons: Eleventy takes one target per
    * passthrough source, and a real `copyFile` puts byte-identical bytes at both paths

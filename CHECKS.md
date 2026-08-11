@@ -750,10 +750,12 @@ Checks are in place for all twelve items in §3, plus check 0's controls and che
 - **Full content-pinning of a version snapshot.** Since 2026-08-11 the passthrough assets
   (`styles.css`, the fonts) are served from bytes stored at publication under
   `versions/v1.0/`, so the living stylesheet can change without restating a published
-  document. `index.html` and `favicon.svg` are still *generated*: editing a layout will
-  turn check 21 red and force the decision again. That is deliberate — check 21 catching
-  it is the design — but it is not the same as the snapshot being immutable by
-  construction. `CHANGES.md` row 40.
+  document. **Closed 2026-08-11 by `CHANGES.md` row 50**: `index.html` and `favicon.svg`
+  are pinned too, so the snapshot is immutable by construction across its whole surface.
+  What remains open is narrower — pinning made the freeze silent about *rubric* edits,
+  since a change to `oal.md` now moves `/oal/` and leaves the snapshot alone. Check 21's
+  fifth test closes that by holding a `Current` version's two addresses to the same prose,
+  and it lapses on its own the moment v1.0 is superseded.
 
 Closed on 2026-08-10, and this list said otherwise until 2026-08-11: **the rollback
 drill**. It was run against the real `ordoia` project before the custom domain was
