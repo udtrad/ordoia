@@ -33,7 +33,7 @@
  * `tools/freeze-version.mjs 1.0` is the command that writes the first manifest, and
  * DEPLOY.md carries it as a publication step.
  *
- * ── The hole that pinning `index.html` opened, and the fourth test ────────────────
+ * ── The hole that pinning `index.html` opened, and the fifth test ────────────────
  *
  * Pinning `index.html` (row 50) closed a coupling and opened a quieter one. Before it,
  * `/oal/v1.0/index.html` was regenerated from live `oal.md` on every build, so editing
@@ -44,9 +44,33 @@
  *
  * That is worse than what pinning fixed, because it is silent. While a version's status
  * is `Current`, the live rubric page and its snapshot are the same document by
- * definition, and the last test in this file asserts exactly that. When v1.1 publishes
- * and v1.0 becomes `Superseded`, the assertion stops applying to v1.0 on its own — which
- * is correct, and is the moment the two are *supposed* to diverge.
+ * definition, and the last test in this file asserts exactly that.
+ *
+ * ── 2026-08-12: the unit is the fragment, and what each test became ───────────────
+ *
+ * Pinning the whole document also froze the page's **chrome**, which was never intended
+ * and showed up as one site serving two footers. The frozen unit is now the `<main>`
+ * fragment plus the assets that render it; `index.html` is rendered live and is no longer
+ * stored, pinned or in the manifest. Every test here has a successor and none was dropped:
+ *
+ *   1. was: the build still generates the published bytes (manifest over `_site`).
+ *      now:  the STORED bytes are intact (manifest over `versions/v1.0/`). It had to move
+ *            off the build, because a manifest over the build would now go red on every
+ *            legitimate chrome change — the un-editable-stylesheet failure (row 40) in a
+ *            new place. Test 2 carries the other half.
+ *   2. was: the build serves stored bytes rather than re-deriving from `src/`.
+ *      now:  the same, **plus** the fragment: the `<main>` the build emits must be
+ *            byte-equal to the stored `main.html`. Together 1 and 2 assert exactly what
+ *            the old test 1 asserted, over a unit that no longer includes the chrome.
+ *   3. unchanged — no superseded version is left unfrozen.
+ *   4. unchanged — the pure-function controls.
+ *   5. unchanged in meaning, and it now says out loud when it stops applying. See below.
+ *
+ * A sixth test is added, and it is the one that makes the re-cut honest rather than
+ * asserted: the stored fragment must still be a **byte-exact substring of the document
+ * v1.0 was published as**, whose sha256 is `0289c300dd07…`. That document is retained at
+ * `versions/v1.0.published-index.html` precisely so this can be re-run forever rather
+ * than believed because a commit message said so.
  */
 
 import test from 'node:test';
@@ -59,23 +83,26 @@ import { survey } from '../lib/population.js';
 import oal from '../../src/_data/oal.json' with { type: 'json' };
 import {
   compareToManifest,
+  extractMain,
   hashTree,
   readManifest,
   versionDir,
   manifestPath,
   pinnedDir,
+  publishedDocument,
+  MAIN_FRAGMENT,
   PINNED_ASSETS,
   sha256,
 } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is the point';
 
-test('check 21 — every frozen version still generates the bytes it was published with', async (t) => {
+test('check 21 — every frozen version still holds the bytes it was published with', async (t) => {
   if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
 
   const s = survey({
     versions: 'rubric versions declared in oal.json',
-    files: 'files compared against a freeze manifest',
+    files: 'stored files compared against a freeze manifest',
   });
 
   let frozen = 0;
@@ -87,14 +114,27 @@ test('check 21 — every frozen version still generates the bytes it was publish
     if (!manifest) continue;
     frozen += 1;
 
-    const dir = path.join(TARGET, versionDir(version));
+    // The manifest is taken over the STORED unit, not over the build. Before 2026-08-12
+    // it hashed `_site/oal/v1.0/`, which was right while the whole document was frozen
+    // and is wrong now that the chrome renders live: a manifest over the build would go
+    // red on every legitimate footer change. Test 2 holds the build to these bytes.
+    const dir = pinnedDir(version);
     if (!existsSync(dir)) {
       s.fail(
-        `v${version} is frozen by ${path.basename(manifestPath(version))} but the build ` +
-          `produced no ${versionDir(version)}/ at all. A published permanent address that ` +
-          `stops being generated is §9's most serious operational failure.`
+        `v${version} is frozen by ${path.basename(manifestPath(version))} but there are no ` +
+          `stored bytes at ${path.relative(REPO_ROOT, dir)}/. The build would fall back to ` +
+          `src/, so the published fragment would be re-derived from the living site.`
       );
       continue;
+    }
+
+    const built = path.join(TARGET, versionDir(version));
+    if (!existsSync(built)) {
+      s.fail(
+        `v${version} is frozen but the build produced no ${versionDir(version)}/ at all. A ` +
+          `published permanent address that stops being generated is §9's most serious ` +
+          `operational failure.`
+      );
     }
 
     const actual = await hashTree(dir);
@@ -112,10 +152,109 @@ test('check 21 — every frozen version still generates the bytes it was publish
   }
 
   s.report(
-    'a published version directory has changed. Those bytes are cached immutable for a ' +
-      'year and are printed on the face of every scorecard issued under that version, so ' +
-      'a change does not replace the published document — it creates a second one. If the ' +
-      'change is wanted, it is a new rubric version.'
+    "a published version's stored bytes have changed. Those bytes are the content and the " +
+      'rendering of a document printed on the face of every scorecard issued under that ' +
+      'version, and its assets are cached immutable for a year — so a change does not ' +
+      'replace the published document, it creates a second one. If the change is wanted, ' +
+      'it is a new rubric version.'
+  );
+});
+
+test('check 21 — the stored fragment is still part of the document that was published', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  /**
+   * The test that makes the 2026-08-12 re-cut honest rather than asserted.
+   *
+   * Redefining the frozen unit from the whole `index.html` to the `<main>` fragment is
+   * only safe if the fragment is *the same bytes*, and "we checked at the time" is exactly
+   * the kind of one-off proof this repository has been bitten by — the stylesheet
+   * decoupling was proved by a hand drill and then held by nothing until row 40.
+   *
+   * So the document v1.0 was published as is retained whole, its sha256 is recorded in the
+   * manifest, and both halves are re-checked here on every commit: the retained file still
+   * hashes to what was published, and `main.html` is still a literal substring of it.
+   */
+  const s = survey({
+    versions: 'frozen versions whose published document was re-checked',
+    substrings: 'stored fragments confirmed as substrings of the published document',
+  });
+
+  for (const { version } of oal.versions) {
+    const manifest = readManifest(version);
+    if (!manifest) continue;
+    s.count('versions');
+
+    const record = manifest.publishedDocument;
+    if (!record?.sha256) {
+      s.fail(
+        `v${version}'s manifest records no publishedDocument, so nothing ties the stored ` +
+          `fragment to the bytes that were actually published and the re-cut rests on a ` +
+          `commit message.`
+      );
+      continue;
+    }
+
+    const file = publishedDocument(version);
+    if (!existsSync(file)) {
+      s.fail(
+        `v${version}'s manifest names ${record.file} but ${path.relative(REPO_ROOT, file)} ` +
+          `is not there. Without it the substring claim cannot be re-run, which is the ` +
+          `whole reason the document is retained.`
+      );
+      continue;
+    }
+
+    const document = await readFile(file, 'utf8');
+    const hash = sha256(Buffer.from(document, 'utf8'));
+    if (hash !== record.sha256) {
+      s.fail(
+        `v${version}: the retained published document now hashes ${hash.slice(0, 12)}, and ` +
+          `the manifest records ${record.sha256.slice(0, 12)}. The one artifact that proves ` +
+          `what was published has itself been edited.`
+      );
+      continue;
+    }
+
+    const fragment = await readFile(path.join(pinnedDir(version), MAIN_FRAGMENT), 'utf8');
+    s.count('substrings');
+    if (!document.includes(fragment)) {
+      s.fail(
+        `v${version}: main.html is no longer a byte-exact substring of the document that ` +
+          `was published. The frozen fragment has stopped being the published content, ` +
+          `which is the only thing that made re-cutting the unit not a re-freeze.`
+      );
+      continue;
+    }
+
+    // …and it is the whole of <main>, not merely some substring of the page.
+    if (extractMain(document) !== fragment) {
+      s.fail(
+        `v${version}: main.html is a substring of the published document but is not its ` +
+          `<main> content. Part of the published rubric has been left out of the frozen ` +
+          `unit, and nothing else would notice.`
+      );
+    }
+  }
+
+  if (s.size('versions') === 0) {
+    s.mayBeEmpty(
+      'versions',
+      'no rubric version has been published yet, so there is no published document to ' +
+        'hold a stored fragment against; this population fills from publication onward'
+    );
+    s.mayBeEmpty(
+      'substrings',
+      'no rubric version has been published yet, so there is no stored fragment to ' +
+        'confirm; this population fills from publication onward'
+    );
+  }
+
+  s.report(
+    'the stored fragment is no longer the content of the document that was published. ' +
+      'Re-cutting the frozen unit from the whole file to its <main> was defensible only ' +
+      'because no published content byte moved; if that stops being true it is a re-freeze, ' +
+      'and DEPLOY.md records the first one as "not a precedent".'
   );
 });
 
@@ -139,6 +278,7 @@ test('check 21 — a published version is served from its stored bytes, not from
   const s = survey({
     versions: 'frozen versions checked for independence from src/',
     assets: 'pinned assets compared between versions/ and the build',
+    fragments: 'rendered <main> fragments compared against their stored bytes',
   });
 
   for (const { version } of oal.versions) {
@@ -159,6 +299,32 @@ test('check 21 — a published version is served from its stored bytes, not from
 
     const built = path.join(REPO_ROOT, '_site', versionDir(version));
     if (!existsSync(built)) continue;
+
+    /**
+     * The fragment, which is the half a copy loop cannot cover.
+     *
+     * `main.html` is the one member of the frozen unit that reaches the page through the
+     * template rather than by being copied, so nothing below would see it. This is the
+     * assertion that the rendered document still carries the published rubric and not
+     * something regenerated from `src/_data/copy/oal.md` — the exact regression that
+     * would otherwise surface years later as a quietly restated methodology.
+     */
+    const page = path.join(built, 'index.html');
+    if (existsSync(page)) {
+      s.count('fragments');
+      const rendered = extractMain(await readFile(page, 'utf8'));
+      const storedFragment = await readFile(path.join(pinned, MAIN_FRAGMENT), 'utf8');
+      if (rendered !== storedFragment) {
+        const a = sha256(Buffer.from(storedFragment, 'utf8'));
+        const b = sha256(Buffer.from(rendered, 'utf8'));
+        s.fail(
+          `v${version}: the <main> the build renders does not match the stored fragment — ` +
+            `${a.slice(0, 12)} became ${b.slice(0, 12)}. The published rubric is being ` +
+            `regenerated from src/ rather than served from what was published, which is ` +
+            `the freeze having been removed rather than rescoped.`
+        );
+      }
+    }
 
     for (const asset of PINNED_ASSETS) {
       const stored = path.join(pinned, asset);
@@ -304,6 +470,28 @@ test('check 21 — a current version says the same thing at both of its addresse
     current: 'versions whose status is Current',
     words: 'words of rubric prose compared between the live page and the snapshot',
   });
+
+  /**
+   * §3.6: a test that quietly stops applying is the vacuous-check failure this repository
+   * has already been bitten by across twenty-three checks.
+   *
+   * This assertion is conditioned on a version being `Current`, and that condition is now
+   * load-bearing in a way it was not before: the status is read from a record that a
+   * future edit can change. So when it goes false the test says so, by name, rather than
+   * passing in silence. Publishing v1.1 must produce "deliberately not asserting for
+   * v1.0 (Superseded)" in the output — a reader of the log can then tell a lapsed
+   * assertion from a satisfied one, which is the whole difference.
+   */
+  const lapsed = oal.versions
+    .filter((v) => String(v.status).toLowerCase() !== 'current')
+    .map((v) => `v${v.version} (${v.status})`);
+  if (lapsed.length) {
+    t.diagnostic(
+      `deliberately not asserting for ${lapsed.join(', ')} — a superseded version and the ` +
+        `current rubric are SUPPOSED to differ, and this test stops applying to them by ` +
+        `design rather than by accident.`
+    );
+  }
 
   for (const v of oal.versions) {
     if (String(v.status).toLowerCase() !== 'current') continue;

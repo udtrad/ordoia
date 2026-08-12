@@ -29,17 +29,19 @@
  * and be caught by the suite.
  */
 
+import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, statSync } from 'node:fs';
-import { copyFile, cp, mkdir } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 
 import { contrastRatio, AA_NON_TEXT } from './tests/lib/contrast.js';
 // The snapshot's location and its asset list are owned by the freeze tool. Re-deriving
-// them here is how a third PINNED_ASSET would get stored at publication and never served
-// — the exact store-vs-serve divergence the pinning exists to close.
-import { pinnedDir, PINNED_ASSETS } from './tools/freeze-version.mjs';
+// them here is how a member of the frozen unit would get stored at publication and never
+// served — the exact store-vs-serve divergence the freeze exists to close.
+import { pinnedDir, PINNED_ASSETS, isFrozen, frozenMain } from './tools/freeze-version.mjs';
+import { deriveChromeSheet } from './tools/chrome-sheet.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const readJSON = (p) => JSON.parse(readFileSync(path.join(ROOT, p), 'utf8'));
@@ -324,12 +326,70 @@ function substitute(text, where, extra = {}) {
 
 const md = new MarkdownIt({ html: false, linkify: false, typographer: false, breaks: false });
 
+/* -------------------------------------------------------------------------- *
+ * The chrome stylesheet.
+ *
+ * Derived from `src/styles.css` — see tools/chrome-sheet.mjs for why it is derived and
+ * not written by hand, and for the three ways the derivation fails closed.
+ *
+ * Fingerprinted, because it is the one stylesheet on this site whose URL may change: that
+ * is what lets it keep a year of `immutable` caching under R3 while still reaching a
+ * returning visitor the moment the chrome is redesigned. The live `styles.css` stays
+ * unhashed and unminified on purpose — somebody will read it (§4) — and takes an explicit
+ * revalidating rule in `_headers` instead.
+ * -------------------------------------------------------------------------- */
+
+function buildChromeSheet() {
+  const { css, dropped, undeclared } = deriveChromeSheet(
+    readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8')
+  );
+
+  if (undeclared.length) {
+    throw new Error(
+      `the derived chrome stylesheet uses custom properties it does not declare: ` +
+        `${undeclared.join(', ')}. On /oal/v1.0/ those would resolve against the FROZEN ` +
+        `:root, so the live chrome would silently render in a published document's 2026 ` +
+        `palette and drift further with every redesign. Add them to the chrome scope in ` +
+        `tools/chrome-sheet.mjs rather than letting the cascade guess.`
+    );
+  }
+  if (!/\.masthead\b/.test(css) || !/\bfooter\b/.test(css)) {
+    throw new Error(
+      'the derived chrome stylesheet styles no masthead or no footer, which means the ' +
+        'selector predicate stopped matching. An empty chrome sheet ships an unstyled ' +
+        'header and footer on every page, and the build should stop rather than emit it.'
+    );
+  }
+  // Never `:root`. Two `:root` blocks on one page merge rather than isolate, and the
+  // frozen <main> would inherit the live palette while every byte check stayed green.
+  //
+  // Tested against the rules with comments stripped, because the first version of this
+  // guard matched the sheet's own header — which explains, in prose, that it declares no
+  // `:root`. A guard that fires on its own documentation is a guard nobody trusts twice.
+  if (/(^|[\s,}])[:]root\b/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) {
+    throw new Error(
+      'the derived chrome stylesheet declares :root. On /oal/v1.0/ that merges with the ' +
+        "frozen sheet's :root, last one wins, and the published rubric silently takes the " +
+        'live palette and type scale. This is the failure R2 is designed against.'
+    );
+  }
+
+  const digest = createHash('sha256').update(css).digest('hex').slice(0, 8);
+  return { css, dropped, file: `chrome.${digest}.css`, href: `/chrome.${digest}.css` };
+}
+
+const CHROME = buildChromeSheet();
+
 export default function (eleventyConfig) {
   const tokens = readTokens();
   validateRubric();
 
   eleventyConfig.addGlobalData('tokens', tokens);
   eleventyConfig.addGlobalData('buildTokens', TOKENS);
+
+  // Every page links this, so one chrome edit reaches every address on the site —
+  // including a frozen version's, which is R1.
+  eleventyConfig.addGlobalData('chromeHref', CHROME.href);
 
   // §6: stable filenames carrying the methodology version.
   eleventyConfig.addGlobalData(
@@ -363,16 +423,63 @@ export default function (eleventyConfig) {
    * makes shipping pass 2 non-optional: publish a second version and the build stops.
    */
   eleventyConfig.addFilter('requirePublishableVersion', (version) => {
-    if (version !== oal.current) {
+    if (version !== oal.current && !isFrozen(version)) {
       throw new Error(
-        `refusing to generate the /oal/v${version}/ snapshot from oal.json, which now ` +
+        `refusing to generate the /oal/v${version}/ page from oal.json, which now ` +
           `describes v${oal.current}. A superseded version must be served from the content ` +
           `it was published with, not regenerated from the current rubric. Freeze v${version} ` +
-          `to its own content and add the immutability guard before publishing v${oal.current}.`
+          `to its own content — \`node tools/freeze-version.mjs ${version}\` against the ` +
+          `build that was deployed — before publishing v${oal.current}.`
       );
     }
     return version;
   });
+
+  /** True when a version has stored bytes and must be served from them. */
+  eleventyConfig.addFilter('isFrozen', (version) => isFrozen(version));
+
+  /**
+   * One version's record, by number.
+   *
+   * The single source of truth for a version's standing. Publishing v1.1 flips v1.0
+   * everywhere in one edit — its own page, the changelog, /oal/ — because every surface
+   * reads this record rather than restating it. A missing version is a build failure
+   * rather than an empty stamp: a version page that renders no status is exactly the
+   * state check 29 was written against, and it should not be reachable by a typo.
+   */
+  eleventyConfig.addFilter('versionRecord', (versions, version) => {
+    const found = versions.find((v) => v.version === version);
+    if (!found) {
+      throw new Error(
+        `oal.json declares no version "${version}", so its page cannot state its standing. ` +
+          `Known: ${versions.map((v) => v.version).join(', ')}.`
+      );
+    }
+    if (!found.status) {
+      throw new Error(
+        `oal.json's record for v${version} has no \`status\`. A version page must state ` +
+          `whether it is the current rubric; rendering it blank publishes the question ` +
+          `rather than the answer.`
+      );
+    }
+    return found;
+  });
+
+  /**
+   * The stored `<main>` fragment for a published version.
+   *
+   * This is where the freeze actually happens, and the ordering is the point. Before
+   * 2026-08-12 the build rendered `rubric.njk` into a full page and then *overwrote the
+   * file* with stored bytes. That worked, and it made two things true only by accident:
+   * `requirePublishableVersion` guarded output nobody read, and any regeneration recipe
+   * could re-record the old fragment and report success having changed nothing —
+   * CHANGES.md row 43, found by review rather than by the drill that should have caught it.
+   *
+   * Emitting the fragment through the template instead means a frozen version never
+   * renders `rubric.njk` at all, so rubric prose has no path onto a frozen page. Drill 3
+   * is then true by construction rather than by vigilance.
+   */
+  eleventyConfig.addFilter('frozenMain', (version) => frozenMain(version));
 
   eleventyConfig.addDataExtension('md', {
     parser: (contents) => parseFragments(contents),
@@ -512,7 +619,7 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ 'src/_redirects': '_redirects' });
 
   /**
-   * The frozen version is self-contained: its own stylesheet, its own fonts, its own
+   * A published version's rendering, frozen: its own stylesheet, its own fonts, its own
    * favicon, at version-scoped paths. §5 — if /oal/v1.0 were styled by the live
    * stylesheet, a colour change in 2028 would silently alter a methodology document
    * that scorecards have been issued against, which is the same defect class as
@@ -520,36 +627,31 @@ export default function (eleventyConfig) {
    *
    * ── That paragraph described an intention this code did not implement ──────────────
    *
-   * Until 2026-08-11 the copy below read from `src/`, so the "self-contained" snapshot
-   * was self-contained in its *paths* and not in its *bytes*: every build re-derived
-   * /oal/v1.0/styles.css from the living stylesheet. The comment above the copy warned
-   * about the exact hazard the copy had.
+   * Until 2026-08-11 the copy below read from `src/`, so the snapshot was frozen in its
+   * *paths* and not in its *bytes*: every build re-derived /oal/v1.0/styles.css from the
+   * living stylesheet. The comment above the copy warned about the exact hazard the copy
+   * had. Nothing had noticed, because check 21 held the *built* snapshot to a manifest, so
+   * the coupling never showed up as a frozen page changing — it showed up as **the living
+   * stylesheet being un-editable**, on a file the edit was never about.
    *
-   * Nothing had noticed because check 21 hides it in the most misleading way possible —
-   * it holds the built snapshot to a manifest, so the coupling never showed up as a
-   * frozen page changing. It showed up as **the living stylesheet being un-editable**:
-   * touch one declaration in src/styles.css and the freeze check goes red, on a file the
-   * edit was never about. A legibility defect in the measure sat unfixable behind that
-   * for exactly as long as anyone had wanted to fix it.
+   * ── 2026-08-12: what is frozen is the content and its rendering, not the document ──
    *
-   * ── What it does now ──────────────────────────────────────────────────────────────
+   * Pinning the whole `index.html` closed that and froze the page's **chrome** with it.
+   * Measured: eight of nine pages carried the footer field list with the VAT registration
+   * and /oal/v1.0/ carried the launch footer — a sentence the repository had already
+   * withdrawn. One site, two footers, and the frozen one advertising the site as it stood
+   * at publication.
+   *
+   * So the unit is now the `<main>` fragment plus the assets that render it. The fragment
+   * is emitted through the template (see the `frozenMain` filter above); the assets are
+   * copied here. **`index.html` is no longer stored, no longer pinned and no longer in the
+   * manifest** — it is rendered live, like every other page, and its chrome tracks the site.
    *
    * A version with bytes stored under `versions/v<n>/` is served from those bytes, and
-   * `src/` cannot reach it. A version with no stored bytes is being published for the
+   * `src/` cannot reach them. A version with no stored bytes is being published for the
    * first time, and live source *is* its published content — so the fallback is correct
-   * rather than lenient. `tools/freeze-version.mjs` stores the bytes at the same moment
-   * it records their hashes, which is what turns the first case on.
-   *
-   * Since 2026-08-11 `index.html` and `favicon.svg` are pinned too (CHANGES.md row 50), so
-   * this loop now covers a published version's whole surface and `src/` cannot reach any of
-   * it. The prediction this paragraph used to carry — that a layout edit would turn check 21
-   * red and force the decision again — is what actually happened, one session later, when a
-   * footer carrying a VAT number reached the frozen page.
-   *
-   * A consequence worth stating, because the code does not make it obvious: for a published
-   * version Eleventy still renders `oal-version.njk` and the render is then overwritten by
-   * the stored bytes. `requirePublishableVersion` below therefore guards output that is
-   * discarded, and an edit to that template has no effect on any frozen version.
+   * rather than lenient. `tools/freeze-version.mjs` stores the bytes at the same moment it
+   * records their hashes, which is what turns the first case on.
    *
    * Copied rather than passed through, for two reasons: Eleventy takes one target per
    * passthrough source, and a real `copyFile` puts byte-identical bytes at both paths
@@ -557,8 +659,25 @@ export default function (eleventyConfig) {
    * the one file is correct at both locations without being edited.
    */
   eleventyConfig.on('eleventy.after', async ({ dir }) => {
+    const out = path.join(ROOT, dir.output);
+
+    // The chrome sheet, fingerprinted. Written here rather than passed through because
+    // it is derived rather than copied — there is no source file to point at.
+    //
+    // Stale fingerprints are removed first. Eleventy does not clean its output directory,
+    // so without this an edited chrome sheet leaves the previous one behind and a local
+    // `_site` accumulates one file per edit — which check 27b then reports as "expected
+    // exactly one derived chrome stylesheet, found 4". Found while running drill 4, where
+    // the mutate-and-revert cycle produces exactly that.
+    for (const stale of await readdir(out)) {
+      if (/^chrome\..*\.css$/.test(stale) && stale !== CHROME.file) {
+        await rm(path.join(out, stale));
+      }
+    }
+    await writeFile(path.join(out, CHROME.file), CHROME.css, 'utf8');
+
     for (const v of oal.versions) {
-      const target = path.join(ROOT, dir.output, 'oal', `v${v.version}`);
+      const target = path.join(out, 'oal', `v${v.version}`);
       const pinned = pinnedDir(v.version);
       const published = existsSync(pinned);
       const from = (rel) => (published ? path.join(pinned, rel) : path.join(ROOT, 'src', rel));

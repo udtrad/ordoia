@@ -52,13 +52,70 @@
 # current paths" still holds, and a correction still reaches a returning reader.
 # Check 14 asserts the absence deliberately so it cannot be reinstated by accident.
 
-# A version directory is frozen by definition — /oal/v1.0/ carries its own
-# stylesheet, its own fonts and its own favicon, taken at publication, and the
-# build refuses to regenerate it from a newer rubric. Nothing in it can legally
-# change, so a year of immutable caching costs nothing and buys a scorecard
-# reader in 2032 a page that loads from cache.
-/oal/v1.0/*
+# ── Cache-Control is stated BY TYPE, not by path ────────────────────────────
+#
+# Until 2026-08-12 this file carried one rule, `/oal/v1.0/*`, applying a year of
+# `immutable` to everything under a published version — including the HTML
+# document. That was already wrong and it was measured wrong:
+#
+#   /oal/v1.0/   200  public, max-age=31536000, immutable
+#
+# A path rule cannot tell a stylesheet from the page that links it. `immutable`
+# on a *document* means a browser that has loaded it will not ask again for a
+# year, and a purge cannot recall it — so a redesign, or a correction, reaches
+# nobody who has already visited. The user's R3: no cache header may prevent a
+# visitor from seeing the site as it is currently designed. Every page.
+#
+# So the rules below are stated by what a thing IS:
+#
+#   fingerprinted or frozen assets  →  immutable, one year. Correct and free:
+#                                      their bytes cannot change under their URL.
+#   everything else, HTML included  →  revalidate on the next request.
+#
+# Check 28 holds every rendered HTML document to this, reading the response
+# rather than this file, and confirms revalidation with a 304 against the live
+# host. Every path still matches exactly ONE Cache-Control declaration — see the
+# comma-join note above; overlapping blocks concatenate rather than override.
+
+# The frozen version's own bytes. These are the published rendering of a
+# methodology document that scorecards cite: they can never legally change, so a
+# year of immutable caching costs nothing and buys a scorecard reader in 2032 a
+# page that loads from cache. This is part of how R2 holds.
+#
+# The DOCUMENT at /oal/v1.0/ is deliberately not listed. It matches no rule here
+# and takes the host default, `public, max-age=0, must-revalidate` — the same as
+# every other page — because its chrome now renders live and a stale copy would
+# show a visitor last year's site.
+/oal/v1.0/*.css
   Cache-Control: public, max-age=31536000, immutable
+
+/oal/v1.0/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/oal/v1.0/favicon.svg
+  Cache-Control: public, max-age=31536000, immutable
+
+# The chrome stylesheet is derived and content-hashed — /chrome.<sha>.css — so a
+# chrome change is a new URL rather than a new body at an old one. That is what
+# lets it hold immutable under R3: there is no stale version to serve, because
+# the redesigned page links a different file.
+/chrome.*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+# The live stylesheet is NOT fingerprinted — it is copied unhashed and
+# unminified on purpose, because somebody will read it (§4) and a version
+# snapshot has to stay reproducible. That makes an explicit rule necessary
+# rather than optional: measured on 2026-08-12, with nothing declared here, the
+# zone's own default served it as
+#
+#   /styles.css  200  public, max-age=14400, must-revalidate
+#
+# — four hours in which a redesign is invisible to a returning visitor, on every
+# page on the site. The comment above about current paths taking
+# `max-age=0, must-revalidate` was true of HTML and false of this file, and
+# nothing in the repository had ever read the response to find out.
+/styles.css
+  Cache-Control: public, max-age=0, must-revalidate
 
 # The live fonts are vendored and pinned but their filenames are not hashed, so
 # they get a long cache rather than an immutable one: a deliberate font change

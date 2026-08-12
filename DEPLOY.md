@@ -613,12 +613,37 @@ into the frozen directory on every run, so "self-contained" was true of the snap
 was **the living stylesheet becoming un-editable**, because check 21 went red on any
 change to it. See `CHANGES.md` row 40.
 
-`index.html` and `favicon.svg` **are pinned as well**, since 2026-08-11 — see `CHANGES.md`
-row 50. All four entries in `PINNED_ASSETS` are served from `versions/v<n>/`, so the
-snapshot is now immutable by construction across its whole surface rather than only its
-passthrough assets. What that costs is stated rather than discovered later: the frozen
-page's footer and nav hold the state they were published in, so a page added to the site
-later will not appear in v1.0's footer list. That is what frozen means.
+### What is frozen, since 2026-08-12: the content and its rendering, not the document
+
+`index.html` was pinned too between 2026-08-11 and 2026-08-12 (`CHANGES.md` row 50). That
+made the snapshot immutable across its whole surface — **including its chrome**, which was
+never the intention and was not noticed until the footer changed. Measured on 2026-08-12:
+eight of nine rendered pages carried the footer field list with the VAT registration and
+`/oal/v1.0/` carried the launch footer, a sentence this repository had already withdrawn.
+One site, two footers, and the frozen one advertising the site as it stood at publication.
+Row 50 stated the cost — *"a page added to the site later will not appear in v1.0's footer
+list"* — and stating it did not make it acceptable.
+
+So the unit was re-cut (`CHANGES.md` row 65). **What is frozen is the `<main>` fragment
+and the assets that render it**: `versions/v<n>/main.html`, `styles.css`, `fonts/`,
+`favicon.svg`. The document at `/oal/v<n>/` is rendered live, like every other page, and
+its masthead, version status and footer track the site.
+
+**This was not a re-freeze, and the distinction is the whole reason it was available.**
+`main.html` is a **byte-exact substring** of the document v1.0 was published as, whose
+sha256 is still `0289c300dd07…`. That document is retained whole at
+`versions/v1.0.published-index.html`, its hash is recorded in the manifest, and check 21
+re-runs both comparisons on every commit — so the claim is measured rather than believed
+because this paragraph says so. No published content byte moved. The sentence below about
+2026-08-11 being the only re-freeze therefore still stands.
+
+What the delivered document no longer is, and what to stop claiming: **byte-identical**.
+`/oal/v<n>/index.html` changes whenever the chrome changes, by design. What is guaranteed
+is that the rubric's words and their rendering do not — which is what a scorecard cites,
+and what §13's "renders identically in 2032, styled by 2026's stylesheet" was actually
+about. The published directory is also no longer **self-contained**: the page links a
+shared `/chrome.<sha>.css` alongside its own frozen stylesheet. That is R1, and it is
+deliberate.
 
 **Re-freezing a published version is not a procedure.** The manifest's own header says a
 changed byte means a new version, and that stands. It was done exactly once, on

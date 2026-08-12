@@ -1,13 +1,24 @@
 {
   "$comment": [
-    "The bytes /oal/v1.0/ was published with. BRIEF.md §5: snapshot",
-    "directories are immutable. Check 21 holds every later build to this file.",
+    "The frozen unit of /oal/v1.0/ — the <main> fragment and everything that",
+    "renders it. BRIEF.md §5: snapshot directories are immutable. Check 21 holds",
+    "every later build to this file.",
+    "",
+    "The CHROME of that page is deliberately not here. It is rendered live from the",
+    "same templates and data as every other page, so a header or footer change",
+    "reaches this address without a version event (R1). What is frozen is the",
+    "document's content and its rendering (R2), which is what a scorecard cites.",
     "",
     "Do not edit by hand. If a byte here has legitimately changed, that is a new",
     "rubric version, not a correction to this one."
   ],
   "version": "1.0",
-  "frozen": "2026-08-11",
+  "frozen": "2026-08-12",
+  "publishedDocument": {
+    "$comment": "The sha256 of the document v1.0 was published as, retained whole at v1.0.published-index.html. main.html is a byte-exact substring of it; check 21 re-runs that comparison on every commit.",
+    "file": "v1.0.published-index.html",
+    "sha256": "0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b"
+  },
   "files": {
     "favicon.svg": "08d67d5b611baf8fb895201cfe8ea9bfe3483479ef1bd06e62420024fc4ade80",
     "fonts/OFL-Archivo.txt": "108b4e57c9c796d3d38d0428ca7ee39de47ad93187302718d9b2d8864b9b716b",
@@ -17,7 +28,7 @@
     "fonts/ibm-plex-mono-400-subset.woff2": "f697e17543bda18a79f3a1fb6ef31bf773bf4f94dbb7c4696228417c01064600",
     "fonts/source-serif-4-italic-subset.woff2": "cd6a8cff47f1721caa20b0c02506324d5d9f9817f6cb2868cd8f63dea28076fa",
     "fonts/source-serif-4-subset.woff2": "c40a8d8f974d5bcebe471667e705395c7acf651ca69bed5ac91ca33ac64072ff",
-    "index.html": "0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b",
+    "main.html": "69e5401f3cb8209b96ede554291bb915f254481775adc40f5cb99603e9b7814a",
     "styles.css": "81e8c1559a63ad5b104ae85b64001f8393321450064d39a77a0992d13996b402"
   }
 }

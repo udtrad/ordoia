@@ -655,9 +655,34 @@ The sentence is about published bytes, so the enforceable form is byte identity 
 manifest taken at publication — which, unlike the literal reading, can be checked on every
 commit rather than once.
 
-Nothing is frozen today and that is correct: v1.0 has not been published, and the italic
-re-subset of 2026-08-09 is precisely the correction that had to stay possible until the
-first deploy. The check says so through `mayBeEmpty` rather than passing quietly.
+**v1.0 has been frozen since 2026-08-10.** This paragraph said "nothing is frozen today"
+for two days after that stopped being true — the same shape as row 42, a correction landing
+in one place and not the others, and worth leaving recorded rather than quietly fixed.
+
+**What "the published bytes" means changed on 2026-08-12** (`CHANGES.md` row 65). The
+frozen unit is the `<main>` fragment plus the assets that render it — `main.html`,
+`styles.css`, `fonts/`, `favicon.svg` — and **not** the delivered `index.html`, whose
+chrome now renders live so that a footer change reaches a published address without a
+version event. The manifest therefore hashes `versions/v<n>/` rather than the build: a
+manifest over the build would go red on every legitimate chrome change, which is the
+un-editable-stylesheet failure (row 40) one file over.
+
+Six tests, and none of the five was dropped:
+
+| Test | Asserts |
+|---|---|
+| stored bytes intact | `hashTree(versions/v<n>/)` equals the manifest |
+| fragment is published content | `main.html` is a byte-exact substring of the retained published document, and is the whole of its `<main>` |
+| served from stored bytes | the built page's `<main>` equals `main.html`, and each pinned asset equals its stored copy |
+| no superseded version unfrozen | unchanged |
+| controls | unchanged — changed, added, removed and empty-manifest cases |
+| one document, two addresses | while a version is `Current`, `/oal/` and `/oal/v<n>/` state the same `<main>` prose. It now **announces when it stops applying**: a superseded version produces `deliberately not asserting for v1.0 (Superseded)` in the output, so a lapsed assertion can be told from a satisfied one |
+
+The second test is the one that makes the re-cut honest rather than asserted. Redefining a
+frozen unit is only safe if the content bytes are the same content bytes, and "we checked
+at the time" is exactly the one-off proof this repository has been bitten by. The document
+v1.0 was published as is retained whole at `versions/v1.0.published-index.html`, its sha256
+`0289c300dd07…` is in the manifest, and both halves are re-checked on every commit.
 
 Proven end to end on 2026-08-09 rather than argued:
 
@@ -756,6 +781,49 @@ Checks are in place for all twelve items in §3, plus check 0's controls and che
   since a change to `oal.md` now moves `/oal/` and leaves the snapshot alone. Check 21's
   fifth test closes that by holding a `Current` version's two addresses to the same prose,
   and it lapses on its own the moment v1.0 is superseded.
+
+  **Reopened and re-cut on 2026-08-12** (`CHANGES.md` row 65). Pinning the whole document
+  froze the page's *chrome* as well as its content, and the site spent a day serving two
+  different footers. The frozen unit is now the `<main>` fragment plus the assets that
+  render it; the document is rendered live. "Immutable across its whole surface" was the
+  wrong goal, stated confidently one session before it was measured to be wrong.
+
+**Check 27 — one chrome.** R1: a visitor must see the same header and footer on every page
+they can reach, `/oal/v1.0/` included, and must keep seeing them after a future chrome
+change without a version event. Denominator: the 9 rendered HTML pages. Written red-first
+and it produced exactly one finding, naming `/oal/v1.0/` and quoting the launch footer it
+was still serving. A fourth test asserts the isolation the split rests on — **no selector
+in the derived chrome stylesheet matches anything inside `<main>`**, measured against the
+rendered DOM rather than argued from the source.
+
+Two things it found about itself, both worth keeping: the first draft normalised away the
+footer's self-link on *every* region, which made four correct pages compare as different
+because the masthead keeps its links; and the first nav rule asserted "every route less
+this page's own", which is what one might reasonably expect `layout.njk` to implement and
+is not what it does — only `/scorecard/` and `/changelog/` are conditional. Both were
+caught by running it, not by reading it.
+
+It also reports, as a diagnostic on every run, that `grid.njk` puts `class="skip"` — the
+skip-link class — on the coverage grid's visually hidden corner heading, where `.vh` is the
+class that exists for that and says so. Harmless while both stylesheets are the live
+design; a latent hazard now that a class shared between chrome and content is the only way
+the scope boundary can be crossed. Left for Commit B, because Commit A lands on unchanged
+content so that its byte comparison means something.
+
+**Check 28 — no HTML document is cached in a way that can hide a redesign.** R3. Denominator:
+the same 9 pages. The primary arm runs against the local host emulator so it gates CI
+hermetically and reproduces the documented comma-join; the live arm runs under `ORDOIA_LIVE`
+and adds the thing no emulator can establish — that revalidation actually happens, by asking
+twice and requiring a **304**. Written red-first: one finding, `/oal/v1.0/` at
+`max-age=31536000, immutable`. A second test asserts the frozen version's *assets* keep
+their immutable caching, so this is not "no immutable anywhere" — that would trade a real
+R2 guarantee for a cosmetic R3 one.
+
+**Check 29 — a version page states its true standing.** Denominator: published versions.
+Written red-first, and it failed through the *population rule* rather than through a
+finding, which is the strongest form available: there were no status stamps to compare, so
+the check had measured nothing. It also holds the changelog's `Superseded` count to the
+record, closing the hand-typed second surface Gate 0 found.
 
 Closed on 2026-08-10, and this list said otherwise until 2026-08-11: **the rollback
 drill**. It was run against the real `ordoia` project before the custom domain was

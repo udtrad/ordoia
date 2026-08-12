@@ -14,33 +14,42 @@
  * build and every build after it. The sentence is about *published* bytes, not about a
  * directory entry in somebody's output folder.
  *
- * So the enforceable form of it is byte identity against a manifest taken at publication:
+ * So the enforceable form of it is byte identity against a manifest taken at publication.
  *
- *   the build may regenerate a frozen version directory, and what it generates must be
- *   indistinguishable from what was published.
+ * ── 2026-08-12: what "the published bytes" means changed, deliberately ─────────────
  *
- * That is the same rule — a reader who types the address off a scorecard in 2032 gets the
- * document that was published — and unlike the literal reading it can be checked on every
- * commit rather than once.
+ * Until this commit the frozen unit was the whole `index.html`. That froze the rubric's
+ * content — correctly — and froze its **chrome** with it, which was never intended and
+ * was not noticed until the footer changed. Measured on 2026-08-12: eight of nine pages
+ * carried the footer field list with the VAT registration and `/oal/v1.0/` carried the
+ * launch footer, a sentence the repository had already withdrawn. One site, two footers,
+ * and the frozen one advertising the site as it stood at publication.
+ *
+ * The user's three requirements settle it:
+ *
+ *   R1  one chrome, on every page, updating without a version event
+ *   R2  frozen v1.0 stays frozen — its content *and* its rendering
+ *   R3  no visitor is ever shown a stale design
+ *
+ * So the unit is re-cut. **What is frozen is the `<main>` fragment and everything that
+ * renders it** — its own stylesheet, its own fonts, its own favicon. The chrome around it
+ * is rendered live from the same templates and the same data as every other page.
+ *
+ * This is not a re-freeze and the difference is the whole point. `versions/v1.0/main.html`
+ * is a **byte-exact substring** of the published `index.html`, whose sha256 is still
+ * `0289c300dd07…`; the published file is retained beside the manifest so that claim is
+ * re-runnable rather than asserted, and check 21 re-runs it on every commit. No published
+ * content byte changes, so `DEPLOY.md`'s record of the 2026-08-11 re-freeze as "not a
+ * precedent" stands untouched. What does change is the *delivered document*, and only in
+ * its chrome — which is R1, and is the thing being fixed.
  *
  * ── Why this matters more than the usual defect ───────────────────────────────────
  *
- * `_headers` caches `/oal/v1.0/*` as `public, max-age=31536000, immutable`. Once those
- * bytes are deployed they are in reader caches for a year and cannot be recalled. A
- * changed byte after publication does not replace the published document; it creates a
- * second one, and which of the two a reader sees depends on when they first visited.
- *
- * ── What is frozen, and when ───────────────────────────────────────────────────────
- *
- * A version is frozen when it has a manifest under `versions/`. Nothing is frozen today:
- * v1.0 has not been published, and freezing an unpublished draft would be claiming a
- * publication that has not happened — the italic re-subset on 2026-08-09 is exactly the
- * kind of correction that must still be free to land before the first deploy.
- *
- * Run this at publication, in the same change that takes the site live. Check 21 then
- * holds the version to it, and also fails if a *superseded* version has no manifest —
- * which is the case `requirePublishableVersion` in `eleventy.config.js` stops the build
- * over, from the other direction.
+ * The frozen stylesheet and fonts are still `immutable` for a year. Once those bytes are
+ * deployed they are in reader caches and cannot be recalled. A changed byte after
+ * publication does not replace the published document; it creates a second one, and which
+ * of the two a reader sees depends on when they first visited. That is why immutable stays
+ * on the assets and comes off the document — see `src/_headers` and check 28.
  */
 
 import { createHash } from 'node:crypto';
@@ -62,50 +71,85 @@ export const versionDir = (version) => path.join('oal', `v${version}`);
 /** The manifest path for a version, whether or not it exists yet. */
 export const manifestPath = (version) => path.join(FROZEN_DIR, `v${version}.json`);
 
-/** Where a published version's own bytes are kept. See `storePublishedAssets`. */
+/** Where a published version's own bytes are kept. */
 export const pinnedDir = (version) => path.join(FROZEN_DIR, `v${version}`);
 
 /**
- * The assets a published version is served from, rather than re-derived from `src/`.
+ * The document a version was published as, retained whole.
  *
- * These are the passthrough copies — the half of a version directory that no Eleventy
- * transform ever sees. Before 2026-08-11 the build re-read them from `src/` on every run,
- * so "the frozen snapshot" was frozen in its paths and not in its bytes, and the only
- * thing standing between a stylesheet edit and a silently-restated methodology document
- * was check 21 going red on a file the edit was not about.
- *
- * ── 2026-08-11: `index.html` and `favicon.svg` joined the list ────────────────────
- *
- * They used to be deliberately absent, on the reasoning that they are generated and
- * that pinning generated output was the larger pass-2 change `requirePublishableVersion`
- * describes. The comment that stated this also predicted what would happen next: *"a
- * layout change will turn check 21 red and force this decision again, deliberately."*
- *
- * That is exactly what arrived. The footer is not a partial — it is inline in the one
- * layout, and `/oal/v1.0/index.html` is one of the nine pages that render it, so a
- * footer carrying a VAT number moves the frozen snapshot's bytes. The decision was
- * forced on schedule and taken the way the deferral anticipated.
- *
- * **Pinning is not re-freezing, and the difference is the whole point.** The bytes
- * stored here are the bytes already in the manifest, so `versions/v1.0.json` does not
- * change, `0289c300…` stays `0289c300…`, and check 21 is green before and after. A
- * re-freeze would have re-recorded *different* bytes against a published address — the
- * thing the manifest's own header forbids, done once deliberately (row 40) and recorded
- * in `DEPLOY.md` as "not a precedent". This spends no exception at all.
- *
- * What it costs: the frozen page's footer and nav now hold the state they were
- * published in, so a page added to the site in 2028 will not appear in v1.0's footer
- * list. That is correct rather than regrettable — it is what "frozen" means, and the
- * previous arrangement, where a methodology document's chrome silently tracked the
- * live site, was the same defect class as the stylesheet coupling row 40 closed, one
- * file over. `favicon.svg` comes too: it is generated from `--ground` and `--ink` read
- * out of the *live* `src/styles.css`, so a colour token could reach the snapshot even
- * though `styles.css` itself was pinned. That coupling was undocumented.
+ * Not served, not built, not hashed into the manifest. It exists so that the one claim
+ * this commit rests on — that the stored `<main>` fragment is a byte-exact substring of
+ * the bytes that were published — can be *measured* on every commit rather than believed
+ * because a commit message said so. Check 21 does exactly that.
  */
-export const PINNED_ASSETS = ['styles.css', 'fonts', 'index.html', 'favicon.svg'];
+export const publishedDocument = (version) =>
+  path.join(FROZEN_DIR, `v${version}.published-index.html`);
+
+/** The name of the stored `<main>` fragment inside a version's directory. */
+export const MAIN_FRAGMENT = 'main.html';
 
 /**
- * Copy a published version's assets out of the build and into the repository.
+ * The frozen unit: everything whose bytes a published version is defined by.
+ *
+ * R2 in one list. The `<main>` fragment is the content; the stylesheet, the fonts and the
+ * favicon are its rendering. All four are stored, hashed and never regenerated, so a
+ * redesign of the live site cannot restyle a published document.
+ */
+export const FROZEN_UNIT = [MAIN_FRAGMENT, 'styles.css', 'fonts', 'favicon.svg'];
+
+/**
+ * The members of the frozen unit the build copies into the output verbatim.
+ *
+ * `main.html` is the one that is *not* here, and the distinction is load-bearing. The
+ * fragment reaches the page through the template — `oal-version.njk` emits it inside the
+ * live layout — rather than by overwriting a rendered file afterwards. That ordering is
+ * what makes two things true that were previously only intended:
+ *
+ *   - rubric prose cannot leak into a frozen page, because for a frozen version the build
+ *     never renders `rubric.njk` at all;
+ *   - no regeneration step can re-record the old fragment and report success, because
+ *     nothing overwrites HTML after it is rendered. That failure — `rm versions/v1.0.json
+ *     && build && freeze` reproducing exactly what was already frozen — is CHANGES.md
+ *     row 43, found by review rather than by the drill that should have caught it.
+ *
+ * A fragment copied into `_site` would also become a published URL in its own right, and
+ * a chrome-less HTML file in the output is a page every site-touching check would then
+ * measure and fail on. It is deliberately not emitted.
+ */
+export const PINNED_ASSETS = FROZEN_UNIT.filter((a) => a !== MAIN_FRAGMENT);
+
+/**
+ * The inner HTML of a document's single `<main>` element.
+ *
+ * Byte-exact: the substring between the open tag and `</main>`, untouched. Throws on zero
+ * or more than one, because a document with two `<main>` elements has no single answer and
+ * a silent pick would freeze half a page. `String.indexOf` rather than a regex — a lazy
+ * `[\s\S]*?` would stop at the first `</main>` inside a comment or an attribute, and this
+ * is the one function in the repository whose output becomes a permanent address.
+ */
+export function extractMain(html) {
+  const text = String(html);
+  const opens = (text.match(/<main[\s>]/gi) ?? []).length;
+  const closes = (text.match(/<\/main\s*>/gi) ?? []).length;
+
+  if (opens !== 1 || closes !== 1) {
+    throw new Error(
+      `expected exactly one <main> element, found ${opens} open and ${closes} close tags. ` +
+        `The frozen unit is defined as the content of <main>, so a document without exactly ` +
+        `one has no unambiguous fragment to freeze.`
+    );
+  }
+
+  const start = text.indexOf('>', text.search(/<main[\s>]/i)) + 1;
+  const end = text.search(/<\/main\s*>/i);
+  if (start <= 0 || end < start) {
+    throw new Error('found a <main> element whose open and close tags are out of order');
+  }
+  return text.slice(start, end);
+}
+
+/**
+ * Copy a published version's frozen unit out of the build and into the repository.
  *
  * Run at publication, from the same bytes the manifest is taken from, so the hash and the
  * stored file can never disagree about what was published.
@@ -114,21 +158,31 @@ export async function storePublishedAssets(version, built) {
   const target = pinnedDir(version);
 
   // Loud rather than partial. A missing asset here means the snapshot would be published
-  // half-pinned: the stored half immune to `src/`, the absent half silently re-derived
+  // half-stored: the stored half immune to `src/`, the absent half silently re-derived
   // from it on every later build. That is the defect this function exists to end, and it
   // would ship reporting success — so it throws instead of returning a short list.
-  const missing = PINNED_ASSETS.filter((a) => !existsSync(path.join(built, a)));
+  const needed = ['index.html', ...PINNED_ASSETS];
+  const missing = needed.filter((a) => !existsSync(path.join(built, a)));
   if (missing.length) {
     throw new Error(
       `cannot publish v${version}: ${missing.join(', ')} missing from ${built}. Every ` +
-        `asset in PINNED_ASSETS has to be stored, or the snapshot is pinned in part and ` +
+        `member of the frozen unit has to be stored, or the snapshot is frozen in part and ` +
         `re-derived from src/ in part — which looks identical today and diverges the ` +
         `first time src/ changes. Run \`npm run build\` and try again.`
     );
   }
 
   await mkdir(target, { recursive: true });
-  const stored = [];
+
+  // The document, whole, beside the manifest — the provenance the substring claim needs.
+  const document = await readFile(path.join(built, 'index.html'));
+  await writeFile(publishedDocument(version), document);
+
+  // The content: the <main> fragment, extracted byte-for-byte from that same document.
+  const fragment = extractMain(document.toString('utf8'));
+  await writeFile(path.join(target, MAIN_FRAGMENT), fragment, 'utf8');
+
+  const stored = [MAIN_FRAGMENT];
   for (const asset of PINNED_ASSETS) {
     const from = path.join(built, asset);
     const to = path.join(target, asset);
@@ -145,6 +199,16 @@ export function readManifest(version) {
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null;
 }
 
+/** True when a version has been published and has stored bytes to be served from. */
+export function isFrozen(version) {
+  return Boolean(readManifest(version)) && existsSync(path.join(pinnedDir(version), MAIN_FRAGMENT));
+}
+
+/** The stored `<main>` fragment for a published version. */
+export function frozenMain(version) {
+  return readFileSync(path.join(pinnedDir(version), MAIN_FRAGMENT), 'utf8');
+}
+
 /** Every file under `dir`, as paths relative to it, sorted. Recurses. */
 export async function filesUnder(dir, base = dir) {
   const out = [];
@@ -156,7 +220,7 @@ export async function filesUnder(dir, base = dir) {
   return out.sort();
 }
 
-/** `{ 'index.html': '<sha256>', … }` for everything under `dir`. */
+/** `{ 'main.html': '<sha256>', … }` for everything under `dir`. */
 export async function hashTree(dir) {
   const files = await filesUnder(dir);
   const entries = await Promise.all(
@@ -201,6 +265,60 @@ export function compareToManifest(manifest, actual) {
   return findings.sort();
 }
 
+/**
+ * Write a version's manifest over its stored frozen unit.
+ *
+ * The manifest hashes `versions/v<n>/` — the stored bytes — rather than the build output.
+ * Before 2026-08-12 it hashed the build, which was right while the whole document was
+ * frozen and is wrong now that the chrome is rendered: a manifest over the build would go
+ * red on every legitimate chrome change, which is the un-editable-stylesheet failure
+ * (CHANGES.md row 40) in a new place.
+ *
+ * The two halves meet in check 21: this manifest says the stored bytes are intact, and
+ * check 21's second test says the build serves exactly those and nothing from `src/`.
+ * Neither is sufficient alone and the conjunction is what the old single test asserted.
+ */
+export async function writeManifest(version) {
+  const files = await hashTree(pinnedDir(version));
+  const document = await readFile(publishedDocument(version));
+
+  await mkdir(FROZEN_DIR, { recursive: true });
+  await writeFile(
+    manifestPath(version),
+    JSON.stringify(
+      {
+        $comment: [
+          `The frozen unit of /oal/v${version}/ — the <main> fragment and everything that`,
+          'renders it. BRIEF.md §5: snapshot directories are immutable. Check 21 holds',
+          'every later build to this file.',
+          '',
+          'The CHROME of that page is deliberately not here. It is rendered live from the',
+          'same templates and data as every other page, so a header or footer change',
+          'reaches this address without a version event (R1). What is frozen is the',
+          "document's content and its rendering (R2), which is what a scorecard cites.",
+          '',
+          'Do not edit by hand. If a byte here has legitimately changed, that is a new',
+          'rubric version, not a correction to this one.',
+        ],
+        version,
+        frozen: new Date().toISOString().slice(0, 10),
+        publishedDocument: {
+          $comment:
+            `The sha256 of the document v${version} was published as, retained whole at ` +
+            `${path.basename(publishedDocument(version))}. main.html is a byte-exact ` +
+            `substring of it; check 21 re-runs that comparison on every commit.`,
+          file: path.basename(publishedDocument(version)),
+          sha256: sha256(document),
+        },
+        files,
+      },
+      null,
+      2
+    ) + '\n'
+  );
+  return files;
+}
+
 async function main([version]) {
   if (!version) throw new Error('usage: node tools/freeze-version.mjs <version>   e.g. 1.0');
 
@@ -220,44 +338,22 @@ async function main([version]) {
         `legitimately changed, that is a new version, and if they have not, this is a ` +
         `no-op. The deliberate act that overrides this is deleting BOTH the manifest and ` +
         `${pinnedDir(version)}/ — the manifest alone is not enough, because the build ` +
-        `serves the snapshot from the stored bytes, so a rebuild would reproduce exactly ` +
+        `serves the fragment from the stored bytes, so a rebuild would reproduce exactly ` +
         `what is already frozen and this command would report success having changed ` +
         `nothing.`
     );
   }
 
-  const files = await hashTree(built);
-  await mkdir(FROZEN_DIR, { recursive: true });
-  await writeFile(
-    manifestPath(version),
-    JSON.stringify(
-      {
-        $comment: [
-          `The bytes /oal/v${version}/ was published with. BRIEF.md §5: snapshot`,
-          'directories are immutable. Check 21 holds every later build to this file.',
-          '',
-          'Do not edit by hand. If a byte here has legitimately changed, that is a new',
-          'rubric version, not a correction to this one.',
-        ],
-        version,
-        frozen: new Date().toISOString().slice(0, 10),
-        files,
-      },
-      null,
-      2
-    ) + '\n'
-  );
-
-  // The bytes, not only their hashes. A manifest alone records what was published; it
-  // does not make the next build produce it. Storing the assets here is what lets
-  // `src/styles.css` change afterwards without restating a document that has been cited.
   const stored = await storePublishedAssets(version, built);
+  const files = await writeManifest(version);
 
   process.stdout.write(
     `froze /oal/v${version}/ — ${Object.keys(files).length} files recorded in ` +
       `${path.relative(REPO_ROOT, manifestPath(version))}\n` +
       `stored ${stored.join(', ')} in ${path.relative(REPO_ROOT, pinnedDir(version))}/ — ` +
-      `the build serves the snapshot from these, not from src/\n`
+      `the build serves the fragment and its assets from these, not from src/\n` +
+      `retained the published document at ` +
+      `${path.relative(REPO_ROOT, publishedDocument(version))}\n`
   );
 }
 
