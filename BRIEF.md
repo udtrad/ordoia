@@ -274,7 +274,9 @@ leave a link resolving to nothing.
 1. The repository: build, content, components, data, tests, deploy config, pinned deps.
 2. The check suite of §3, with its results published on each deploy and retained.
 3. `/oal/v1.0` frozen, self-contained and immutable, plus the process document for
-   publishing v1.1.
+   publishing v1.1. — *See the superseded note in §5 (2026-08-12): the directory is no
+   longer self-contained (it links `/chrome.<sha>.css`) and the delivered document is not
+   byte-identical. What is frozen is the rubric's content and its rendering.*
 4. The scorecard in three formats, generated, ungated, print-verified.
 5. An accessibility report against §7, naming what you tested with and what you changed.
 6. A build-and-deploy architecture diagram — **straight-line, modular, professional; take

@@ -215,8 +215,7 @@ test('check 29 — no other surface restates a status the record does not carry'
    * in declaration order — which is exactly what `changelog.njk` renders through the
    * `supersededVersions` filter.
    */
-  const superseded = oal.versions.filter((v) => String(v.status).toLowerCase() !== 'current');
-  const expected = superseded.length ? superseded.map((v) => `v${v.version}`).join(', ') : 'None';
+  const expected = railFor(oal.versions);
 
   const RAIL = /<dt>Superseded<\/dt>\s*<dd>([^<]*)<\/dd>/i;
 
@@ -247,7 +246,21 @@ test('check 29 — no other surface restates a status the record does not carry'
   );
 });
 
-/** What the changelog rail must say for a given versions record. */
+/**
+ * What the changelog rail must say for a given versions record.
+ *
+ * Used by BOTH the live assertion above and the control below. The first version of this
+ * check had the rule written out three times — inline for the live comparison, again here
+ * for the control, and a third time as `supersededVersions` in `eleventy.config.js` — so
+ * the control proved a function the assertion never called. Either could have been edited
+ * without the other noticing, which is the same disconnect that let the original inverted
+ * guard survive.
+ *
+ * Two implementations remain and that is the residual risk: this one, and the
+ * `supersededVersions` filter the template actually renders through. They are held
+ * together end-to-end by the live assertion, which reads the RENDERED rail — so a drift in
+ * the filter turns test 3 red today, not just in some future superseded state.
+ */
 export function railFor(versions) {
   const superseded = versions.filter((v) => String(v.status).toLowerCase() !== 'current');
   return superseded.length ? superseded.map((v) => `v${v.version}`).join(', ') : 'None';

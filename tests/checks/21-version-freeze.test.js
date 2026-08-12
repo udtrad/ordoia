@@ -391,6 +391,50 @@ test('check 21 — no superseded version is left unfrozen', () => {
   );
 });
 
+test('check 21 — extractMain still refuses a document it cannot freeze unambiguously (controls)', () => {
+  /**
+   * `extractMain` decides what a published version IS. Its own docstring calls it "the one
+   * function in the repository whose output becomes a permanent address" and explains why
+   * it counts tags rather than running a lazy regex — a `</main>` inside a comment or an
+   * attribute would truncate the fragment and freeze half a page.
+   *
+   * None of that was tested. Both throw paths and the comment case were reachable only
+   * through real single-`<main>` documents, so replacing the counting guard with the lazy
+   * regex it warns against left the entire suite green — and the defect would surface at
+   * the next publication, on bytes that can never be corrected.
+   */
+  assert.equal(extractMain('<body><main id="main">X</main></body>'), 'X');
+
+  assert.throws(
+    () => extractMain('<main>a</main><main>b</main>'),
+    /exactly one <main>/,
+    'two <main> elements have no single answer and a silent pick would freeze half a page'
+  );
+  assert.throws(() => extractMain('<body>no main here</body>'), /exactly one <main>/);
+  assert.throws(() => extractMain('<main>unclosed'), /exactly one <main>/);
+
+  /**
+   * A `</main>` inside a comment: the guard REFUSES rather than guesses, and that is the
+   * correct behaviour for this function even though it looks like a limitation.
+   *
+   * Writing this control is what established it. The docstring said the counting guard
+   * exists because "a lazy `[\s\S]*?` would stop at the first `</main>` inside a comment",
+   * which reads as a claim that such a document is handled. It is not — the count sees two
+   * close tags and throws. For a tool whose output becomes a permanent address that is the
+   * right call: a silently truncated rubric is unrecoverable, a refused publication is a
+   * five-minute fix. The assertion is on the refusal, and the docstring now says so.
+   */
+  assert.throws(
+    () => extractMain('<main>A<!-- </main> -->B</main>'),
+    /exactly one <main>/,
+    'an ambiguous close tag must stop publication, not be guessed at'
+  );
+
+  // Attributes on the open tag must not shift the boundary — the live layout emits
+  // `<main id="main" data-frozen="1.0">`.
+  assert.equal(extractMain('<main id="main" data-frozen="1.0">\nY\n</main>'), '\nY\n');
+});
+
 test('check 21 — the comparison still catches a changed, added and removed file (controls)', () => {
   const published = {
     version: '1.0',

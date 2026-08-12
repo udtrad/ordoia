@@ -121,11 +121,19 @@ export const PINNED_ASSETS = FROZEN_UNIT.filter((a) => a !== MAIN_FRAGMENT);
 /**
  * The inner HTML of a document's single `<main>` element.
  *
- * Byte-exact: the substring between the open tag and `</main>`, untouched. Throws on zero
- * or more than one, because a document with two `<main>` elements has no single answer and
- * a silent pick would freeze half a page. `String.indexOf` rather than a regex — a lazy
- * `[\s\S]*?` would stop at the first `</main>` inside a comment or an attribute, and this
- * is the one function in the repository whose output becomes a permanent address.
+ * Byte-exact: the substring between the open tag and `</main>`, untouched.
+ *
+ * **Throws on anything but exactly one open and one close tag, and that includes a
+ * `</main>` that appears inside a comment or an attribute.** It refuses rather than
+ * guesses. That is deliberate and it is the conservative direction: this is the one
+ * function in the repository whose output becomes a permanent address, so a silently
+ * truncated rubric is unrecoverable while a refused publication is a five-minute fix.
+ *
+ * The counting guard is what makes the refusal possible. A lazy `[\s\S]*?` would not
+ * refuse — it would stop at the first `</main>` it met, inside a comment or not, and
+ * store half a page reporting success. The distinction was only established by writing
+ * check 21's control for it; the wording here previously implied such a document was
+ * handled correctly rather than rejected.
  */
 export function extractMain(html) {
   const text = String(html);

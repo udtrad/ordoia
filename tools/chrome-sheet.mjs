@@ -53,8 +53,31 @@
 /** The scope selectors the chrome is allowed to reach, and nothing else. */
 export const CHROME_SCOPES = ['.masthead', 'footer', '.skip', '.wordmark', '.vstatus'];
 
+/**
+ * The chrome's ROOTS — the scopes that are siblings in the document rather than nested
+ * inside another scope. Re-homed document-level declarations land on exactly these.
+ *
+ * `.wordmark` is absent because it lives inside `.masthead .sheet` and inherits from it.
+ * `.skip` is present and was missing until 2026-08-12, which was a real leak rather than
+ * a tidiness point: `<a class="skip">` is a SIBLING of `<header class="masthead">` in
+ * `layout.njk`, so it inherited none of the re-homed tokens, and the emitted
+ * `.skip:focus { background: var(--raised) }` therefore resolved `--raised` against
+ * whatever `:root` the document carried. On `/oal/v1.0/` that is the FROZEN palette —
+ * the live chrome taking a published document's 2026 colours, which is precisely the
+ * R2-into-R1 leak this module's header claims cannot happen. Neither guard could see it:
+ * `undeclared` collects `--x:` from anywhere in the sheet and `--raised` IS declared,
+ * just not on a scope `.skip` inherits from.
+ *
+ * Derived from here rather than restated, so adding a scope cannot silently leave it
+ * token-less again.
+ */
+const SCOPE_ROOTS = ['.masthead', 'footer', '.skip', '.vstatus'];
+
 /** Where re-homed document-level declarations land. */
-const SCOPE_LIST = '.masthead, footer, .vstatus';
+const SCOPE_LIST = SCOPE_ROOTS.join(', ');
+
+/** The same roots, plus their descendants, for the universal reset. */
+const SCOPE_UNIVERSAL = SCOPE_ROOTS.flatMap((s) => [s, `${s} *`]).join(', ');
 
 /**
  * Inherited properties only.
@@ -85,7 +108,7 @@ const REHOME = new Map([
   [':root', SCOPE_LIST],
   ['html', SCOPE_LIST],
   ['body', SCOPE_LIST],
-  ['*, *::before, *::after', '.masthead, .masthead *, footer, footer *, .vstatus, .vstatus *'],
+  ['*, *::before, *::after', SCOPE_UNIVERSAL],
   ['.sheet', '.masthead .sheet, footer .sheet'],
   ['.rail', 'footer .rail'],
   ['.rail:empty', 'footer .rail:empty'],
@@ -302,8 +325,15 @@ function convert(node, dropped) {
  * the families are declared by whichever sheet owns the document, and font faces are
  * document-scoped rather than stylesheet-scoped, so the chrome reuses them at **zero extra
  * bytes**. Emitting them here would make `/oal/v1.0/` fetch a second copy of four
- * byte-identical fonts from `/fonts/` — measured at +123,008 B, which takes the page from
- * 139.9 KiB to 269.6 KiB against a 150 KiB budget.
+ * byte-identical fonts from `/fonts/` — measured at **+123,008 B**, which puts the page
+ * 112.0 KiB over its 150 KiB budget.
+ *
+ * The DELTA is the durable figure; a page total is not, because it moves whenever the
+ * document does. This comment carried `139.9 KiB to 269.6 KiB` until 2026-08-12 — wrong on
+ * both ends, and the origin of a second contradictory `119.6 KiB over` that had been
+ * copied into `layout.njk` and into the emitted sheet's own header, where it shipped to
+ * every visitor. One measurement, five restatements, two mutually exclusive answers.
+ * Check 17 owns the budget arithmetic; state the delta here and let it own the total.
  */
 export function deriveChromeSheet(css) {
   const dropped = new Set();
@@ -350,7 +380,7 @@ export function deriveChromeSheet(css) {
     ' *\n' +
     ' * No @font-face, deliberately. Font families are document-scoped, so the chrome\n' +
     ' * reuses the faces the page has already loaded. Declaring them again would fetch a\n' +
-    ' * second copy of four byte-identical fonts and put the page 119.6 KiB over budget.\n' +
+    ' * second copy of four byte-identical fonts (+123,008 B) and blow the page budget.\n' +
     ' */\n\n';
 
   const sheet = header + out.join('\n');

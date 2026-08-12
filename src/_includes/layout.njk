@@ -19,7 +19,7 @@
   `<main>` would silently take the live palette while every byte check stayed green) and
   no `@font-face` (families are document-scoped, so the chrome reuses faces the page has
   already loaded — declaring them again would fetch a second copy of four byte-identical
-  fonts and put the page 119.6 KiB over its 150 KiB budget). Order matters: the frozen
+  fonts, +123,008 B, and blow the 150 KiB budget). Order matters: the frozen
   sheet is linked first and governs `<main>`; the chrome sheet is linked second and cannot
   reach inside it. Check 27b asserts that against the rendered DOM.
 #}

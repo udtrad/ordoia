@@ -11,8 +11,8 @@
    A published version page now carries TWO stylesheets: its own frozen one, and the
    live chrome sheet. If the chrome sheet also declared these faces, its relative URLs
    would resolve against ITS location and fetch a second copy of four byte-identical
-   fonts from /fonts/ — 123,008 B, taking /oal/v1.0/ from 141.8 KiB to 261.9 KiB against
-   a 150 KiB budget. Font families are document-scoped rather than stylesheet-scoped, so
+   fonts from /fonts/ — +123,008 B, which puts the page 112.0 KiB over its 150 KiB
+   budget. The delta is the durable number; check 17 owns the page total. Font families are document-scoped rather than stylesheet-scoped, so
    the chrome simply reuses the faces this file has already loaded, and
    tools/chrome-sheet.mjs drops @font-face deliberately.
    --------------------------------------------------------------------------- */

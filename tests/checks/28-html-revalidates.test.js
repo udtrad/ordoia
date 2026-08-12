@@ -195,11 +195,30 @@ test('check 28 — revalidation actually happens, against the local host emulato
    * `if-none-match` was the live arm below, which skips without `ORDOIA_LIVE`. The
    * enabling code landed and the test it enabled was never written — so the local suite
    * was green over an assertion nothing made.
+   *
+   * ── What this arm can and cannot establish ────────────────────────────────────────
+   *
+   * **It measures the emulator, not the host, and that is a real limit rather than a
+   * caveat.** The first version of it echoed back the ETag `serve()` had just produced,
+   * so a 304 was guaranteed by construction: no change to `src/_headers`, to the built
+   * site, or to Cloudflare could have made it fail. Only an edit to `tests/lib/harness.js`
+   * could — which is the harness testing itself.
+   *
+   * It now also sends a STALE validator and requires a 200 with a body, which is the part
+   * that can fail: an emulator answering 304 unconditionally is caught here. That makes
+   * the arm a real test of conditional-request handling, and still not evidence about
+   * production. `npm run test:live-local` does not close the gap either — `serve-local.mjs`
+   * points `ORDOIA_LIVE` at this same emulator. **The only evidence about the real host is
+   * `ORDOIA_LIVE=https://ordoia.com npm test`,** which is the arm below.
    */
   const s = survey({
     documents: 'HTML documents asked for twice against the local emulator',
     revalidations: 'second requests that returned 304 Not Modified',
+    discriminations: 'stale validators that correctly got a 200 and a body',
   });
+
+  /** A validator that matches nothing. A conditional response to this is unconditional. */
+  const STALE = '"0000000000000000000000000000000000000000000000000000000000000000"';
 
   const site = await serve(TARGET, { applyHeaders: true });
   try {
@@ -229,6 +248,24 @@ test('check 28 — revalidation actually happens, against the local host emulato
         s.fail(
           `${url} returned ${second.status} to a conditional request carrying its own ` +
             `ETag ${etag}, so revalidation is not happening.`
+        );
+      }
+
+      // The half that can fail. Without it the 304 above is guaranteed by construction
+      // and this whole arm measures nothing but its own echo.
+      const stale = await fetch(new URL(url, site.origin), {
+        headers: { 'if-none-match': STALE },
+        redirect: 'manual',
+      });
+      const staleBody = await stale.text();
+      if (stale.status === 200 && staleBody.length > 0) {
+        s.count('discriminations');
+      } else {
+        s.fail(
+          `${url} answered ${stale.status} with a ${staleBody.length}-byte body to a STALE ` +
+            `validator. A response that is conditional regardless of the validator is not ` +
+            `revalidation — it is a 304 returned unconditionally, and the assertion above ` +
+            `would pass over a host that never actually compares anything.`
         );
       }
     }

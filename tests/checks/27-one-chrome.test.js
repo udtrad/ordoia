@@ -50,7 +50,7 @@ import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, withSite, withSource } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
-import { deriveChromeSheet, isChromeSelector } from '../../tools/chrome-sheet.mjs';
+import { deriveChromeSheet, isChromeSelector, parse } from '../../tools/chrome-sheet.mjs';
 
 const HANDOVER_SKIP =
   'the designer handover predates the one-layout build — its eleven pages carry hand-written ' +
@@ -433,13 +433,87 @@ test('check 27 — the derivation carries every token the live sheet declares', 
     }
   }
 
-  // …and the derivation must not quietly leave a chrome selector behind.
-  for (const selector of dropped) {
-    if (isChromeSelector(selector)) {
+  /**
+   * …and no chrome rule may be lost anywhere in the derivation.
+   *
+   * The first version of this asserted `!dropped.some(isChromeSelector)`, which **can
+   * never fire**: `dropped` is populated only from selectors that already failed
+   * `isChromeSelector` (see `convert()` — both call sites add the complement of `kept`),
+   * so every member fails the predicate by construction. Measured: 124 dropped, 0
+   * chrome-scoped. It was written to close the "`dropped[]` is read by nothing" finding
+   * and closed nothing — the same guard-does-not-cover-the-bug shape, one commit later.
+   *
+   * The assertion that can fail is the complement: every chrome selector the LIVE sheet
+   * declares must appear in the emitted one. That catches a rule lost to the skipped
+   * at-rule branch, to a mis-scoped parse, or to a predicate that quietly narrowed —
+   * none of which ever reach `dropped` at all.
+   */
+  /**
+   * Counted PER CONTEXT — top level, and each at-rule prelude separately.
+   *
+   * A plain "does the emitted sheet contain this selector" check is not enough, and that
+   * was measured rather than reasoned about: deleting `deriveChromeSheet`'s at-rule branch
+   * loses all seven chrome rules inside `@media` — the entire print treatment of masthead
+   * and footer, plus the 46rem nav collapse — and a substring check stays GREEN, because
+   * `.masthead nav` and `footer .foot` also appear as top-level rules. That was the second
+   * insufficient guard written for this same gap in two commits.
+   *
+   * Counting chrome rules within each context catches it: the `@media print` context goes
+   * from N rules to absent, and absence of the context is itself the failure.
+   */
+  const chromeRulesByContext = (source) => {
+    const byContext = new Map();
+    const add = (context, node) => {
+      const kept = node.prelude
+        .replace(/\s+/g, ' ')
+        .split(',')
+        .map((x) => x.trim())
+        .filter(isChromeSelector);
+      if (!kept.length) return;
+      if (!byContext.has(context)) byContext.set(context, []);
+      byContext.get(context).push(...kept);
+    };
+    for (const node of parse(source)) {
+      if (node.kind === 'rule') add('', node);
+      if (node.kind === 'at-rule' && !/^@(font-face|keyframes|page|charset|import)/.test(node.prelude)) {
+        for (const inner of parse(node.body)) {
+          if (inner.kind === 'rule') add(node.prelude.replace(/\s+/g, ' ').trim(), inner);
+        }
+      }
+    }
+    return byContext;
+  };
+
+  const wanted = chromeRulesByContext(live);
+  const got = chromeRulesByContext(css);
+
+  assert.ok(
+    wanted.size > 0 && [...wanted.values()].some((v) => v.length > 0),
+    'found no chrome rules in src/styles.css at all — the parse or the predicate broke, and ' +
+      'this test would otherwise pass having compared nothing'
+  );
+
+  for (const [context, selectors] of wanted) {
+    const emitted = got.get(context) ?? [];
+    s.count('tokens', selectors.length);
+
+    if (emitted.length === 0) {
       s.fail(
-        `the derivation dropped "${selector}", which IS a chrome selector. The chrome on ` +
-          `every page is now missing a rule the live sheet declares.`
+        `every chrome rule in \`${context || 'the top level'}\` is missing from the derived ` +
+          `sheet — ${selectors.length} rule(s), including ${selectors.slice(0, 3).join(', ')}. ` +
+          `On every page that region of the chrome now falls back to whatever else styles ` +
+          `it, and on /oal/v1.0/ that is the FROZEN 2026 sheet.`
       );
+      continue;
+    }
+    for (const selector of selectors) {
+      if (!emitted.includes(selector)) {
+        s.fail(
+          `the live sheet declares "${selector}" inside \`${context || 'the top level'}\` and ` +
+            `the derived chrome sheet does not carry it there. It never reaches \`dropped\`, ` +
+            `so nothing else notices.`
+        );
+      }
     }
   }
 
@@ -505,11 +579,30 @@ test('check 27 — every rendered page links the derived chrome stylesheet', asy
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
       s.count('pages');
-      if (!html.includes(`<link rel="stylesheet" href="/${built[0]}">`)) {
+      const chromeAt = html.indexOf(`<link rel="stylesheet" href="/${built[0]}">`);
+      if (chromeAt < 0) {
         s.fail(
           `${url} does not link /${built[0]}. Its masthead, version status and footer are ` +
             `unstyled, and no other check in this suite would notice — the DOM is intact, ` +
             `only the stylesheet that governs it is absent.`
+        );
+        continue;
+      }
+
+      /**
+       * Order is load-bearing, and `layout.njk` says so: "the frozen sheet is linked
+       * first and governs `<main>`; the chrome sheet is linked second and cannot reach
+       * inside it." Flipped, the frozen 2026 sheet wins every equal-specificity tie on
+       * `/oal/v1.0/` and most of R1 reverts silently — the markup is identical, so every
+       * other test here still passes.
+       */
+      const ownAt = html.search(/<link rel="stylesheet" href="[^"]*styles\.css">/);
+      if (ownAt < 0 || chromeAt < ownAt) {
+        s.fail(
+          `${url}: the chrome stylesheet is linked before the page's own stylesheet. On a ` +
+            `frozen version page that hands every equal-specificity tie to the published ` +
+            `document's 2026 rules, so the live chrome silently reverts while the markup — ` +
+            `and therefore every other test in this check — stays identical.`
         );
       }
     }

@@ -412,15 +412,24 @@ export default function (eleventyConfig) {
   /**
    * A version snapshot may only be generated from the data it was published from.
    *
-   * Today `/oal/v1.0/` is rendered from the live oal.json, which is correct while
-   * v1.0 IS the live rubric and self-contained in its assets. The moment v1.1 is
-   * published, generating v1.0's page from v1.1's data would silently restate a
-   * historical methodology — the same defect class as restating a historical score,
-   * and §13's first judging criterion.
+   * Generating a superseded version's page from a newer rubric would silently restate a
+   * historical methodology — the same defect class as restating a historical score, and
+   * §13's first judging criterion.
    *
-   * Freezing the content (a per-version copy plus a build that refuses to write to a
-   * version directory that already exists) is pass-2 work. This is the guard that
-   * makes shipping pass 2 non-optional: publish a second version and the build stops.
+   * ── Rewritten 2026-08-12; the version above described a model that had already gone ──
+   *
+   * It said `/oal/v1.0/` "is rendered from the live oal.json", that the version is
+   * "self-contained in its assets", and that freezing the content is "pass-2 work" that
+   * had not shipped. All three were false when read: v1.0 has been frozen since
+   * 2026-08-10 and its `<main>` comes from `versions/v1.0/main.html` through the
+   * `frozenMain` filter; `self-contained` is the exact word DEPLOY.md now retires,
+   * because the page links a shared `/chrome.<sha>.css`; and the `!isFrozen(version)`
+   * clause one line below IS the pass-2 work the comment said was outstanding.
+   *
+   * What the filter guards now is the remaining case: a version that is no longer current
+   * and has NOT been frozen, which would otherwise be regenerated out of today's data.
+   * A frozen version needs no such guard — it is served from its stored fragment and
+   * `oal.json` cannot reach it.
    */
   eleventyConfig.addFilter('requirePublishableVersion', (version) => {
     if (version !== oal.current && !isFrozen(version)) {
