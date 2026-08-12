@@ -85,6 +85,24 @@ export const pinnedDir = (version) => path.join(FROZEN_DIR, `v${version}`);
 export const publishedDocument = (version) =>
   path.join(FROZEN_DIR, `v${version}.published-index.html`);
 
+/**
+ * The sha256 of the document each version was published as, as a LITERAL.
+ *
+ * This is the anchor, and it is here rather than only in the manifest because the manifest
+ * is written by this file. Measured 2026-08-12: `storePublishedAssets` overwrites the
+ * retained document unconditionally and `writeManifest` then records the hash of that
+ * freshly-written file, so the documented override — delete the manifest and the pinned
+ * directory, rebuild, re-freeze — minted a NEW provenance file and a NEW anchor in one
+ * command, and check 21 passed because it compared the file against a value rewritten in
+ * the same breath. The one artifact the re-cut rests on was self-certifying.
+ *
+ * A literal cannot be re-minted by the tool that validates it. Changing a value here is a
+ * deliberate act in a reviewed diff, which is what publishing a version should be.
+ */
+export const PUBLISHED_SHA256 = {
+  '1.0': '0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b',
+};
+
 /** The name of the stored `<main>` fragment inside a version's directory. */
 export const MAIN_FRAGMENT = 'main.html';
 
@@ -183,8 +201,25 @@ export async function storePublishedAssets(version, built) {
   await mkdir(target, { recursive: true });
 
   // The document, whole, beside the manifest — the provenance the substring claim needs.
+  //
+  // Refuses to overwrite, for the same reason main() refuses an existing manifest: this
+  // file is the anchor every later comparison is made against, and a tool that can rewrite
+  // its own evidence is not evidence. Before 2026-08-12 this was an unconditional write,
+  // so the documented override re-minted the anchor and the hash together and check 21
+  // stayed green over it.
+  const retained = publishedDocument(version);
+  if (existsSync(retained)) {
+    throw new Error(
+      `refusing to overwrite ${path.relative(REPO_ROOT, retained)}. That file is the ` +
+        `document v${version} was published as, and it is what every later check compares ` +
+        `against — rewriting it would replace the evidence rather than the artifact. If ` +
+        `v${version} is genuinely being re-published, delete the manifest, ` +
+        `${path.relative(REPO_ROOT, pinnedDir(version))}/ AND this file, and update ` +
+        `PUBLISHED_SHA256 in a reviewed diff.`
+    );
+  }
   const document = await readFile(path.join(built, 'index.html'));
-  await writeFile(publishedDocument(version), document);
+  await writeFile(retained, document);
 
   // The content: the <main> fragment, extracted byte-for-byte from that same document.
   const fragment = extractMain(document.toString('utf8'));
@@ -344,8 +379,9 @@ async function main([version]) {
       `v${version} is already frozen (${manifestPath(version)}, taken ` +
         `${existing.frozen}). A published version is not re-frozen: if the bytes have ` +
         `legitimately changed, that is a new version, and if they have not, this is a ` +
-        `no-op. The deliberate act that overrides this is deleting BOTH the manifest and ` +
-        `${pinnedDir(version)}/ — the manifest alone is not enough, because the build ` +
+        `no-op. The deliberate act that overrides this is deleting the manifest, ` +
+        `${pinnedDir(version)}/ AND ${publishedDocument(version)}, and updating ` +
+        `PUBLISHED_SHA256 — the manifest alone is not enough, because the build ` +
         `serves the fragment from the stored bytes, so a rebuild would reproduce exactly ` +
         `what is already frozen and this command would report success having changed ` +
         `nothing.`

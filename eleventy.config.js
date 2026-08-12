@@ -375,10 +375,27 @@ function buildChromeSheet() {
   }
 
   const digest = createHash('sha256').update(css).digest('hex').slice(0, 8);
-  return { css, dropped, file: `chrome.${digest}.css`, href: `/chrome.${digest}.css` };
+  // A directory, not `chrome.<sha>.css` at the root, so `_headers` can match it with a
+  // TRAILING splat (`/chrome/*`). The previous form needed `/chrome.*.css` — a splat with
+  // a literal suffix after it, which Cloudflare documents for the trailing position only.
+  // If the host does not honour a mid-pattern splat, that rule matches nothing and the
+  // fingerprinted sheet silently drops to the zone's Browser Cache TTL, which is the same
+  // 4-hour default this file's own `/styles.css` comment was written to close.
+  return { css, dropped, file: `chrome/${digest}.css`, href: `/chrome/${digest}.css` };
 }
 
-const CHROME = buildChromeSheet();
+/**
+ * Derived per build, not once per process.
+ *
+ * `const CHROME = buildChromeSheet()` at module scope was correct for `npm run build` and
+ * wrong for `eleventy --serve` and `--watch`, which reuse the config module: measured on
+ * 2026-08-12, editing `.masthead`'s padding under `--watch` updated `_site/styles.css` and
+ * left the chrome sheet at its old bytes, old fingerprint and old `<link>`. So this
+ * module's claim that "a chrome edit reaches /oal/v1.0/ on the next build with nothing to
+ * remember" was false in the dev loop — the one place a designer actually edits the
+ * chrome. Derivation costs 0.67 ms, so hoisting it bought nothing it was worth.
+ */
+let CHROME = buildChromeSheet();
 
 export default function (eleventyConfig) {
   const tokens = readTokens();
@@ -388,8 +405,15 @@ export default function (eleventyConfig) {
   eleventyConfig.addGlobalData('buildTokens', TOKENS);
 
   // Every page links this, so one chrome edit reaches every address on the site —
-  // including a frozen version's, which is R1.
-  eleventyConfig.addGlobalData('chromeHref', CHROME.href);
+  // including a frozen version's, which is R1. A function rather than a value, so a watch
+  // rebuild picks up the re-derived fingerprint instead of the one from process start.
+  eleventyConfig.addGlobalData('chromeHref', () => CHROME.href);
+
+  // Re-derive before every build, including watch rebuilds. `src/styles.css` is already
+  // watched as a passthrough source, so no addWatchTarget is needed.
+  eleventyConfig.on('eleventy.before', () => {
+    CHROME = buildChromeSheet();
+  });
 
   // §6: stable filenames carrying the methodology version.
   eleventyConfig.addGlobalData(
@@ -694,10 +718,10 @@ export default function (eleventyConfig) {
     // `_site` accumulates one file per edit — which check 27b then reports as "expected
     // exactly one derived chrome stylesheet, found 4". Found while running drill 4, where
     // the mutate-and-revert cycle produces exactly that.
-    for (const stale of await readdir(out)) {
-      if (/^chrome\..*\.css$/.test(stale) && stale !== CHROME.file) {
-        await rm(path.join(out, stale));
-      }
+    const chromeDir = path.join(out, 'chrome');
+    await mkdir(chromeDir, { recursive: true });
+    for (const stale of await readdir(chromeDir)) {
+      if (path.join('chrome', stale) !== CHROME.file) await rm(path.join(chromeDir, stale));
     }
     await writeFile(path.join(out, CHROME.file), CHROME.css, 'utf8');
 

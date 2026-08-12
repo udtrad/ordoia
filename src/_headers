@@ -86,7 +86,21 @@
 # and takes the host default, `public, max-age=0, must-revalidate` — the same as
 # every other page — because its chrome now renders live and a stale copy would
 # show a visitor last year's site.
-/oal/v1.0/*.css
+# Stated as exact paths rather than `/oal/v1.0/*.css`, for two measured reasons.
+#
+# 1. A Cloudflare splat matches `/` as well, so `/oal/v1.0/*.css` and
+#    `/oal/v1.0/fonts/*` BOTH match `/oal/v1.0/fonts/anything.css` — two
+#    Cache-Control declarations on one request, which comma-join on this host.
+#    No such file exists today, but the overlap detector in tests/lib/posture.js
+#    cannot see it either: `sampleFor` renders each splat as a single `x`, so it
+#    tests `/oal/v1.0/x.css` against `/oal/v1.0/fonts/x` and finds no
+#    intersection. The structural guard written for the 2026-08-09 comma-join
+#    defect is blind to exactly this shape.
+# 2. Cloudflare documents splats for the TRAILING position. A splat with a
+#    literal suffix after it is undocumented, and if the host does not honour it
+#    this rule matches nothing and the frozen stylesheet silently drops to the
+#    zone default — the same 4-hour TTL the `/styles.css` note below records.
+/oal/v1.0/styles.css
   Cache-Control: public, max-age=31536000, immutable
 
 /oal/v1.0/fonts/*
@@ -95,11 +109,18 @@
 /oal/v1.0/favicon.svg
   Cache-Control: public, max-age=31536000, immutable
 
-# The chrome stylesheet is derived and content-hashed — /chrome.<sha>.css — so a
+# The chrome stylesheet is derived and content-hashed — /chrome/<sha>.css — so a
 # chrome change is a new URL rather than a new body at an old one. That is what
 # lets it hold immutable under R3: there is no stale version to serve, because
 # the redesigned page links a different file.
-/chrome.*.css
+#
+# It lives in a directory so this can be a TRAILING splat. The first version was
+# `/chrome.*.css`, a splat with a literal suffix after it, which Cloudflare
+# documents only for the trailing position — and if the host ignored it the sheet
+# would drop to the zone default and the whole point of fingerprinting it would
+# be lost silently. Check 28 asserts the delivered value, so this is measured
+# rather than assumed.
+/chrome/*
   Cache-Control: public, max-age=31536000, immutable
 
 # The live stylesheet is NOT fingerprinted — it is copied unhashed and

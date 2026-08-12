@@ -39,7 +39,7 @@
 
 import test from 'node:test';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { TARGET, IS_HANDOVER, htmlFiles, urlFor, serve } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
@@ -147,6 +147,30 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
 
   const site = await serve(TARGET, { applyHeaders: true });
   try {
+    /**
+     * The derived chrome sheet, whose delivered value nothing asserted until 2026-08-12.
+     *
+     * It is fingerprinted precisely so it can hold `immutable` under R3 — a chrome change
+     * is a new URL rather than a new body at an old one. If its `_headers` rule stopped
+     * matching, it would silently drop to the zone's Browser Cache TTL, which this repo
+     * measured at four hours, and the entire reason for content-hashing it would be lost
+     * with nothing red. Its rule was also the one pattern in the file using a splat with a
+     * literal suffix; it is now `/chrome/*`, a trailing splat, and this is what proves it.
+     */
+    for (const file of await readdir(path.join(TARGET, 'chrome')).catch(() => [])) {
+      const url = `/chrome/${file}`;
+      const res = await fetch(new URL(url, site.origin));
+      s.count('assets');
+      const cc = res.headers.get('cache-control') ?? '';
+      if (!/\bimmutable\b/i.test(cc)) {
+        s.fail(
+          `${url} is delivered \`Cache-Control: ${cc}\` with no \`immutable\`. It is ` +
+            `content-hashed, so immutable is both safe and the whole point — without it ` +
+            `every page pays a revalidation for a file whose URL changes when it does.`
+        );
+      }
+    }
+
     const frozen = path.join(TARGET, 'oal', 'v1.0');
     if (!existsSync(frozen)) {
       s.mayBeEmpty(

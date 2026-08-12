@@ -92,6 +92,7 @@ import {
   publishedDocument,
   MAIN_FRAGMENT,
   PINNED_ASSETS,
+  PUBLISHED_SHA256,
   sha256,
 } from '../../tools/freeze-version.mjs';
 
@@ -207,11 +208,37 @@ test('check 21 — the stored fragment is still part of the document that was pu
 
     const document = await readFile(file, 'utf8');
     const hash = sha256(Buffer.from(document, 'utf8'));
-    if (hash !== record.sha256) {
+
+    /**
+     * Compared against a LITERAL first, and that ordering is the point.
+     *
+     * Comparing only against `manifest.publishedDocument.sha256` was self-certifying:
+     * `storePublishedAssets` wrote the document and `writeManifest` recorded the hash of
+     * that same freshly-written file, so re-freezing minted a new anchor and a new
+     * document together and this test passed green over it. `PUBLISHED_SHA256` is a
+     * constant in a reviewed diff, which the tool cannot rewrite.
+     */
+    const anchor = PUBLISHED_SHA256[version];
+    if (!anchor) {
       s.fail(
-        `v${version}: the retained published document now hashes ${hash.slice(0, 12)}, and ` +
-          `the manifest records ${record.sha256.slice(0, 12)}. The one artifact that proves ` +
-          `what was published has itself been edited.`
+        `v${version} is frozen but has no entry in PUBLISHED_SHA256, so the only thing ` +
+          `holding its provenance is a hash the freeze tool writes itself.`
+      );
+      continue;
+    }
+    if (hash !== anchor) {
+      s.fail(
+        `v${version}: the retained published document now hashes ${hash.slice(0, 12)} and ` +
+          `PUBLISHED_SHA256 pins ${anchor.slice(0, 12)}. The one artifact that proves what ` +
+          `was published has itself been replaced.`
+      );
+      continue;
+    }
+    if (record.sha256 !== anchor) {
+      s.fail(
+        `v${version}: the manifest records publishedDocument.sha256 ${record.sha256.slice(0, 12)} ` +
+          `and PUBLISHED_SHA256 pins ${anchor.slice(0, 12)}. The manifest has been re-taken ` +
+          `against different bytes than the ones this version was published as.`
       );
       continue;
     }

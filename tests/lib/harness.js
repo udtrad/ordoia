@@ -267,7 +267,8 @@ export async function serve(root = TARGET, { applyHeaders = false } = {}) {
     for (const candidate of candidates) {
       const full = path.resolve(root, candidate);
       // Never serve outside the target, whatever the request says.
-      if (!full.startsWith(path.resolve(root))) continue;
+      // Path boundary, not string prefix:  must not admit  or .
+      if (!full.startsWith(path.resolve(root) + path.sep)) continue;
       try {
         const info = await stat(full);
         if (!info.isFile()) continue;

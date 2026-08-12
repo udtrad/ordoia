@@ -259,7 +259,7 @@ test('check 27 — the chrome stylesheet cannot reach inside <main>', async (t) 
 
   const isVersionPage = (url) => /^\/oal\/v[\d.]+\/$/.test(url);
 
-  const sheets = (await readdir(TARGET)).filter((f) => /^chrome\..*\.css$/.test(f));
+  const sheets = (await readdir(path.join(TARGET, 'chrome')).catch(() => [])).map((f) => `chrome/${f}`);
   if (sheets.length !== 1) {
     s.mayBeEmpty('selectors', 'placeholder — the assertion below reports the real problem');
     s.mayBeEmpty('pages', 'placeholder — the assertion below reports the real problem');
@@ -569,7 +569,7 @@ test('check 27 — every rendered page links the derived chrome stylesheet', asy
     sheets: 'derived chrome stylesheets found in the build',
   });
 
-  const built = (await readdir(TARGET)).filter((f) => /^chrome\..*\.css$/.test(f));
+  const built = (await readdir(path.join(TARGET, 'chrome')).catch(() => [])).map((f) => `chrome/${f}`);
   s.count('sheets', built.length);
   if (built.length !== 1) {
     s.fail(`expected exactly one derived chrome stylesheet in the build, found ${built.length}`);
