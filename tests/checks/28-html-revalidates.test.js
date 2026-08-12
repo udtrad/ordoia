@@ -181,6 +181,68 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
   );
 });
 
+test('check 28 — revalidation actually happens, against the local host emulator', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  /**
+   * `must-revalidate` in a header is a claim; a **304** on the second request is the
+   * measurement, and it is the only thing R3 actually rests on — a host that ignores
+   * `If-None-Match` re-sends the whole document on every view whatever its Cache-Control
+   * says.
+   *
+   * This ran nowhere for a day. `serve()` gained ETag and conditional-request handling
+   * specifically so the claim would not need a deployment, and then the only code sending
+   * `if-none-match` was the live arm below, which skips without `ORDOIA_LIVE`. The
+   * enabling code landed and the test it enabled was never written — so the local suite
+   * was green over an assertion nothing made.
+   */
+  const s = survey({
+    documents: 'HTML documents asked for twice against the local emulator',
+    revalidations: 'second requests that returned 304 Not Modified',
+  });
+
+  const site = await serve(TARGET, { applyHeaders: true });
+  try {
+    for (const file of await htmlFiles()) {
+      const url = urlFor(file);
+      const first = await fetch(new URL(url, site.origin), { redirect: 'manual' });
+      s.count('documents');
+
+      const etag = first.headers.get('etag');
+      if (!etag) {
+        s.fail(
+          `${url} is served with no ETag, so a revalidating cache header has nothing to ` +
+            `revalidate against and every visit re-downloads the whole document.`
+        );
+        continue;
+      }
+
+      const second = await fetch(new URL(url, site.origin), {
+        headers: { 'if-none-match': etag },
+        redirect: 'manual',
+      });
+      if (second.status === 304) {
+        s.count('revalidations');
+        const body = await second.text();
+        if (body.length) s.fail(`${url}: a 304 carried a ${body.length}-byte body`);
+      } else {
+        s.fail(
+          `${url} returned ${second.status} to a conditional request carrying its own ` +
+            `ETag ${etag}, so revalidation is not happening.`
+        );
+      }
+    }
+  } finally {
+    await site.close();
+  }
+
+  s.report(
+    'conditional requests are not answered with 304. Every HTML document on this site is ' +
+      'served `max-age=0, must-revalidate`, which only means "ask me again" if the host ' +
+      'answers the question — otherwise it means "download it again, every time".'
+  );
+});
+
 test('check 28 — the live host actually revalidates', async (t) => {
   if (!LIVE) {
     return t.skip('set ORDOIA_LIVE=https://<host> to confirm revalidation against the real edge');

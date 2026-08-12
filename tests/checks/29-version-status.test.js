@@ -189,40 +189,53 @@ test('check 29 — no other surface restates a status the record does not carry'
    * Publishing v1.1 would have left the rail stating "None" and the table stating
    * "Superseded", on one page, both reading as authoritative — the shape CHECKS.md
    * records as worse than merely being out of date.
+   *
+   * ── The first version of this test could not fire in the case it exists for ────────
+   *
+   * It guarded the comparison with `supersededCount === 0 && !declared.has('superseded')`
+   * — so the moment a version actually became Superseded, which is the ONLY moment the
+   * rail can be wrong, both conjuncts went false and the comparison was skipped entirely.
+   * Simulated against a mutated record: zero failures today AND zero after v1.1, with the
+   * rail still reading "None". A guard that switches the assertion off exactly when the
+   * hazard arrives is the vacuous-check failure this suite is written against, and it was
+   * written into the check whose whole purpose is closing that hazard.
+   *
+   * It now compares unconditionally, in both directions, against a value derived from the
+   * record the way the template derives it.
    */
   const s = survey({
     surfaces: 'rendered pages scanned for a restated version status',
     statuses: 'status words found and checked against the record',
   });
 
-  const declared = new Set(oal.versions.map((v) => String(v.status).toLowerCase()));
-  const supersededCount = oal.versions.filter(
-    (v) => String(v.status).toLowerCase() !== 'current'
-  ).length;
+  /**
+   * What the rail must say, derived from the record.
+   *
+   * `None` when nothing is superseded; otherwise the superseded versions, comma-joined,
+   * in declaration order — which is exactly what `changelog.njk` renders through the
+   * `supersededVersions` filter.
+   */
+  const superseded = oal.versions.filter((v) => String(v.status).toLowerCase() !== 'current');
+  const expected = superseded.length ? superseded.map((v) => `v${v.version}`).join(', ') : 'None';
+
+  const RAIL = /<dt>Superseded<\/dt>\s*<dd>([^<]*)<\/dd>/i;
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
       if (!/^\/(changelog|oal)\//.test(url)) continue;
       s.count('surfaces');
 
-      const body = text(html);
-      for (const word of ['current', 'superseded', 'withdrawn']) {
-        if (!new RegExp(`\\b${word}\\b`, 'i').test(body)) continue;
-        s.count('statuses');
-        if (word === 'superseded' && supersededCount === 0 && !declared.has('superseded')) {
-          // Legitimate: the changelog explains what supersession means in prose. What is
-          // not legitimate is a *count* stated as a literal.
-          if (/Superseded\s*<\/dt>\s*<dd>\s*(\d+|None)\s*<\/dd>/i.test(html)) {
-            const shown = /Superseded\s*<\/dt>\s*<dd>\s*([^<]*)<\/dd>/i.exec(html)?.[1]?.trim();
-            if (shown !== String(supersededCount) && !(shown === 'None' && supersededCount === 0)) {
-              s.fail(
-                `${url}: states "Superseded: ${shown}" while oal.json records ` +
-                  `${supersededCount}. A hand-typed count beside a rendered table is two ` +
-                  `surfaces that can disagree, and both read as authoritative.`
-              );
-            }
-          }
-        }
+      const found = RAIL.exec(html);
+      if (!found) continue; // only the changelog carries this rail
+      s.count('statuses');
+
+      const shown = found[1].trim();
+      if (shown !== expected) {
+        s.fail(
+          `${url}: the rail states "Superseded: ${shown}" and oal.json gives "${expected}". ` +
+            `A value stated beside a rendered table is a second surface, and two surfaces ` +
+            `on one page that can disagree both read as authoritative.`
+        );
       }
     }
   });
@@ -231,5 +244,64 @@ test('check 29 — no other surface restates a status the record does not carry'
     'a page restates a version status that does not come from oal.json. One source of ' +
       'truth means publishing v1.1 is one edit; a second hand-maintained surface means it ' +
       'is one edit plus however many places somebody remembers.'
+  );
+});
+
+/** What the changelog rail must say for a given versions record. */
+export function railFor(versions) {
+  const superseded = versions.filter((v) => String(v.status).toLowerCase() !== 'current');
+  return superseded.length ? superseded.map((v) => `v${v.version}`).join(', ') : 'None';
+}
+
+test('check 29 — the rail comparison still fires once a version is superseded (controls)', () => {
+  /**
+   * The control the first version of this check did not have, and the absence is why its
+   * guard could be inverted without anything noticing. It plants the exact future state —
+   * v1.0 superseded by v1.1 — and asserts the expected rail value CHANGES. If it does not,
+   * the comparison has stopped depending on the record and the check is decorative.
+   */
+  const s = survey({ controls: 'planted version records the rail rule was run against' });
+
+  const today = [{ version: '1.0', status: 'Current' }];
+  s.count('controls');
+  if (railFor(today) !== 'None') {
+    s.fail(`with nothing superseded the rail must read "None", got "${railFor(today)}"`);
+  }
+
+  // The state the original guard switched itself off for.
+  const afterV11 = [
+    { version: '1.0', status: 'Superseded', supersededBy: '1.1' },
+    { version: '1.1', status: 'Current' },
+  ];
+  s.count('controls');
+  if (railFor(afterV11) !== 'v1.0') {
+    s.fail(
+      `once v1.0 is superseded the rail must read "v1.0", got "${railFor(afterV11)}". A rule ` +
+        `that still says "None" here is the hand-typed fragment by another name.`
+    );
+  }
+
+  s.count('controls');
+  if (railFor(today) === railFor(afterV11)) {
+    s.fail(
+      'the rail value does not change when a version is superseded, so it is not derived ' +
+        'from the record at all — which is the defect this check exists to detect.'
+    );
+  }
+
+  const two = [
+    { version: '1.0', status: 'Superseded', supersededBy: '1.1' },
+    { version: '1.1', status: 'Withdrawn', supersededBy: '1.2' },
+    { version: '1.2', status: 'Current' },
+  ];
+  s.count('controls');
+  if (railFor(two) !== 'v1.0, v1.1') {
+    s.fail(`two superseded versions must both be named, got "${railFor(two)}"`);
+  }
+
+  s.report(
+    'the rail rule no longer tracks the versions record. It must produce a different value ' +
+      'the moment a version stops being Current, or publishing v1.1 leaves a stale "None" ' +
+      'beside a table that says otherwise.'
   );
 });

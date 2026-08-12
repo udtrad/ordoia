@@ -822,8 +822,18 @@ R2 guarantee for a cosmetic R3 one.
 **Check 29 — a version page states its true standing.** Denominator: published versions.
 Written red-first, and it failed through the *population rule* rather than through a
 finding, which is the strongest form available: there were no status stamps to compare, so
-the check had measured nothing. It also holds the changelog's `Superseded` count to the
-record, closing the hand-typed second surface Gate 0 found.
+the check had measured nothing.
+
+It also holds the changelog rail's superseded list to the record. **That sentence was
+false when it was first written here** — the rail was still a hand-typed copy fragment
+reading `None`, `src/changelog.njk` had not been touched, and the check's third test
+guarded its comparison with `supersededCount === 0 && !declared.has('superseded')`, so it
+switched itself off at exactly the moment a version became Superseded and the rail could
+first be wrong. Both are now true and both are drilled: the rail derives through a
+`supersededVersions` filter, and forcing it back to `None` with v1.0 superseded turns the
+check red naming the disagreement. Recorded as `CHANGES.md` row 71 rather than quietly
+corrected, for the same reason rows 28, 30 and 42 were — **a document that claims a fix
+which does not exist is worse than one that is merely out of date.**
 
 Closed on 2026-08-10, and this list said otherwise until 2026-08-11: **the rollback
 drill**. It was run against the real `ordoia` project before the custom domain was

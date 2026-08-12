@@ -44,10 +44,13 @@
  */
 
 import test from 'node:test';
+import assert from 'node:assert/strict';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { IS_HANDOVER, TARGET, withSite, withSource } from '../lib/harness.js';
+import { IS_HANDOVER, REPO_ROOT, TARGET, withSite, withSource } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { deriveChromeSheet, isChromeSelector } from '../../tools/chrome-sheet.mjs';
 
 const HANDOVER_SKIP =
   'the designer handover predates the one-layout build — its eleven pages carry hand-written ' +
@@ -365,6 +368,156 @@ test('check 27 — the chrome stylesheet cannot reach inside <main>', async (t) 
       "document, the chrome sheet governs everything around it. A selector crossing that " +
       'line means a future redesign restyles a rubric that scorecards were issued against, ' +
       'and every manifest and byte check would stay green while it happened.'
+  );
+});
+
+test('check 27 — the derivation carries every token the live sheet declares', () => {
+  /**
+   * The regression test for CHANGES.md row 66's own bug, which shipped guarded by nothing.
+   *
+   * `declarations()` splits a rule body on `;`. The first version split the RAW body, so a
+   * declaration preceded by a block comment — which in `:root` is most of them, because
+   * this stylesheet documents what it measured — yielded a property name of
+   * `/* … *\/ --track` and failed the `startsWith('--')` filter. Three tokens were dropped
+   * silently: `--track`, `--surface`, `--p0`.
+   *
+   * It was fixed, and a guard was added, and the module's own docstring then claimed the
+   * derivation "now cannot" drop a token quietly. **That claim was false.** Measured by
+   * reverting the one line: all three tokens vanish again and every build guard stays
+   * silent, because `undeclared` only fires when a KEPT CHROME RULE references a lost
+   * token — and none currently does. A guard written for a bug that does not cover the bug
+   * is the shape this repository keeps finding a comment above.
+   *
+   * So the property is asserted directly: every custom property the live `:root` declares
+   * must appear in the derived sheet. This fails on the reverted line; the build guards
+   * do not.
+   */
+  const s = survey({
+    tokens: 'custom properties declared in the live :root and checked in the derived sheet',
+  });
+
+  const live = readFileSync(path.join(REPO_ROOT, 'src', 'styles.css'), 'utf8');
+  const { css, dropped, undeclared } = deriveChromeSheet(live);
+
+  const root = /:root\s*\{([\s\S]*?)\n\}/.exec(live);
+  assert.ok(root, 'src/styles.css has no :root block — the derivation has nothing to carry');
+
+  const declaredInRoot = [
+    ...new Set(
+      [...root[1].replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/(--[a-z0-9-]+)\s*:/gi)].map(
+        (m) => m[1]
+      )
+    ),
+  ];
+  const carried = new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((m) => m[1]));
+
+  for (const token of declaredInRoot) {
+    s.count('tokens');
+    if (!carried.has(token)) {
+      s.fail(
+        `${token} is declared in the live :root and is missing from the derived chrome ` +
+          `sheet. On /oal/v1.0/ the chrome would resolve it against the FROZEN :root ` +
+          `instead — the live design silently rendering in a published document's 2026 ` +
+          `palette, which is R2 leaking backwards into R1.`
+      );
+    }
+  }
+
+  // The comment-preceded tokens specifically, named, because they are the ones the bug ate.
+  for (const token of ['--track', '--surface', '--p0']) {
+    if (declaredInRoot.includes(token) && !carried.has(token)) {
+      s.fail(
+        `${token} is one of the three tokens the 2026-08-12 comment-stripping defect ` +
+          `dropped. Its absence means declarations() is splitting the raw rule body again.`
+      );
+    }
+  }
+
+  // …and the derivation must not quietly leave a chrome selector behind.
+  for (const selector of dropped) {
+    if (isChromeSelector(selector)) {
+      s.fail(
+        `the derivation dropped "${selector}", which IS a chrome selector. The chrome on ` +
+          `every page is now missing a rule the live sheet declares.`
+      );
+    }
+  }
+
+  if (undeclared.length) {
+    s.fail(`the derived sheet uses undeclared custom properties: ${undeclared.join(', ')}`);
+  }
+
+  s.report(
+    'the derived chrome stylesheet has stopped carrying the live design tokens. This is ' +
+      'asserted directly rather than left to the build guards, because the build guards ' +
+      'demonstrably do not catch it: `undeclared` only fires when a kept chrome rule ' +
+      'references a missing token, and the three tokens this defect drops are referenced ' +
+      'by none of them.'
+  );
+});
+
+test('check 27 — the chrome selector boundary rule still rejects near-misses (controls)', () => {
+  const s = survey({ controls: 'selectors the boundary rule was run against' });
+
+  for (const yes of ['.masthead', '.masthead nav a', '.skip:focus', 'footer .rail', '.vstatus .sep']) {
+    s.count('controls');
+    if (!isChromeSelector(yes)) s.fail(`"${yes}" is chrome and was rejected`);
+  }
+
+  // The rule the module's docstring documents: anchored, with a boundary after the scope.
+  for (const no of ['.skipped', '.masthead-inner', '.body footer', '.footer-note', 'p', '']) {
+    s.count('controls');
+    if (isChromeSelector(no)) {
+      s.fail(
+        `"${no}" is NOT chrome and was accepted. A predicate that matches beyond the ` +
+          `chrome's own root can put a live rule inside a frozen document.`
+      );
+    }
+  }
+
+  s.report(
+    'the chrome selector predicate no longer discriminates. Too loose and the chrome sheet ' +
+      'reaches into <main>; too tight and the chrome ships unstyled.'
+  );
+});
+
+test('check 27 — every rendered page links the derived chrome stylesheet', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  /**
+   * The gap that made the whole arrangement bluffable: check 27's other tests query the
+   * DOM and compare markup, and check 17 is satisfied by `/styles.css` alone. So a broken
+   * or missing `chromeHref` would ship an unstyled header and footer on every page with
+   * the entire suite green.
+   */
+  const s = survey({
+    pages: 'rendered pages checked for the chrome stylesheet link',
+    sheets: 'derived chrome stylesheets found in the build',
+  });
+
+  const built = (await readdir(TARGET)).filter((f) => /^chrome\..*\.css$/.test(f));
+  s.count('sheets', built.length);
+  if (built.length !== 1) {
+    s.fail(`expected exactly one derived chrome stylesheet in the build, found ${built.length}`);
+    return s.report('the build did not emit a single chrome stylesheet');
+  }
+
+  await withSource(({ sources }) => {
+    for (const { url, html } of sources) {
+      s.count('pages');
+      if (!html.includes(`<link rel="stylesheet" href="/${built[0]}">`)) {
+        s.fail(
+          `${url} does not link /${built[0]}. Its masthead, version status and footer are ` +
+            `unstyled, and no other check in this suite would notice — the DOM is intact, ` +
+            `only the stylesheet that governs it is absent.`
+        );
+      }
+    }
+  });
+
+  s.report(
+    'a rendered page does not link the chrome stylesheet. R1 is that every page shows the ' +
+      'same chrome; a page that links no chrome sheet shows none at all.'
   );
 });
 

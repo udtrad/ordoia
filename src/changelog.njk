@@ -12,7 +12,16 @@ description: Every change to the Ordoia Assurance Levels, classified as clarifyi
     <dl>
       <dt>Current</dt><dd>OAL v{{ oal.current }}</dd>
       <dt>Published</dt><dd>{{ site.publicationDate }}</dd>
-      <dt>Superseded</dt><dd>{{ c | frag("rail.superseded") }}</dd>
+      {#
+        Derived from oal.json, not typed. Until 2026-08-12 this read a hand-written copy
+        fragment saying "None" — so publishing v1.1 would have left it saying "None" while
+        the version index three sections below rendered `Superseded` from the record. Two
+        surfaces on one page that can disagree, both authoritative-looking, is the exact
+        shape CHECKS.md row 42 records as worse than being out of date. Check 29 holds this
+        to the record on every commit.
+      #}
+      {%- set superseded = oal.versions | supersededVersions %}
+      <dt>Superseded</dt><dd>{% if superseded.length %}{% for v in superseded %}{% if not loop.first %}, {% endif %}v{{ v.version }}{% endfor %}{% else %}None{% endif %}</dd>
     </dl>
   </aside>
   <div class="body">

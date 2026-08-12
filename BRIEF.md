@@ -155,6 +155,19 @@ quietly.
   document that scorecards have been issued against. That is the same defect class as
   restating a historical score. Snapshot directories are immutable: the build refuses to
   write to a version directory that already exists.
+
+  > **Superseded 2026-08-12, and the original wording is left standing above because this
+  > is the brief the site was built to, not a description of what it does.** Two words
+  > here are no longer true of the implementation. *Self-contained*: `/oal/v1.0/` now
+  > links a shared `/chrome.<sha>.css` alongside its own frozen stylesheet, so that a
+  > header or footer change reaches a published address without a version event. *The
+  > build refuses to write*: taken literally that is unimplementable — `_site/oal/v1.0/`
+  > exists after the first build — so the enforceable form is byte identity against a
+  > manifest, and what that manifest covers is the `<main>` fragment and the assets that
+  > render it, not the delivered document. What survives unchanged is the requirement
+  > this bullet exists for: a colour change in 2028 cannot alter a methodology document
+  > that scorecards have been issued against. See `DEPLOY.md` *Publishing a rubric
+  > version* and `CHANGES.md` rows 65-67.
 - Redirects, `sitemap.xml`, `robots.txt`, a 404 that is a page rather than a host default.
 - Long-lived immutable caching on version paths; short on current paths.
 - Permanence has to survive the host. Keep the published versions in version control and

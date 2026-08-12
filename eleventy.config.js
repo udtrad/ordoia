@@ -439,6 +439,22 @@ export default function (eleventyConfig) {
   eleventyConfig.addFilter('isFrozen', (version) => isFrozen(version));
 
   /**
+   * The versions that are no longer current, in declaration order.
+   *
+   * The changelog rail printed `Superseded: None` from a hand-typed copy fragment until
+   * 2026-08-12. Publishing v1.1 would have left that rail saying "None" while the index
+   * table three sections below rendered `Superseded` from the record — one page, two
+   * surfaces, both reading as authoritative, which CHECKS.md records as worse than merely
+   * being out of date. Deriving it is what makes publishing a version ONE edit.
+   *
+   * Renders identically today (there are no superseded versions, so the rail still reads
+   * "None"), which is the point: the fix changes what can go wrong, not what is shown.
+   */
+  eleventyConfig.addFilter('supersededVersions', (versions) =>
+    versions.filter((v) => String(v.status).toLowerCase() !== 'current')
+  );
+
+  /**
    * One version's record, by number.
    *
    * The single source of truth for a version's standing. Publishing v1.1 flips v1.0
