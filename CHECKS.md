@@ -161,17 +161,29 @@ Ten tests added — check 19's four on the workflows, check 20's three on the re
 check 21's three on the version freeze. The seven skips are still check 15 and still only
 under `npm test`. `npm run test:live-local` remains **69 pass, 0 fail, 0 skipped**.
 
+**Updated 2026-08-13 (check 33): 127 tests, 117 pass, 0 fail, 10 skipped.** The table below
+had been carrying the 2026-08-09 figures through four sessions and fifty-eight added tests,
+which is drift in the one document that claims to hold the measurements. All four rows are
+re-measured here rather than carried forward.
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 69 | 62 | 0 | 7 |
-| a local origin | `npm run test:live-local` | 69 | 69 | 0 | 0 |
-| the handover | `npm run test:handover` | 69 | 45 | **8** | 16 |
-| an empty directory | `npm run test:empty` | 69 | 24 | **38** | 7 |
+| the build | `npm test` | 127 | 117 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 127 | 125 | 0 | 2 |
+| the handover | `npm run test:handover` | 127 | 78 | **10** | 39 |
+| an empty directory | `npm run test:empty` | 127 | 54 | **63** | 10 |
 
-All four re-measured on 2026-08-09 after stages 4, 5 and 8, not carried forward. The
-handover's **eight failures are unchanged**, which is the number worth watching: ten new
-tests were added and none of them found a new way to fail against the frozen handover, so
-none of them is measuring the build's shape by accident.
+`test:live-local`'s two skips are checks 22 and 24 — the Cloudflare zone and the external
+monitor, both of which want a credential and neither of which existed when this row last
+read `0`. Setting `ORDOIA_ZONE_CHECK` and `ORDOIA_MONITOR_CHECK` against the live deployment
+is what produces the 127/127/0/0 run, and that is a deploy-time claim rather than a local
+one.
+
+The handover's failures moved **8 → 9 → 10**, once per check that found a real defect in it:
+check 23's collision, and now check 33 rediscovering `CHANGES.md` row 13's
+*"Self-checkIf you deleted the sentence…"* on all eight rubric dimensions. That number going
+*down* would mean a check had stopped finding a defect it used to find; it going up for any
+other reason would mean a new check was measuring the build's shape by accident.
 
 ## Baseline D — the empty target, 2026-08-09
 
@@ -731,6 +743,69 @@ was written for.
 are both below the 46rem breakpoint, where the measure rotates and this defect does not
 exist. Its viewport list had one desktop sample. 800 is the second, in the band where a
 fixed-height reservation breaks first.
+
+## A label the reader sees twice — check 33
+
+**Check 31 measures the coverage × depth grid, and it measures it at 320 and 375. The
+defect existed only above 736px.** Nothing in the suite ever opened that table at a width
+where it is still a table, so from draft 6 until 2026-08-13 the live site printed
+`Testednot offered` and `Sustainednot offered` on Home and Services, and 125 checks were
+green about it. It was found by the user, reading the page.
+
+The cause is one rule that was described and never written. `grid.njk` puts a
+`<span class="depth">` in every cell so §8's reflow can carry the depth axis after `<thead>`
+is dropped, and says in the same comment that it is *"`display: none` above 46rem, where
+the column header carries it and this would be a duplicate in the accessibility tree"*.
+`.grid .depth` existed only inside `@media (max-width: 46rem)`. Above the breakpoint the
+span was an ordinary inline box hard against the text node beside it. See `CHANGES.md`
+row 119 — and row **13**, which is the same defect, the same repair and five days older:
+`.selfcheck .eyebrow` was inline against its own question, printing *"Self-checkIf you
+deleted the sentence…"* on all eight rubric dimensions.
+
+**The lesson is about populations, not about logic.** Check 31 is not wrong. Its viewport
+list is `[320, 375]`, and every assertion it makes is correct at both. The condition the
+defect needs — the table rendering as a table — was excluded from what it looked at, so it
+could not have gone red however carefully it was written. This is the same shape as check
+23's viewport paragraph above, and check 31 repeated it four days after that paragraph was
+written. Stated as a rule: **a check whose population excludes the condition a defect needs
+is not a weak check, it is not a check.** `VIEWPORTS` in check 33 spans the breakpoint —
+320, 375, 768, 1280 — for that reason and no other.
+
+**Drilled three ways, because a fourth reading of the same lesson is not evidence.**
+
+| Drill | Result |
+|---|---|
+| `display: none` → `display: inline` (the pre-fix computed value) | **red**, 8 findings — the fix is load-bearing |
+| the defect left in place; 768 and 1280 removed from `VIEWPORTS` | **green, 2 pass 0 fail** — check 31's blind spot, reproduced on demand rather than argued for |
+| the defect left in place; a literal space added in `grid.njk` instead | **green** — the invariant is what a reader sees, not which repair was chosen |
+
+The second row is the one worth keeping. It is the difference between believing the
+viewport list matters and having watched the check go green with the defect fully present
+when it was shortened.
+
+**Site-wide, with the predicate narrowed by measurement.** Run over every page and every
+text node, the first version reported the two real cells and **fourteen others** —
+`<strong>finding</strong>. A score…`, `<em>ordo</em>: order, sequence`, twelve more of the
+same shape across five pages, all of them correct English. The narrowing went into the
+*predicate* (the junction must be a letter or digit on both sides) rather than the
+*population* (only `table.grid`), because scoping to one table would have called the other
+eight pages measured when they were not. `abuts` in `tests/lib/overlap.js` carries the rule
+and the hole it leaves: a run ending in punctuation cannot open a finding, so `£`+`2,500`
+would pass, and nothing else covers that.
+
+**Disjoint from check 23 on purpose.** Check 23 asks whether two runs are printed *over*
+each other and reports the overlap with its size; check 33 asks whether they are printed
+*against* each other. `abuts` returns false for a real overlap — its lower bound is
+`-TOLERANCE`, not `-Infinity` — so a collision is reported once, in one vocabulary, by the
+check that measures it properly.
+
+**The handover baseline moved 9 → 10, and the move is the evidence.** Check 33 goes red
+against the frozen designer handover because the handover *has* this defect: row 13's
+`Self-checkIf you deleted the sentence…`, on all eight dimensions, at every width. The
+check was not told where to look. Rediscovering a defect the repository had already found,
+recorded and fixed — from the rendering, five days later, by a different route — is the
+strongest statement a new check can make about itself. The only prior move of this baseline
+was check 23's 8 → 9, for the same reason.
 
 ## The monitor the repository cannot run — check 24
 
