@@ -155,6 +155,19 @@ quietly.
   document that scorecards have been issued against. That is the same defect class as
   restating a historical score. Snapshot directories are immutable: the build refuses to
   write to a version directory that already exists.
+
+  > **Superseded 2026-08-12, and the original wording is left standing above because this
+  > is the brief the site was built to, not a description of what it does.** Two words
+  > here are no longer true of the implementation. *Self-contained*: `/oal/v1.0/` now
+  > links a shared `/chrome.<sha>.css` alongside its own frozen stylesheet, so that a
+  > header or footer change reaches a published address without a version event. *The
+  > build refuses to write*: taken literally that is unimplementable — `_site/oal/v1.0/`
+  > exists after the first build — so the enforceable form is byte identity against a
+  > manifest, and what that manifest covers is the `<main>` fragment and the assets that
+  > render it, not the delivered document. What survives unchanged is the requirement
+  > this bullet exists for: a colour change in 2028 cannot alter a methodology document
+  > that scorecards have been issued against. See `DEPLOY.md` *Publishing a rubric
+  > version* and `CHANGES.md` rows 65-67.
 - Redirects, `sitemap.xml`, `robots.txt`, a 404 that is a page rather than a host default.
 - Long-lived immutable caching on version paths; short on current paths.
 - Permanence has to survive the host. Keep the published versions in version control and
@@ -261,7 +274,9 @@ leave a link resolving to nothing.
 1. The repository: build, content, components, data, tests, deploy config, pinned deps.
 2. The check suite of §3, with its results published on each deploy and retained.
 3. `/oal/v1.0` frozen, self-contained and immutable, plus the process document for
-   publishing v1.1.
+   publishing v1.1. — *See the superseded note in §5 (2026-08-12): the directory is no
+   longer self-contained (it links `/chrome.<sha>.css`) and the delivered document is not
+   byte-identical. What is frozen is the rubric's content and its rendering.*
 4. The scorecard in three formats, generated, ungated, print-verified.
 5. An accessibility report against §7, naming what you tested with and what you changed.
 6. A build-and-deploy architecture diagram — **straight-line, modular, professional; take

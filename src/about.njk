@@ -49,11 +49,6 @@ eleventyComputed:
     </section>
 
     <section class="block">
-      <h2>{{ c | frag("elsewhere.heading") }}</h2>
-      {{ c | frag("elsewhere.body") | md | safe }}
-    </section>
-
-    <section class="block">
       <h2>{{ c | frag("pronunciation.heading") }}</h2>
       <p class="note">{{ c | frag("pronunciation.body") | mdi | safe }}</p>
     </section>

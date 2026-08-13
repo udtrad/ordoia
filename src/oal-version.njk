@@ -8,6 +8,7 @@ pagination:
 eleventyComputed:
   permalink: "/oal/v{{ v.version | requirePublishableVersion }}/"
   assetBase: "/oal/v{{ v.version }}"
+  versionOf: "{{ v.version }}"
   title: "{{ oal.name }} — v{{ v.version }} | Ordoia"
   description: "The Ordoia Assurance Levels rubric, v{{ v.version }}, at its permanent address. Eight dimensions, four levels, published in full under CC BY 4.0."
 ---
@@ -18,15 +19,37 @@ eleventyComputed:
   and in the licence line. It must resolve, unchanged, indefinitely." §13 judges the
   build on whether it "renders identically in 2032, styled by 2026's stylesheet".
 
-  So this page is self-contained: `assetBase` points its stylesheet, fonts and favicon
-  at version-scoped copies taken at publication, and a colour change on the live site
-  in 2028 cannot reach it. Font URLs inside styles.css are relative, so the same file
-  is correct at both paths without being edited.
+  ── What "unchanged" covers, and what it deliberately does not ──────────────────────
+
+  The published DOCUMENT is not frozen. Its CONTENT is, and so is the way that content
+  renders. `assetBase` points the stylesheet, the fonts and the favicon at version-scoped
+  copies taken at publication, and a colour change on the live site in 2028 cannot reach
+  them — that is R2, and it is what §13's 2032 test is actually about.
+
+  The chrome around it — masthead, version status, footer — renders live, from the same
+  templates and the same data as every other page. That is R1, and until 2026-08-12 it was
+  false: the whole `index.html` was stored, so this page carried the footer it was
+  published with while the rest of the site had moved on. One site, two footers.
+
+  ── Why the branch is here and not in the layout ────────────────────────────────────
+
+  For a frozen version this template does not render `rubric.njk` at all. That is the
+  point of putting the branch here: rubric prose has no path onto a frozen page, so the
+  freeze holds by construction rather than by a later overwrite that has to be remembered.
+  The previous arrangement rendered the page and then replaced the file, which made
+  `requirePublishableVersion` a guard over discarded output and let a regeneration recipe
+  re-record the old bytes and report success (CHANGES.md row 43).
+
+  `versionOf` is what tells the layout which version this page is, so it can emit the
+  stored fragment inside `<main>` with no surrounding whitespace — the `<main>` content is
+  then byte-identical to what was published. Check 21 re-runs that comparison on every
+  commit, and also re-runs the substring claim against the retained published document.
+  It is a string rather than the record itself because eleventyComputed renders through
+  Nunjucks, which would autoescape a fragment of HTML into visible markup.
 
   Paginating over oal.versions is what makes §10's "additive by construction" true:
-  publishing v1.1 adds a record to oal.json and a directory appears. What is NOT yet
-  built is content immutability — see `requirePublishableVersion` in eleventy.config.js,
-  which stops the build rather than let a superseded version be regenerated from a
-  newer rubric.
+  publishing v1.1 adds a record to oal.json and a directory appears.
 #}
+{%- if not (v.version | isFrozen) %}
 {% include "rubric.njk" %}
+{%- endif %}

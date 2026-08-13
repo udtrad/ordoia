@@ -58,12 +58,6 @@ Marketing pages carry no names, because the method is what a reader is being ask
 @@ who.link
 The blank scorecard
 
-@@ elsewhere.heading
-Elsewhere
-
-@@ elsewhere.body
-The practice publishes at [{elsewhereLabel}]({elsewhereUrl}).
-
 @@ pronunciation.heading
 Pronunciation
 

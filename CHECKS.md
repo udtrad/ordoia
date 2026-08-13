@@ -655,9 +655,34 @@ The sentence is about published bytes, so the enforceable form is byte identity 
 manifest taken at publication — which, unlike the literal reading, can be checked on every
 commit rather than once.
 
-Nothing is frozen today and that is correct: v1.0 has not been published, and the italic
-re-subset of 2026-08-09 is precisely the correction that had to stay possible until the
-first deploy. The check says so through `mayBeEmpty` rather than passing quietly.
+**v1.0 has been frozen since 2026-08-10.** This paragraph said "nothing is frozen today"
+for two days after that stopped being true — the same shape as row 42, a correction landing
+in one place and not the others, and worth leaving recorded rather than quietly fixed.
+
+**What "the published bytes" means changed on 2026-08-12** (`CHANGES.md` row 65). The
+frozen unit is the `<main>` fragment plus the assets that render it — `main.html`,
+`styles.css`, `fonts/`, `favicon.svg` — and **not** the delivered `index.html`, whose
+chrome now renders live so that a footer change reaches a published address without a
+version event. The manifest therefore hashes `versions/v<n>/` rather than the build: a
+manifest over the build would go red on every legitimate chrome change, which is the
+un-editable-stylesheet failure (row 40) one file over.
+
+Six tests, and none of the five was dropped:
+
+| Test | Asserts |
+|---|---|
+| stored bytes intact | `hashTree(versions/v<n>/)` equals the manifest |
+| fragment is published content | `main.html` is a byte-exact substring of the retained published document, and is the whole of its `<main>` |
+| served from stored bytes | the built page's `<main>` equals `main.html`, and each pinned asset equals its stored copy |
+| no superseded version unfrozen | unchanged |
+| controls | unchanged — changed, added, removed and empty-manifest cases |
+| one document, two addresses | while a version is `Current`, `/oal/` and `/oal/v<n>/` state the same `<main>` prose. It now **announces when it stops applying**: a superseded version produces `deliberately not asserting for v1.0 (Superseded)` in the output, so a lapsed assertion can be told from a satisfied one |
+
+The second test is the one that makes the re-cut honest rather than asserted. Redefining a
+frozen unit is only safe if the content bytes are the same content bytes, and "we checked
+at the time" is exactly the one-off proof this repository has been bitten by. The document
+v1.0 was published as is retained whole at `versions/v1.0.published-index.html`, its sha256
+`0289c300dd07…` is in the manifest, and both halves are re-checked on every commit.
 
 Proven end to end on 2026-08-09 rather than argued:
 
@@ -756,6 +781,143 @@ Checks are in place for all twelve items in §3, plus check 0's controls and che
   since a change to `oal.md` now moves `/oal/` and leaves the snapshot alone. Check 21's
   fifth test closes that by holding a `Current` version's two addresses to the same prose,
   and it lapses on its own the moment v1.0 is superseded.
+
+  **Reopened and re-cut on 2026-08-12** (`CHANGES.md` row 65). Pinning the whole document
+  froze the page's *chrome* as well as its content, and the site spent a day serving two
+  different footers. The frozen unit is now the `<main>` fragment plus the assets that
+  render it; the document is rendered live. "Immutable across its whole surface" was the
+  wrong goal, stated confidently one session before it was measured to be wrong.
+
+**Check 27 — one chrome.** R1: a visitor must see the same header and footer on every page
+they can reach, `/oal/v1.0/` included, and must keep seeing them after a future chrome
+change without a version event. Denominator: the 9 rendered HTML pages. Written red-first
+and it produced exactly one finding, naming `/oal/v1.0/` and quoting the launch footer it
+was still serving. A fourth test asserts the isolation the split rests on — **no selector
+in the derived chrome stylesheet matches anything inside `<main>`**, measured against the
+rendered DOM rather than argued from the source.
+
+Two things it found about itself, both worth keeping: the first draft normalised away the
+footer's self-link on *every* region, which made four correct pages compare as different
+because the masthead keeps its links; and the first nav rule asserted "every route less
+this page's own", which is what one might reasonably expect `layout.njk` to implement and
+is not what it does — only `/scorecard/` and `/changelog/` are conditional. Both were
+caught by running it, not by reading it.
+
+It also reports, as a diagnostic on every run, that `grid.njk` puts `class="skip"` — the
+skip-link class — on the coverage grid's visually hidden corner heading, where `.vh` is the
+class that exists for that and says so. Harmless while both stylesheets are the live
+design; a latent hazard now that a class shared between chrome and content is the only way
+the scope boundary can be crossed. Left for Commit B, because Commit A lands on unchanged
+content so that its byte comparison means something.
+
+**Check 28 — no HTML document is cached in a way that can hide a redesign.** R3. Denominator:
+the same 9 pages. The primary arm runs against the local host emulator so it gates CI
+hermetically and reproduces the documented comma-join; the live arm runs under `ORDOIA_LIVE`
+and adds the thing no emulator can establish — that revalidation actually happens, by asking
+twice and requiring a **304**. Written red-first: one finding, `/oal/v1.0/` at
+`max-age=31536000, immutable`. A second test asserts the frozen version's *assets* keep
+their immutable caching, so this is not "no immutable anywhere" — that would trade a real
+R2 guarantee for a cosmetic R3 one.
+
+**Check 29 — a version page states its true standing.** Denominator: published versions.
+Written red-first, and it failed through the *population rule* rather than through a
+finding, which is the strongest form available: there were no status stamps to compare, so
+the check had measured nothing.
+
+**Check 30 — the footer field strip.** Denominators: 9 pages for the generated-content and
+contrast arms, 9 pages × 4 viewports for the wrapping arm, 9 pages × 2 mobile viewports for
+the target arm. Added 2026-08-13 with Commit B, and the reason it did not exist earlier is
+the finding: **the footer was measured by nothing.** Check 12's `PROSE` is `main`-scoped,
+check 23's selector lives inside `figure.measure`, and check 7 calls `getComputedStyle`
+with no pseudo-element argument — so the strip had no contrast check, no collision check
+and no provenance check, and its separator was drawn with `content:` in the one place
+`getComputedStyle` cannot follow.
+
+Extending check 12 to cover it was measured and rejected on the number: the strip renders
+**106 blocks into check 12's own selectors and 0 units**, because no field reaches the
+eight-word floor. A field strip is not prose and check 12 was never going to protect it.
+
+The wrapping arm is the one worth reading. §5.4 asks for the separator bound to the field
+*before* it, and measurement says that cannot satisfy the rule it was given for: **the strip
+wants 766px against a 592px column at 1280 and 272px at 320**, so it is two to four rows at
+every width and has never been one line. A trailing separator dangles at the end of every
+wrapped row exactly as a leading one hangs in the left margin. The separator is therefore
+out of flow in the column gap with the list clipping its own overflow, which leaves it
+visible only between two fields on one row — and the check reads **text-node client rects
+intersected with the clip box**, so it judges what a reader sees rather than what the
+markup says. Five drills, each red → green → red on revert: clip removed, binding reversed,
+`::after` restored, 44px target dropped, separator recoloured to `--untravelled`.
+
+Two numbers that were claimed in a comment and then measured rather than left as claims:
+a row-leading separator is clipped by 4px, and a row-leading link's focus ring clears the
+same edge by **3px** — drilled by reordering the fields so the address leads a row.
+
+**Check 31 — a product's name and price are on screen together.** Denominator: the five
+products in `products.json`. Added 2026-08-13 with Commit D, and its interest is the gap it
+covers between two checks that were both green: **check 13 asserts the page does not push
+sideways, and it passed for the entire period this defect was live.** The page genuinely did
+not overflow — row 14's scroller absorbed it — while at 320px the retainer sat entirely
+outside the scroll box at rest, name and price both. A layout check cannot see that, because
+nothing about the layout is wrong. So this invariant is written about the **reader**: at
+rest, with nothing scrolled, can you see a product and what it costs at the same time?
+
+Runs are located by searching the rendered text for each product's own name and its own
+price, taken from `products.json` through the same `renderPrice` the templates use. That is
+the anti-pattern this branch has hit six times, avoided on purpose: had the check asked for
+`.grid td .prod`, the reflow that fixes the defect could have stopped emitting `.prod` and
+emptied the population, and the check would have gone quiet rather than red.
+
+The second test is separate and it is the one that would otherwise be missed — **a stacked
+layout that drops an axis passes every co-visibility assertion ever written.** Coverage and
+depth are what this table is for, so each is asserted to be on screen in its own right.
+
+Four drills. Reflow removed entirely, depth label hidden and coverage head hidden all turn
+it red on the arm they should. The fourth is recorded because it did **not**: restoring the
+scroller leaves the check green, since the reflowed table measures 272px inside a 272px box
+and there is nothing left to scroll. `overflow-x: visible` is therefore inert for today's
+content and is kept for the failure mode rather than the failure — an unbreakable run that
+outgrew the column would be hidden silently by a scroll container and reported loudly by
+check 13 without one.
+
+**Check 32 — the publication path, exercised.** Denominators: the provenance artifacts
+compared across a refused command, and the manifest entries verified against the stored
+snapshot. Added 2026-08-13, ahead of §4's exit rather than with it, and the reason is that
+`tools/freeze-version.mjs` is the only thing in this repository that writes a frozen
+version and **nothing had ever run it.** Check 21 reads what the tool produced. That is a
+different claim, and the difference is the whole of what a re-freeze passes through.
+
+Every test runs against a copy of the tool in a temporary directory, which that copy then
+treats as the repository — `REPO_ROOT` resolves from the module's own location and the
+module imports nothing but node builtins. This is a safety property rather than tidiness:
+a test that ran the real CLI against the real repo to prove it refuses would, on the day
+the refusal broke, **destroy the artifact it was written to protect**, and would do so
+while reporting a failure.
+
+The load-bearing assertion is not the error message. A message is a claim; unchanged bytes
+are the property. So the refused command is followed by a hash comparison of the retained
+document and the manifest, and the drill that justifies it is a synthetic tool which prints
+the documented refusal, exits non-zero, and writes anyway — caught, naming the anchor moving
+from `0289c300dd07` to `24f5cbc8dac2`. Deleting both refusals outright re-froze v1.0 in the
+sandbox and **reported success**, which is the pre-`b10fad8` failure reproduced exactly.
+
+**The check was vacuous when first written, and its own controls caught it.** `main()` runs
+only when `process.argv[1] === fileURLToPath(import.meta.url)`; on macOS `os.tmpdir()` is a
+symlink, so the CLI imported, defined everything, ran nothing and exited 0 — against which
+"refuses to re-freeze" and "refuses with no build" both passed for the same wrong reason.
+The control arm requires the command to *succeed* once the manifest is removed, and that is
+what went red. Fifth guard on this branch that could not fail, and the first caught by its
+own controls rather than by a reader.
+
+It also holds the changelog rail's superseded list to the record. **That sentence was
+false when it was first written here** — the rail was still a hand-typed copy fragment
+reading `None`, `src/changelog.njk` had not been touched, and the check's third test
+guarded its comparison with `supersededCount === 0 && !declared.has('superseded')`, so it
+switched itself off at exactly the moment a version became Superseded and the rail could
+first be wrong. Both are now true and both are drilled: the rail derives through a
+`supersededVersions` filter, and forcing it back to `None` with v1.0 superseded turns the
+check red naming the disagreement. Recorded as `CHANGES.md` row 71 rather than quietly
+corrected, for the same reason rows 28, 30 and 42 were — **a document that claims a fix
+which does not exist is worse than one that is merely out of date.**
 
 Closed on 2026-08-10, and this list said otherwise until 2026-08-11: **the rollback
 drill**. It was run against the real `ordoia` project before the custom domain was

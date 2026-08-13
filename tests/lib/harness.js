@@ -14,6 +14,7 @@
  * check, it is a comment.
  */
 
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
@@ -266,16 +267,41 @@ export async function serve(root = TARGET, { applyHeaders = false } = {}) {
     for (const candidate of candidates) {
       const full = path.resolve(root, candidate);
       // Never serve outside the target, whatever the request says.
-      if (!full.startsWith(path.resolve(root))) continue;
+      // Path boundary, not string prefix:  must not admit  or .
+      if (!full.startsWith(path.resolve(root) + path.sep)) continue;
       try {
         const info = await stat(full);
         if (!info.isFile()) continue;
         const body = await readFile(full);
-        res.writeHead(200, {
+
+        /**
+         * Conditional requests, in the host-emulating mode only.
+         *
+         * `must-revalidate` in a header is a claim; a **304** on the second request is the
+         * measurement, and it is the one thing R3 actually rests on — a host that ignores
+         * `If-None-Match` re-sends the whole document on every view whatever its
+         * Cache-Control says. Check 28's live arm asserts it, and without this the
+         * assertion could only ever run against a real deployment, which is the gap
+         * `serve-local.mjs` exists to close.
+         *
+         * Off in plain file-serving mode, so the checks that compare bytes are untouched.
+         */
+        const headers = {
           'content-type': MIME[path.extname(full)] || 'application/octet-stream',
-          'content-length': body.length,
           ...(config ? hostHeadersFor(config, url) : {}),
-        });
+        };
+
+        if (config) {
+          const etag = `"${createHash('sha256').update(body).digest('hex').slice(0, 32)}"`;
+          headers.etag = etag;
+          if (req.headers['if-none-match'] === etag) {
+            res.writeHead(304, headers);
+            res.end();
+            return;
+          }
+        }
+
+        res.writeHead(200, { ...headers, 'content-length': body.length });
         res.end(body);
         return;
       } catch {

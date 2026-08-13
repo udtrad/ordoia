@@ -1,0 +1,117 @@
+# The gate that was missing.
+#
+# Until 2026-08-13 this repository ran no checks on a pull request at all. `deploy.yml`
+# fires on `push: branches: [main]`, so the suite ran for the first time AFTER a merge had
+# already landed — and if it went red there, the branch was in main and the fix was a
+# second commit rather than a blocked merge. Every gate before that point was a human
+# remembering to run `npm test` locally.
+#
+# ── Why four targets and not one ────────────────────────────────────────────────────
+#
+# `npm test` alone is not this suite's gate, and treating it as one is how twenty-three
+# checks once passed against an empty directory (CHANGES.md rows 31-35). The four targets
+# answer four different questions:
+#
+#   build        the site the build produced is correct
+#   live-local   it is still correct when SERVED, over a real HTTP origin
+#   handover     the checks still find the defects in the frozen designer handover —
+#                proof they measure a defect and not merely a shape
+#   empty        the checks GO RED against nothing, proof they are not vacuous
+#
+# The last two are expected to fail, and their failure counts are the assertion. A suite
+# whose empty-target run quietly starts passing has stopped measuring anything, and that
+# is precisely the failure this repository has already shipped once.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main] # main is deploy.yml's job; this would only duplicate it
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # The baselines. Moving a number here is a deliberate act in a reviewed diff, which is
+    # the same rule PUBLISHED_SHA256 follows and for the same reason: a value the tooling
+    # can rewrite by itself is not evidence. The handover baseline has moved exactly once
+    # in the project's history (8 -> 9, when check 23 first found a real collision in it),
+    # and that move was the evidence the check worked.
+    env:
+      HANDOVER_EXPECTED_FAILURES: '9'
+      EMPTY_EXPECTED_FAILURES: '62'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Pinned by package-lock, so the browser matches the Playwright the checks expect
+      # rather than whatever the runner image happens to carry.
+      - run: npx playwright install --with-deps chromium
+
+      # Eleventy does not clean its output directory. A stale _site is how a page whose
+      # source was deleted goes on being served to the checks — logged as a learning after
+      # it cost a session. A runner starts clean, so this is belt and braces, and cheap.
+      - name: Build
+        run: rm -rf _site && npm run build
+
+      # The gate. Checks 15, 22 and 24 skip here because ORDOIA_LIVE, ORDOIA_ZONE_CHECK and
+      # the monitor token are unset — deliberate: nothing needing the network or a
+      # credential may block a pull request.
+      - name: Check the build
+        run: npm test
+
+      # Stronger than the above: the same checks against the site actually served over
+      # HTTP, which is where a header, a redirect or a relative URL can be wrong in a way
+      # a filesystem read cannot see.
+      - name: Check the served site
+        run: npm run test:live-local
+
+      # The two targets whose failures are the point. `|| true` because a non-zero exit is
+      # expected; the assertion is the COUNT, and a count that drifts in either direction
+      # is a finding — fewer means a check went quiet, more means one broke.
+      #
+      # The pattern does NOT anchor on the reporter's leading glyph. The first version of
+      # this step used `/^.[[:space:]]*fail [0-9]+$/` and always read 0, because node's
+      # spec reporter prefixes the summary with a multi-byte `ℹ` and awk's `.` matches one
+      # BYTE. It would have failed every run — safe, but useless — and it was caught by
+      # running it against real output before committing rather than after.
+      - name: The checks still find the handover's defects
+        run: |
+          set -o pipefail
+          npm run test:handover 2>&1 | tee /tmp/handover.txt || true
+          n=$(awk '/[[:space:]]fail [0-9]+$/ {v=$NF} END {print v+0}' /tmp/handover.txt)
+          echo "handover failures: $n (expected $HANDOVER_EXPECTED_FAILURES)"
+          if [ "$n" != "$HANDOVER_EXPECTED_FAILURES" ]; then
+            echo "::error::handover baseline moved: $n failures, expected $HANDOVER_EXPECTED_FAILURES."
+            echo "::error::Fewer means a check stopped finding a defect it used to find."
+            echo "::error::More means this branch broke one. Either way it is a finding, not a number to edit."
+            exit 1
+          fi
+
+      - name: The checks are not vacuous against an empty target
+        run: |
+          set -o pipefail
+          npm run test:empty 2>&1 | tee /tmp/empty.txt || true
+          n=$(awk '/[[:space:]]fail [0-9]+$/ {v=$NF} END {print v+0}' /tmp/empty.txt)
+          echo "empty-target failures: $n (expected $EMPTY_EXPECTED_FAILURES)"
+          if [ "$n" != "$EMPTY_EXPECTED_FAILURES" ]; then
+            echo "::error::empty-target baseline moved: $n failures, expected $EMPTY_EXPECTED_FAILURES."
+            echo "::error::A check that passes against an empty directory measures nothing."
+            echo "::error::This suite has shipped twenty-three of those before (CHANGES.md rows 31-35)."
+            exit 1
+          fi

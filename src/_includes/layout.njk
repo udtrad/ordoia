@@ -1,13 +1,27 @@
 {#
-  The one layout. Masthead, footer, and nothing else — every page's structure is its
-  own, because seven pages do not need an abstraction and a partial that exists to be
-  reused twice is harder to read than the two copies it replaced.
+  The one layout. Masthead, version status, footer, and nothing else — every page's
+  structure is its own, because seven pages do not need an abstraction and a partial that
+  exists to be reused twice is harder to read than the two copies it replaced.
 
-  `assetBase` is what makes the frozen version self-contained (§5). Live pages leave it
-  empty and link `/styles.css`; the /oal/v1.0 snapshot sets it to its own directory and
-  links `/oal/v1.0/styles.css`, which is a byte-identical copy taken at publication. A
-  colour change in 2028 therefore cannot reach a methodology document that scorecards
-  have already been issued against.
+  ── The two stylesheets, and why they are two ──────────────────────────────────────
+
+  `assetBase` points a published version's stylesheet, fonts and favicon at version-scoped
+  copies taken at publication, so a colour change in 2028 cannot restyle a methodology
+  document that scorecards have been issued against. That is R2.
+
+  `chromeHref` is the other half, and it is new on 2026-08-12. It is a derived,
+  fingerprinted, chrome-only sheet — masthead, status strip and footer, every selector
+  anchored to one of those — linked by **every** page including a frozen one. That is R1:
+  a chrome change reaches every address on the site without a version event.
+
+  The two are in disjoint scopes by construction rather than by discipline. The chrome
+  sheet declares no `:root` (two `:root` blocks merge rather than isolate, and the frozen
+  `<main>` would silently take the live palette while every byte check stayed green) and
+  no `@font-face` (families are document-scoped, so the chrome reuses faces the page has
+  already loaded — declaring them again would fetch a second copy of four byte-identical
+  fonts, +123,008 B, and blow the 150 KiB budget). Order matters: the frozen
+  sheet is linked first and governs `<main>`; the chrome sheet is linked second and cannot
+  reach inside it. Check 27b asserts that against the rendered DOM.
 #}
 <!DOCTYPE html>
 <html lang="en-GB">
@@ -30,6 +44,7 @@
 #}
 <link rel="preload" href="{{ assetBase | default('') }}/fonts/archivo-subset.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{ assetBase | default('') }}/styles.css">
+<link rel="stylesheet" href="{{ chromeHref }}">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -47,10 +62,35 @@
     </nav>
   </div>
 </header>
+{%- if versionOf %}
+{%- set vrec = oal.versions | versionRecord(versionOf) %}
+{#
+  The version status stamp. Ruled by the user 2026-08-12: status renders live on every
+  version page and updates whenever a valid version revision occurs.
 
-<main id="main">
+  It is a fact ABOUT the document, not part of it, and that is the line the freeze cuts
+  on: the rubric's words are frozen, the label describing that version's standing is not.
+  So it sits here, in the chrome, OUTSIDE `<main>` — deliberately, and this is the only
+  cheap moment to draw that boundary. Inside `<main>` it would freeze with the content,
+  and moving it later would mean editing published bytes: a version event over a label.
+
+  `/oal/v1.0/` saying `Current` after v1.1 publishes is a published claim becoming false
+  by mechanism. A superseded stamp names and links its successor, because a reader who
+  lands on an old version from a search result must be one click from the current one —
+  that is the whole job of the stamp. Check 29 holds all of it to oal.json.
+
+  The separator is a template-emitted text node, never `::before`. Generated content is
+  not a DOM text node, so check 7 cannot measure its contrast — which is how a separator
+  shipped at 1.37:1 on this project (CHANGES.md row 49).
+#}
+<p class="vstatus" data-version="{{ vrec.version }}" data-status="{{ vrec.status }}">
+  <span class="v">{{ oal.name }} v{{ vrec.version }}</span><span class="sep" aria-hidden="true">·</span>{% if vrec.supersededBy %}<span class="s">Superseded by <a href="/oal/v{{ vrec.supersededBy }}/">v{{ vrec.supersededBy }}</a></span>{% else %}<span class="s">{{ vrec.status }}</span>{% endif %}
+</p>
+{%- endif %}
+
+{% if versionOf and (versionOf | isFrozen) %}<main id="main" data-frozen="{{ versionOf }}">{{ versionOf | frozenMain | safe }}</main>{% else %}<main id="main">
 {{ content | safe }}
-</main>
+</main>{% endif %}
 
 <footer>
   <div class="sheet">
@@ -74,14 +114,32 @@
         the same principle the signatory block was built on. Adding a field is one
         line in site.json and moves nothing here.
 
-        The separators are drawn in CSS rather than written into the markup: the
-        <ul>/<li> structure already carries the semantics, so the middot is purely
-        visual and nothing reads a stray character between fields.
+        The practice name is a field like any other (`{name}`), not a hardcoded first
+        item. One list means one filter and one separator rule; a name outside the loop
+        would need the leading-separator case handled twice.
+
+        ── The separator is a TEXT NODE, and that is not a style choice ──────────────
+
+        It was `li:not(:last-child)::after { content: "·" }` until 2026-08-13. Generated
+        content is not in the DOM, so `getComputedStyle` cannot report its colour and
+        check 7 is structurally blind to it — which is how this project shipped a
+        separator at 1.37:1 (CHANGES.md row 49) with the suite green. Draft 6 §5.4 rules
+        it out everywhere, and check 30 now asserts the absence rather than the presence.
+
+        §5.4 asks for the separator bound to the field BEFORE it. Measured, that cannot
+        satisfy the rule it was given for. The strip wants 766px against a 592px column at
+        1280 — short by 174px at the widest viewport — so it wraps at every width, and a
+        trailing separator dangles at the end of every wrapped row exactly as a leading one
+        hangs in the left margin. Neither binding satisfies "no line may begin or end with
+        ·". So the separator is emitted with the field it FOLLOWS, and styles.css takes it
+        out of flow and clips it, which leaves it visible only between two fields on the
+        same row. Deviation from §5.4's letter, in service of §5.4's rule, and check 30
+        holds the outcome rather than the arrangement.
       #}
       <ul class="legal">
-        <li>{{ site.name }}</li>
-        {%- for field in site.footerFields %}
-        <li>{% if field.href %}<a href="{{ field.href }}">{{ field.text | tok }}</a>{% else %}{{ field.text | tok }}{% endif %}</li>
+        {%- set fields = site.footerFields | footerLine %}
+        {%- for f in fields %}
+        <li>{% if not loop.first %}<span class="sep" aria-hidden="true">·</span>{% endif %}{% if f.href %}<a href="{{ f.href }}">{{ f.text }}</a>{% else %}{{ f.text }}{% endif %}</li>
         {%- endfor %}
       </ul>
     </div>

@@ -32,5 +32,3 @@ Every version, at its permanent address
 @@ index.note
 Superseded versions stay published at their own addresses indefinitely, so that a scorecard issued under an earlier version can still be read against the criteria it was awarded under.
 
-@@ rail.superseded
-None

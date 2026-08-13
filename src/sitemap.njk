@@ -2,10 +2,21 @@
 permalink: /sitemap.xml
 eleventyExcludeFromCollections: true
 ---
-{#- A list of what exists. The 404 is excluded because it does not. -#}
+{#-
+  A list of what exists. The 404 is excluded because it does not.
+
+  Sorted by URL, and that is a correctness fix rather than tidiness. `collections.all` is
+  ordered by each page's date, and with no date in front matter Eleventy uses the source
+  file's **birthtime** — so this file's output was a function of filesystem metadata
+  rather than of source. Measured on 2026-08-12: rewriting `oal-version.njk` gave it a new
+  inode, and `/oal/v1.0/` moved from fifth in the list to last while the URL set stayed
+  identical. A `git clone` sets birthtime to clone time for every file, so a fresh
+  checkout could not reproduce this build's sitemap at all — the same family of defect as
+  the scorecard PDF (CHANGES.md row 47), found the same way, by diffing two builds.
+-#}
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-{%- for item in collections.all %}
+{%- for item in collections.all | sort(false, false, "url") %}
 {%- if item.outputPath and item.outputPath.endsWith(".html") and item.url != "/404.html" %}
   <url>
     <loc>https://{{ site.domain }}{{ item.url }}</loc>

@@ -258,6 +258,28 @@
     }
   ],
 
+  "$versionsComment": [
+    "The one source of truth for a version's STANDING. Every surface that states whether",
+    "a version is current reads this record: the version page's status stamp, the",
+    "changelog's index table, and the changelog rail's superseded list. Publishing v1.1 is",
+    "therefore one edit here, and there is no second place for it to be wrong.",
+    "",
+    "Fields: `version`, `status`, `classification`, `title`, `body`. Two are conditional:",
+    "",
+    "  `supersededBy` — REQUIRED once `status` is anything other than `Current`, and absent",
+    "  while it is Current. It names the version that replaced this one. The stamp renders",
+    "  it as a link, because a reader who lands on an old version from a search result must",
+    "  be one click from the current one — that is the whole job of the stamp. Check 29",
+    "  fails a non-Current record that omits it.",
+    "",
+    "  `published` — optional per-version date. A version that is later superseded gains",
+    "  one, and it wins over site.json's publicationDate for that version.",
+    "",
+    "Exactly one version carries `status: \"Current\"`, and it must be the one `current`",
+    "names above. Check 29 asserts both. Check 21's fifth test is CONDITIONED on a version",
+    "being Current, so this field is load-bearing for a freeze guarantee, not only for a",
+    "label a reader sees."
+  ],
   "versions": [
     {
       "version": "1.0",

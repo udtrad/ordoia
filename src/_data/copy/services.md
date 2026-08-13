@@ -104,7 +104,7 @@ The retainer needs a baseline to trend against. It follows a review, or opens wi
 How we work
 
 @@ how.body
-Fixed scope, fixed price, named deliverables, and a written go/no-go at the end of every engagement. Every engagement is led end-to-end by the senior architect named on the scorecard — no handoff to a delivery team you never met.
+Fixed scope, fixed price, named deliverables, and a written go/no-go at the end of every engagement. Every engagement is led end-to-end by the named assessor who signs it, against a rubric published for anyone to check — no handoff to a delivery team you never met.
 
 We work read-only. We do not write to your systems, we do not change production, and access is scoped to what the assessment needs.
 
@@ -120,7 +120,7 @@ None of that produces an assessment anyone else can rely on.
 
 What we sell is not the finding. It is that the finding came from somewhere other than the team that built the system, under a method that was fixed before we looked, retained in working papers, and signed by a named person who stands behind it. Your board, your client's procurement team and your regulator all apply the same discount to self-assessment, and they apply it for the same reason companies who can read their own accounts still pay to have them audited.
 
-So the honest division is this. Build the harness — you will build a better one than we would, and we would rather assess a system that has one. Bring us in for the part you structurally cannot do for yourself.
+So the honest division is this. Build the harness — we would rather assess a system that has one. Bring us in for the part you structurally cannot do for yourself.
 
 @@ how.link
 What {partyWord} means here
@@ -129,4 +129,4 @@ What {partyWord} means here
 Start
 
 @@ start.note
-Or a 30-minute scoping call, at no charge, to establish whether the audit is the right entry point for your system. Read [the rubric](/oal/) first — most people who read it will never contact us, and that is the intention.
+Or a 30-minute scoping call, at no charge, to establish whether the audit is the right entry point for your system. Read [the rubric](/oal/) first and score yourself — the call is shorter and more useful when you arrive knowing roughly where you sit.

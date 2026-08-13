@@ -61,10 +61,15 @@ c40a8d8f974d5bcebe471667e705395c7acf651ca69bed5ac91ca33ac64072ff  source-serif-4
 > consecutive full runs are byte-identical, which is what the claim at the top of that
 > script always said and did not deliver.
 
-Worst-case page is the rubric, which uses all four faces: 120.1 KiB of font plus the page
-and stylesheet — **139.1 KiB against the 150 KiB budget**, measured by check 17 on every
-run rather than by hand once. The italic is the reason it fits, and the margin is 10.9 KiB
-rather than the 1.5 KiB it was before the italic was narrowed.
+Worst-case page is the rubric, which uses all four faces: **120.1 KiB of font**, plus the
+page and its stylesheets, against the 150 KiB budget — measured by check 17 on every run
+rather than by hand once. The italic is the reason it fits.
+
+The font subtotal is the durable number here; the page total is not, and this paragraph
+stated one until 2026-08-12 (`139.1 KiB`, margin `10.9 KiB`). Every page now links a second
+stylesheet — the derived `chrome.<sha>.css`, ~1.7 KiB gzipped — so the totals moved and this
+text did not. Check 17 owns the arithmetic; ask it rather than restating an absolute that
+any new linked asset invalidates.
 
 ### The commands
 

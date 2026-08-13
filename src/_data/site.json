@@ -57,6 +57,8 @@
     "out of the data (row 46)."
   ],
   "footerFields": [
+    { "text": "{name}" },
+    { "text": "{email}", "href": "mailto:{email}" },
     { "text": "UK-based" },
     { "text": "engagements under English law" },
     { "text": "prices in GBP" },
@@ -75,10 +77,5 @@
   ],
   "formerDomains": ["ordoia.co.uk"],
 
-  "publicationDate": "2026-09-19",
-
-  "elsewhere": {
-    "label": "infrasights.net",
-    "url": "https://infrasights.net"
-  }
+  "publicationDate": "2026-09-19"
 }

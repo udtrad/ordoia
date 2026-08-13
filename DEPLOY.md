@@ -613,12 +613,79 @@ into the frozen directory on every run, so "self-contained" was true of the snap
 was **the living stylesheet becoming un-editable**, because check 21 went red on any
 change to it. See `CHANGES.md` row 40.
 
-`index.html` and `favicon.svg` **are pinned as well**, since 2026-08-11 — see `CHANGES.md`
-row 50. All four entries in `PINNED_ASSETS` are served from `versions/v<n>/`, so the
-snapshot is now immutable by construction across its whole surface rather than only its
-passthrough assets. What that costs is stated rather than discovered later: the frozen
-page's footer and nav hold the state they were published in, so a page added to the site
-later will not appear in v1.0's footer list. That is what frozen means.
+### When a published version is re-frozen
+
+Twice now, so this is a practice and not an exception, and pretending otherwise is how a
+document starts lying about its own repository.
+
+| When | Why | What moved |
+|---|---|---|
+| 2026-08-11 | The frozen directory was re-copying the living `src/styles.css` on every build, which made the living sheet un-editable. `CHANGES.md` row 40. | The mechanism. No published word changed. |
+| 2026-08-13 | Draft 6 §5.3 cut the rubric intro's intention clause. `CHANGES.md` row 114. | One sentence of published `<main>`, deliberately. |
+
+**The rule, stated so the next one is a decision rather than a habit.** A re-freeze is
+available only while a version's own publication date has not passed, and it is the
+user's call, never engineering's. It costs three things every time, and all three are
+deliverables rather than side effects:
+
+1. **The provenance anchor is destroyed and re-minted.** `versions/v<n>.published-index.html`
+   and the `PUBLISHED_SHA256` literal both change. The tool refuses to do this by itself
+   (check 32 holds that refusal), so the override is deliberate: delete the manifest, the
+   pinned directory **and** the retained document, rebuild, re-freeze, then update the
+   literal in a reviewed diff.
+2. **The frozen stylesheet becomes the stylesheet as at the re-freeze**, not as at
+   publication. On 2026-08-13 that pulled a session's live design into the snapshot. It
+   reached nothing — 0 computed-style differences across 45,444 values inside the frozen
+   `<main>` — but that was **measured afterwards**, and it is the reason a re-freeze must
+   be paired with the R2 comparison rather than assumed safe.
+3. **This page has to be corrected.** It called the first re-freeze "not a precedent"; the
+   second made that false, and a document claiming a constraint the repository does not
+   observe is worse than one that is merely out of date.
+4. **Returning visitors keep the old frozen stylesheet, and nothing can tell them not
+   to.** `/oal/v1.0/styles.css` is served `immutable` for a year at a **stable,
+   unfingerprinted URL** — correct while a published version never changes, which is the
+   assumption a re-freeze breaks. A visitor who loaded the page before the re-freeze
+   renders the new document against the old sheet, and a cache purge cannot reach them.
+   Measured on 2026-08-13: **0 computed-style differences across 45,444 values** at four
+   widths, so that deploy was safe — but it was safe because the session's CSS happened
+   to touch only the footer and the grid, not because anything prevented otherwise.
+   **Before the next re-freeze, either fingerprint the frozen stylesheet or run that same
+   comparison.** The `immutable`-at-a-stable-URL shape is what row 71 already caught once
+   on `/styles.css`.
+
+After the publication date passes, the answer is a new version, not a re-freeze.
+
+### What is frozen, since 2026-08-12: the content and its rendering, not the document
+
+`index.html` was pinned too between 2026-08-11 and 2026-08-12 (`CHANGES.md` row 50). That
+made the snapshot immutable across its whole surface — **including its chrome**, which was
+never the intention and was not noticed until the footer changed. Measured on 2026-08-12:
+eight of nine rendered pages carried the footer field list with the VAT registration and
+`/oal/v1.0/` carried the launch footer, a sentence this repository had already withdrawn.
+One site, two footers, and the frozen one advertising the site as it stood at publication.
+Row 50 stated the cost — *"a page added to the site later will not appear in v1.0's footer
+list"* — and stating it did not make it acceptable.
+
+So the unit was re-cut (`CHANGES.md` row 65). **What is frozen is the `<main>` fragment
+and the assets that render it**: `versions/v<n>/main.html`, `styles.css`, `fonts/`,
+`favicon.svg`. The document at `/oal/v<n>/` is rendered live, like every other page, and
+its masthead, version status and footer track the site.
+
+**This was not a re-freeze, and the distinction is the whole reason it was available.**
+`main.html` is a **byte-exact substring** of the document v1.0 was published as, whose
+sha256 is still `0289c300dd07…`. That document is retained whole at
+`versions/v1.0.published-index.html`, its hash is recorded in the manifest, and check 21
+re-runs both comparisons on every commit — so the claim is measured rather than believed
+because this paragraph says so. No published content byte moved. The sentence below about
+2026-08-11 being the only re-freeze therefore still stands.
+
+What the delivered document no longer is, and what to stop claiming: **byte-identical**.
+`/oal/v<n>/index.html` changes whenever the chrome changes, by design. What is guaranteed
+is that the rubric's words and their rendering do not — which is what a scorecard cites,
+and what §13's "renders identically in 2032, styled by 2026's stylesheet" was actually
+about. The published directory is also no longer **self-contained**: the page links a
+shared `/chrome.<sha>.css` alongside its own frozen stylesheet. That is R1, and it is
+deliberate.
 
 **Re-freezing a published version is not a procedure.** The manifest's own header says a
 changed byte means a new version, and that stands. It was done exactly once, on
@@ -681,9 +748,12 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
 
 **Done 2026-08-10, and no longer outstanding:**
 
-- **Freeze `/oal/v1.0/`.** Performed in the change that took the site live. Re-taken once
-  on 2026-08-11 — see *Publishing a rubric version* below and `CHANGES.md` row 40 for the
-  reasoning, which is not a precedent.
+- **Freeze `/oal/v1.0/`.** Performed in the change that took the site live. Re-taken
+  **twice** since: 2026-08-11 (`CHANGES.md` row 40, decoupling the frozen stylesheet) and
+  2026-08-13 (row 114, draft 6 §5.3 cutting the rubric intro's intention clause). This
+  entry said the first was *"not a precedent"* until the second one made that untrue, and
+  it is withdrawn here rather than left standing — see *When a published version is
+  re-frozen* below for what the practice actually is.
 - **A mailbox at `hello@ordoia.com`.** Stood up on Namecheap Private Email and **proved
   end to end on 2026-08-11**: a message sent from the site's own CTA arrived in the
   mailbox, and a reply sent from it arrived back. That closes the one failure on this page

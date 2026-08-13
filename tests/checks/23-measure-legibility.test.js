@@ -437,11 +437,29 @@ test('check 23 — the priced-surface detector catches a header run under (contr
    *
    * `addStyleTag` mutates only the loaded page and never the working tree.
    */
+  /**
+   * The plant is co-location, not a nudge, and that is a 2026-08-13 correction.
+   *
+   * It used to pull the heading down a fixed `2.2rem` and hope that landed on the
+   * paragraph beneath. Whether it did depended on the rendered heights above it, which
+   * depend on which fonts the environment actually has — so the control passed on macOS
+   * and **failed on Linux**, where the designer handover's off-origin webfonts do not
+   * load and everything renders in fallback metrics. Found the first time this suite ran
+   * in CI: 11 movable sections, 0 collisions reproduced, and the failure was the plant
+   * missing rather than the detector being blind.
+   *
+   * Pinning the heading and its next sibling to the same origin makes the overlap true by
+   * construction: two text runs at the same top, in the same box, at any font size in any
+   * environment. A control whose reproduction depends on metrics is a control that tells
+   * you about the runner.
+   */
   const RUN_UNDER_CSS = `
     section.block { position: relative; }
-    section.block > h2 { position: absolute; top: 2.2rem; left: 0; right: 0; margin: 0; }
+    section.block > h2 { position: absolute; top: 0; left: 0; right: 0; margin: 0; }
+    section.block > h2 + * { position: absolute; top: 0; left: 0; right: 0; margin: 0; }
     table.grid td { position: relative; }
-    table.grid td .prod { position: absolute; top: 1.2rem; left: 0; right: 0; }
+    table.grid td .prod { position: absolute; top: 0; left: 0; right: 0; }
+    table.grid td .prod + * { position: absolute; top: 0; left: 0; right: 0; }
   `;
 
   const s = survey({
