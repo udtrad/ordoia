@@ -42,12 +42,18 @@ jobs:
 
     # The baselines. Moving a number here is a deliberate act in a reviewed diff, which is
     # the same rule PUBLISHED_SHA256 follows and for the same reason: a value the tooling
-    # can rewrite by itself is not evidence. The handover baseline has moved exactly once
-    # in the project's history (8 -> 9, when check 23 first found a real collision in it),
-    # and that move was the evidence the check worked.
+    # can rewrite by itself is not evidence. The handover baseline has moved exactly twice
+    # in the project's history, and both moves were the evidence a check worked:
+    #
+    #   8 -> 9   check 23 found a real collision in the handover (2026-08-11)
+    #   9 -> 10  check 33 found the handover printing "Self-checkIf you deleted the
+    #            sentence…" on all eight rubric dimensions (2026-08-13). That defect is
+    #            CHANGES.md row 13 — recorded, and fixed in the build, five days before the
+    #            check existed. Rediscovering a known defect from the rendering, without
+    #            being told where to look, is the strongest evidence a check can offer.
     env:
-      HANDOVER_EXPECTED_FAILURES: '9'
-      EMPTY_EXPECTED_FAILURES: '62'
+      HANDOVER_EXPECTED_FAILURES: '10'
+      EMPTY_EXPECTED_FAILURES: '64'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

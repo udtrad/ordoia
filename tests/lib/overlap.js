@@ -46,6 +46,70 @@ export function collides(a, b) {
   return vertical > TOLERANCE && horizontal > TOLERANCE;
 }
 
+/**
+ * Do these two runs print with no word separator between them?
+ *
+ * The other half of `collides`. That one asks whether two boxes are printed *over* each
+ * other; this one asks whether they are printed *against* each other — which is what a
+ * template concatenating an inline element with the text beside it produces, and what the
+ * live site did from draft 6 until 2026-08-13: `<span class="depth">Tested</span>not
+ * offered` rendered as `Testednot offered` at every width above 46rem.
+ *
+ * `a` is the left-hand run. Three conditions, and each of them is load-bearing:
+ *
+ *   same line     vertical overlap, so two stacked blocks sharing a column are not a
+ *                 finding. This is the axis check 31 captured and never read.
+ *   word to word   the junction is a letter or a digit on both sides. Whitespace on
+ *                 either side is a separator, and so is punctuation: `<strong>finding</
+ *                 strong>. A score…` prints with nothing between the two runs and is
+ *                 correct English. The first version of this tested only for whitespace
+ *                 and reported fourteen of those across five pages alongside the two real
+ *                 ones — over-broad, and narrowed against the measurement rather than
+ *                 guessed at.
+ *   edges touch    |gap| within TOLERANCE. The upper bound is what makes a rendered space
+ *                 — or an nbsp, or a margin — not a finding. The LOWER bound keeps this
+ *                 disjoint from `collides`: an overlap is a collision rather than an
+ *                 abutment, and the two predicates meet without a seam (`abuts` owns
+ *                 gap ∈ [-1, 1], `collides` owns gap < -1). It does NOT mean something
+ *                 else reports every overlap: check 23's population is `.measure__dim,
+ *                 .label, .span, .stamp, .na` inside three containers, so two arbitrary
+ *                 text runs overlapping elsewhere on the site are reported by neither.
+ *
+ * Runs carry `first` / `last` because a soft-wrapped text node renders one rect per line
+ * and only its outermost edges are junctions with other content. An interior edge is where
+ * one word continues onto the next line, and treating it as a junction reports every
+ * wrapped paragraph on the site.
+ *
+ * ── `endsWord` / `startsWord` are RENDERED, and that is the whole point ─────────────
+ *
+ * This tested `a.text.slice(-1)` against the raw `nodeValue` until the adversarial pass
+ * drilled it. Whitespace at the end of a line box is removed in rendering, so a source
+ * trailing space can be **gone on screen while `slice(-1)` still sees it** — and the
+ * detector returned "separated" for text a reader sees as one word. Proven in Chromium:
+ * `<p style="display:inline-block"><span>Audit </span><span>not offered</span></p>`
+ * renders `Auditnot offered`, rects touching, and the old predicate answered `false`.
+ * The control that was supposed to protect this pinned the blind spot in place instead.
+ *
+ * So the caller resolves the boundary against the rendering and hands over two booleans.
+ * `abuts` does no text parsing at all: a value that depends on what was painted cannot be
+ * derived from what was typed.
+ *
+ * **The stated limits.** Requiring a word character on both sides means a run ending in
+ * punctuation cannot open a finding: `£`+`2,500` and `Tested`+`(not offered)` would both
+ * pass. And an astral-plane letter at a junction resolves through a lone surrogate, so it
+ * reads as a non-word. Both are real holes rather than tidy edge cases; nothing else
+ * covers them, and the site's copy happens to contain no instance of either.
+ */
+export const JOINS = /[\p{L}\p{N}]/u;
+
+export function abuts(a, b) {
+  if (!a.last || !b.first) return false;
+  if (intersection(a.rect, b.rect).vertical <= TOLERANCE) return false;
+  if (!a.endsWord || !b.startsWord) return false;
+  const gap = b.rect.left - a.rect.right;
+  return gap >= -TOLERANCE && gap <= TOLERANCE;
+}
+
 /** A box with no area cannot be read, and cannot be collided with either. */
 const hasArea = (p) => p.rect.width > 0 && p.rect.height > 0;
 
