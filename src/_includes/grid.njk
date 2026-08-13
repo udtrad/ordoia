@@ -15,7 +15,18 @@
     <caption>{{ products.grid.caption }}</caption>
     <thead>
       <tr>
-        <th scope="col"><span class="skip">{{ products.grid.coverageHeading }}</span></th>
+        {#-
+          `.vh`, not `.skip`. This is a visually hidden heading for a screen reader; `.skip`
+          is the skip-link class, which carries a `:focus` rule that reveals it at the top
+          left of the page and a print rule that removes it. It hid this heading only by
+          coincidence of both being off-screen.
+
+          Harmless while chrome and content are styled by the same sheet, and not harmless
+          after that: `.skip` is a chrome selector, so check 27 reports it reaching inside
+          `<main>` on two pages, and a class shared between chrome and content is one the
+          chrome derivation must either carry into every frozen page or drop from one.
+        -#}
+        <th scope="col"><span class="vh">{{ products.grid.coverageHeading }}</span></th>
         {%- for column in products.grid.columns %}
         <th scope="col">{{ column }}</th>
         {%- endfor %}

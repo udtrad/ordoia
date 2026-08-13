@@ -640,26 +640,62 @@ footer .foot { grid-column: 2; font-size: 0.78rem; color: var(--slate); }
 footer .foot a { color: var(--slate); }
 footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 1.2rem; }
 
-/* The legal field list. Fields wrap independently, and the separator is drawn between
-   them rather than written into the markup — this is a list, so the structure already
-   says where one field ends. It is not a rule: on this site a free-standing rule always
-   means a scale, and a middot between two fields is the same separator the stamp and
-   the rail use. `margin: 0` overrides the footer nav's bottom margin above. */
-/* The separator is bound to the PRECEDING field, not the following one, so it can only
-   ever trail a line. Bound to the following field it always landed at the start of a
-   wrapped line — measured at 1280px, where this list already wraps: line 2 opened with a
-   middot hanging in the left margin. Terms and Privacy add two more fields, so it will
-   wrap more, not less.
+/* The legal field list. It is not a rule: on this site a free-standing rule always means
+   a scale, and a middot between two fields is the same separator the stamp and the rail
+   use. `margin: 0` overrides the footer nav's bottom margin above.
 
-   No `color` here. It inherits `footer .foot`'s --slate (6.21:1). Setting it to
-   --untravelled measured 1.37:1 on rendered text — the same violation this file records
-   at .grid .scope .sep, and check 7 cannot see it because generated content is not a DOM
-   text node, so the suite stays green over it.
+   The separator is bound to the PRECEDING field, in that field's own `<li>`, so it can
+   never open a line. Bound to the following field it always landed at the start of a
+   wrapped line — measured at 1280px: line 2 opened with a middot hanging in the left
+   margin.
+
+   It is a template-emitted TEXT NODE since 2026-08-13, not `::after` content. Generated
+   content is not in the DOM, so check 7's `getComputedStyle` cannot read its colour and
+   the suite stays green over a separator at any ratio — which has happened here (row 49).
+   Check 30 now asserts no `::before`/`::after` draws anything in this list at all.
+
+   No `color`. It inherits `footer .foot`'s --slate on --page: 6.21:1, measured by check
+   30 rather than asserted here.
 
    Non-zero row-gap: with `gap: 0 0.75rem` the wrapped rows of this list were tighter than
    the nav list directly above it. */
-footer ul.legal { gap: 0.25rem 0.75rem; margin: 0; }
-footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem; }
+/* ── Why the separator is out of flow, and clipped ──────────────────────────────
+   Measured 2026-08-13: the strip wants 766px and the column it sits in is 592px at
+   1280 and 272px at 320. It is short by 174px at the WIDEST viewport this site
+   supports, so it is two to four rows at every width and has never been one line.
+   Terms and Privacy add two more fields, so it widens rather than narrows.
+
+   That kills both in-flow bindings. Bound to the preceding field a separator trails
+   every wrapped row; bound to the following field it opens every wrapped row in the
+   left margin. Both were measured before this rule was written, and §5.4 forbids both.
+
+   So the separator is taken OUT of flow and drawn in the column gap to the left of its
+   field, and the list clips its own overflow. A field mid-row draws its separator inside
+   the box; a field that begins a row draws it past the clip edge, where it does not
+   render. The wrap decision is therefore made on field widths alone and a separator can
+   only ever appear BETWEEN two fields on one row — which is the whole of what §5.4 asks
+   for, and the one arrangement that survives a field being added.
+
+   The three numbers are one system and are not independently adjustable:
+     column-gap 1.75rem (28px)  — the trough the separator lives in
+     .sep right offset 1rem (16px) — puts the glyph mid-trough, 12px clear either side
+     padding-left 0.5rem (8px)  — the clip edge, between the two
+   A separator at a row start spans -16px..-12px and is clipped by 4px. A focus ring
+   extends 5px (2px outline at 3px offset) and clears the same edge by 3px. Both are
+   measured by check 30 rather than trusted: shrink the gap or grow the offset and one
+   of them goes red.
+
+   Negative margin-left cancels the padding, so the strip stays aligned with the nav
+   list above it. No `color`: it inherits `footer .foot`'s --slate at 6.21:1. */
+footer ul.legal {
+  gap: 0.25rem 1.75rem;
+  margin: 0;
+  padding-left: 0.5rem;
+  margin-left: -0.5rem;
+  overflow: hidden;
+}
+footer ul.legal li { position: relative; }
+footer ul.legal .sep { position: absolute; right: 100%; margin-right: 1rem; }
 
 /* Named values for a screen reader where the visual design carries them by
    position. BRIEF §7 authorises this markup explicitly. */
@@ -689,6 +725,16 @@ footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem
   .rail:empty { display: none; }
   .rail { padding-bottom: 1.4rem; }
   .masthead nav ul { gap: 1rem; }
+  /* §5.4: the footer address is a 44px target on mobile. A procurement reader pastes it
+     into a form, so it stays plain selectable text with a real mailto — the target is
+     made by growing the box, never by turning it into a button.
+
+     `align-items: center` on the row keeps the middots on the optical centre line of the
+     taller link rather than on its baseline; without it the separator beside the email
+     field sits ~16px low. Padding is horizontal-only so the glyph stays clear of the
+     clip edge the separator depends on. */
+  footer ul.legal { align-items: center; }
+  footer ul.legal a { display: inline-flex; align-items: center; min-height: 44px; }
   .paper { padding: 1.6rem 1.1rem; }
   .fields dl, .sig { grid-template-columns: minmax(0, 1fr); }
 

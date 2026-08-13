@@ -824,6 +824,34 @@ Written red-first, and it failed through the *population rule* rather than throu
 finding, which is the strongest form available: there were no status stamps to compare, so
 the check had measured nothing.
 
+**Check 30 — the footer field strip.** Denominators: 9 pages for the generated-content and
+contrast arms, 9 pages × 4 viewports for the wrapping arm, 9 pages × 2 mobile viewports for
+the target arm. Added 2026-08-13 with Commit B, and the reason it did not exist earlier is
+the finding: **the footer was measured by nothing.** Check 12's `PROSE` is `main`-scoped,
+check 23's selector lives inside `figure.measure`, and check 7 calls `getComputedStyle`
+with no pseudo-element argument — so the strip had no contrast check, no collision check
+and no provenance check, and its separator was drawn with `content:` in the one place
+`getComputedStyle` cannot follow.
+
+Extending check 12 to cover it was measured and rejected on the number: the strip renders
+**106 blocks into check 12's own selectors and 0 units**, because no field reaches the
+eight-word floor. A field strip is not prose and check 12 was never going to protect it.
+
+The wrapping arm is the one worth reading. §5.4 asks for the separator bound to the field
+*before* it, and measurement says that cannot satisfy the rule it was given for: **the strip
+wants 766px against a 592px column at 1280 and 272px at 320**, so it is two to four rows at
+every width and has never been one line. A trailing separator dangles at the end of every
+wrapped row exactly as a leading one hangs in the left margin. The separator is therefore
+out of flow in the column gap with the list clipping its own overflow, which leaves it
+visible only between two fields on one row — and the check reads **text-node client rects
+intersected with the clip box**, so it judges what a reader sees rather than what the
+markup says. Five drills, each red → green → red on revert: clip removed, binding reversed,
+`::after` restored, 44px target dropped, separator recoloured to `--untravelled`.
+
+Two numbers that were claimed in a comment and then measured rather than left as claims:
+a row-leading separator is clipped by 4px, and a row-leading link's focus ring clears the
+same edge by **3px** — drilled by reordering the fields so the address leads a row.
+
 It also holds the changelog rail's superseded list to the record. **That sentence was
 false when it was first written here** — the rail was still a hand-typed copy fragment
 reading `None`, `src/changelog.njk` had not been touched, and the check's third test
