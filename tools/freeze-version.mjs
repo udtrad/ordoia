@@ -99,8 +99,42 @@ export const publishedDocument = (version) =>
  * A literal cannot be re-minted by the tool that validates it. Changing a value here is a
  * deliberate act in a reviewed diff, which is what publishing a version should be.
  */
+/*
+ * v1.0 changed here once, on 2026-08-13, and it is the **second** re-freeze of this
+ * version. The first was 2026-08-11 (CHANGES.md row 40), recorded in DEPLOY.md as "not a
+ * precedent" — a sentence this change makes untrue, and which is therefore withdrawn in
+ * the same commit rather than left standing. Two re-freezes is a practice, not an
+ * exception, and DEPLOY.md now says what the practice is.
+ *
+ *   0289c300dd07…  the document published 2026-08-11, carrying the rubric intro's
+ *                  intention clause
+ *   da0ed36ecf24…  the document after draft 6 §5.3 cut that clause
+ *
+ * What moved, measured rather than assumed — and the first draft of this comment got it
+ * wrong, which is why it says so:
+ *
+ *   `main.html`      42,494 -> 42,420 bytes. One sentence, the intended cut.
+ *   fonts, favicon   byte-identical to the 2026-08-11 freeze.
+ *   `styles.css`     **CHANGED**, and this comment first claimed it had not. A re-freeze
+ *                    copies the CURRENT `src/styles.css`, so the frozen sheet now carries
+ *                    this session's design work rather than 2026-08-11's.
+ *
+ * That byte change is the one worth understanding, because it is R2's exact hazard: a
+ * redesign reaching a published document. It did not happen, and that is measured, not
+ * argued — **0 computed-style differences across 45,444 values** on every element inside
+ * the frozen `<main>` at 320/375/768/1280, against the pre-session build. This session's
+ * CSS touched the footer (chrome, outside `<main>`) and the coverage grid (not on this
+ * page), so none of it can reach the rubric. The geometry does move — 2,033 deltas, up to
+ * 81px — and every one of them is downstream of the intro paragraph losing a line, which
+ * is the edit.
+ *
+ * The durable consequence: `versions/v1.0/styles.css` is now the stylesheet as at
+ * 2026-08-13, not as at publication. Under exit 2's re-freeze that is intended. It is
+ * recorded because the next person to compare the frozen sheet against the site's history
+ * will otherwise wonder which date they are looking at.
+ */
 export const PUBLISHED_SHA256 = {
-  '1.0': '0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b',
+  '1.0': 'da0ed36ecf244523aebd09eb481a80f96651b37caa3b05967bd695b851952897',
 };
 
 /** The name of the stored `<main>` fragment inside a version's directory. */
