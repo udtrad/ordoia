@@ -30,10 +30,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { REPO_ROOT } from '../lib/harness.js';
@@ -293,27 +294,57 @@ test('check 32 — the sandbox is a sandbox (controls)', async () => {
   // be the re-freeze test, against the real provenance anchor. Pinned here.
   const box = await sandbox();
   try {
-    const source = await readFile(box.tool, 'utf8');
-    assert.match(
-      source,
-      /REPO_ROOT\s*=\s*path\.resolve\(fileURLToPath\(import\.meta\.url\)/,
-      'freeze-version.mjs no longer derives REPO_ROOT from its own location, so copying it ' +
-        'into a temporary directory no longer sandboxes it'
+    // The VALUE, not the shape of the expression that produces it. This asserted only
+    // that the source still MATCHED /REPO_ROOT = path.resolve(fileURLToPath(...)/ and
+    // said nothing about its second argument — so changing '../..' to '../../..',
+    // which relocates the whole sandbox to os.tmpdir() OUTSIDE the tree cleanup()
+    // deletes, left this control green. Drilled by the red team 2026-08-13.
+    const copied = await import(pathToFileURL(box.tool).href + `?v=${Date.now()}`);
+    assert.equal(
+      path.resolve(copied.FROZEN_DIR),
+      path.resolve(path.join(box.root, 'versions')),
+      'the copied tool does not resolve its repository root to the sandbox, so every test ' +
+        'in this file is operating somewhere other than where it believes it is'
     );
+
+    // A copy of ONE file is only a sandbox while that file imports nothing local.
+    // Both directions, because `./sibling` is as fatal as `../parent`.
+    const source = await readFile(box.tool, 'utf8');
     assert.doesNotMatch(
       source,
-      /from ['"]\.\.\//,
+      /from ['"]\.\.?\//,
       'freeze-version.mjs now imports from the repository, so a copy of the single file is ' +
         'no longer a complete sandbox'
     );
 
-    // And prove it positively: a write inside the sandbox lands inside the sandbox.
-    await writeFile(path.join(box.root, 'versions', 'canary.txt'), 'x');
-    assert.ok(existsSync(path.join(box.root, 'versions', 'canary.txt')));
+    // Positively, and against the TOOL rather than against a write this test performs
+    // itself: run the real CLI in the sandbox and require the real repository to be
+    // byte-unchanged afterwards. The old canary proved only that node can write to a
+    // temp directory, with the tool never involved.
+    const snapshot = async () => {
+      const parts = [];
+      for (const rel of ['versions', path.join('_site', 'oal')]) {
+        const dir = path.join(REPO_ROOT, rel);
+        if (!existsSync(dir)) { parts.push(`${rel}:absent`); continue; }
+        const walk = async (d) => {
+          for (const e of (await readdir(d, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+            const full = path.join(d, e.name);
+            if (e.isDirectory()) await walk(full);
+            else parts.push(`${path.relative(REPO_ROOT, full)}:${sha256(await readFile(full))}`);
+          }
+        };
+        await walk(dir);
+      }
+      return sha256(Buffer.from(parts.join('\n')));
+    };
+
+    const before = await snapshot();
+    await freeze(box, FRESH_VERSION);
+    await freeze(box, FROZEN_VERSION);
     assert.equal(
-      existsSync(path.join(REPO_ROOT, 'versions', 'canary.txt')),
-      false,
-      'a sandbox write reached the real repository'
+      await snapshot(),
+      before,
+      'running the freeze tool inside the sandbox modified the REAL repository'
     );
   } finally {
     await box.cleanup();

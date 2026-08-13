@@ -30,6 +30,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite, IS_HANDOVER } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { CLIP_ORACLE } from '../lib/visibility.js';
 import { renderPrice } from '../../eleventy.config.js';
 import products from '../../src/_data/products.json' with { type: 'json' };
 
@@ -64,47 +65,86 @@ const EXPECTED = products.products.map((p) => ({
  * Whitespace is normalised on both sides because the templates emit `&nbsp;` between a
  * price and its separator, and a reader does not distinguish the two.
  */
-const LOCATE = (needles) => {
+const LOCATE = `(needles) => {
+  ${CLIP_ORACLE}
   const grids = [...document.querySelectorAll('table.grid')];
-  const norm = (s) => s.replace(/[\s ]+/g, ' ').trim();
   const out = [];
 
   for (const [gi, grid] of grids.entries()) {
+    const rows = [...grid.querySelectorAll('tr')];
     const walker = document.createTreeWalker(grid, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const text = norm(node.nodeValue || '');
-      if (!text) continue;
+      const raw = node.nodeValue || '';
+      if (!raw.trim()) continue;
       for (const needle of needles) {
-        const at = text.indexOf(norm(needle));
-        if (at === -1) continue;
-        // Range over just the matched run, so a long cell does not report the rect of
-        // its whole sentence.
-        const raw = node.nodeValue;
-        const start = raw.replace(/[\s ]+/g, ' ').indexOf(norm(needle));
-        const range = document.createRange();
-        try {
-          range.setStart(node, Math.max(0, start));
-          range.setEnd(node, Math.min(raw.length, start + needle.length));
-        } catch {
-          range.selectNodeContents(node);
+        // Offsets are computed on the RAW string, never on a normalised copy. The old
+        // code searched a whitespace-COLLAPSED copy and applied that index to the raw
+        // node — correct only while every text node happens to be tight. One template
+        // reindent and it selected the wrong substring and measured it as the price.
+        // Its try/catch could not rescue that: collapsing only ever shortens, so
+        // setStart never threw and the arm was dead by construction.
+        let idx = raw.indexOf(needle);
+        let len = needle.length;
+        if (idx === -1) {
+          // Whitespace-tolerant fallback, so an &nbsp; or a line break inside the needle
+          // still matches — the reason normalisation was introduced in the first place.
+          const parts = needle.split(/[\\s\\u00a0]+/).filter(Boolean)
+            .map((x) => x.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&'));
+          const m = new RegExp(parts.join('[\\\\s\\\\u00a0]+')).exec(raw);
+          if (!m) continue;
+          idx = m.index;
+          len = m[0].length;
         }
+        const range = document.createRange();
+        range.setStart(node, idx);
+        range.setEnd(node, idx + len);
         const rects = [...range.getClientRects()].filter((r) => r.width && r.height);
         if (!rects.length) continue;
+        const el = node.parentElement;
+        const tr = el && el.closest ? el.closest('tr') : null;
         out.push({
           grid: gi,
+          row: tr ? rows.indexOf(tr) : -1,
           needle,
           left: Math.min(...rects.map((r) => r.left)),
           right: Math.max(...rects.map((r) => r.right)),
           top: Math.min(...rects.map((r) => r.top)),
+          bottom: Math.max(...rects.map((r) => r.bottom)),
+          seen: rects.some((r) => __isVisible(r, node)),
         });
       }
     }
   }
   return out;
-};
+}`;
 
-/** On screen at rest: inside the viewport horizontally, with nothing scrolled. */
-const onScreen = (run, width) => run.left >= -0.5 && run.right <= width + 0.5;
+/**
+ * On screen at rest: inside the viewport on BOTH axes, and not clipped by an ancestor.
+ *
+ * It tested the horizontal axis ONLY until 2026-08-13. `LOCATE` captured each run's `top`
+ * and nothing ever read it, so "can you see the name and the price at the same time?" was
+ * never asked in the direction that matters for a stacked layout. Drilled by the red team:
+ * giving the reflowed grid a `max-height` with `overflow-y: hidden` put four of the five
+ * products off the page — no scrollbar, unreachable — and this check stayed 3/3 while the
+ * whole 124-check suite stayed byte-identical to green.
+ */
+const onScreen = (run, width) =>
+  run.seen && run.left >= -0.5 && run.right <= width + 0.5;
+
+/**
+ * Two runs a reader can hold on screen at the same time.
+ *
+ * Deliberately NOT "both inside the initial viewport". A page scrolls, and content below
+ * the fold is further down rather than hidden — requiring both runs to be above the fold
+ * would fail this check on every page where the grid is simply not the first thing. The
+ * question §8 asks is whether a reader can see the product and its price **together**, so
+ * the test is whether their combined vertical extent fits one screen.
+ *
+ * The unreachable case — content a container clips away with no scrollbar, which is what
+ * the red team's drill produced — is handled by `run.seen` in `onScreen`, not here.
+ */
+const coVisible = (a, b, height) =>
+  Math.max(a.bottom, b.bottom) - Math.min(a.top, b.top) <= height + 0.5;
 
 test('check 31 — every product name and its price are on screen together at 320 and 375', async (t) => {
   if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
@@ -130,7 +170,7 @@ test('check 31 — every product name and its price are on screen together at 32
         s.count('renders');
 
         const needles = EXPECTED.flatMap((p) => [p.name, p.price]);
-        const runs = await page.evaluate(LOCATE, needles);
+        const runs = await page.evaluate(`(${LOCATE})(${JSON.stringify(needles)})`);
 
         for (const product of EXPECTED) {
           const names = runs.filter((r) => r.needle === product.name);
@@ -145,9 +185,23 @@ test('check 31 — every product name and its price are on screen together at 32
           s.count('products');
 
           // A product may appear more than once. It passes if ANY single rendering has
-          // both its name and a price on screen together — that is what a reader needs.
+          // both its name and its price on screen together — that is what a reader needs.
+          //
+          // CO-LOCATED, not merely co-existent, and that is the 2026-08-13 fix. This
+          // paired any name-run with any price-run anywhere in any grid, and `LOCATE`
+          // computed a `grid` index for exactly this purpose that nothing ever read.
+          // The aliasing is live rather than theoretical: `renderPrice` returns the
+          // identical "£2,500 + VAT" for BOTH `audit` and `top-up`, so a product could be
+          // credited co-visible using a different product's price from another row.
           const together = names.some((n) =>
-            prices.some((p) => onScreen(n, viewport.width) && onScreen(p, viewport.width))
+            prices.some(
+              (p) =>
+                n.grid === p.grid &&
+                n.row === p.row &&
+                onScreen(n, viewport.width) &&
+                onScreen(p, viewport.width) &&
+                coVisible(n, p, viewport.height)
+            )
           );
           if (together) continue;
 
@@ -206,7 +260,7 @@ test('check 31 — the grid still shows both of its axes after the reflow', asyn
         if (!hasGrid) continue;
         s.count('renders');
 
-        const runs = await page.evaluate(LOCATE, [...depths, ...coverages]);
+        const runs = await page.evaluate(`(${LOCATE})(${JSON.stringify([...depths, ...coverages])})`);
 
         for (const label of [...depths, ...coverages]) {
           const shown = runs.filter((r) => r.needle === label && onScreen(r, viewport.width));
@@ -238,13 +292,30 @@ test('check 31 — the locator still tells an off-screen run from an on-screen o
   // The judgement above is one comparison, so it is pinned here rather than trusted.
   // Both drills that were accepted on this branch planted the correct current value and
   // could not have failed; these plant divergent ones.
-  const at = (left, right) => ({ left, right });
+  const at = (left, right) => ({ left, right, top: 10, bottom: 30, seen: true });
 
-  assert.equal(onScreen(at(0, 272), 320), true, 'a run inside the viewport was called off-screen');
-  assert.equal(onScreen(at(48, 320), 320), true, 'a run ending exactly at the edge was called off-screen');
-  assert.equal(onScreen(at(280, 418), 320), false, 'a run running past the right edge was called on-screen');
-  assert.equal(onScreen(at(330, 460), 320), false, 'a run entirely off-screen was called on-screen');
-  assert.equal(onScreen(at(-12, 40), 320), false, 'a run clipped off the left edge was called on-screen');
+  assert.equal(onScreen(at(0, 272), 320, 720), true, 'a run inside the viewport was called off-screen');
+  assert.equal(onScreen(at(48, 320), 320, 720), true, 'a run ending exactly at the edge was called off-screen');
+  assert.equal(onScreen(at(280, 418), 320, 720), false, 'a run running past the right edge was called on-screen');
+  assert.equal(onScreen(at(330, 460), 320, 720), false, 'a run entirely off-screen was called on-screen');
+  assert.equal(onScreen(at(-12, 40), 320, 720), false, 'a run clipped off the left edge was called on-screen');
+
+  // The clip flag — what the red team's vertical drill actually exploited. A run can sit
+  // squarely inside the viewport on both axes and still be clipped away by an ancestor
+  // with no scrollbar, which is unreachable rather than merely further down.
+  assert.equal(onScreen({ ...at(0, 200), seen: false }, 320), false,
+    'a run clipped away by an ancestor was called on-screen');
+
+  // Co-visibility is a property of a PAIR, and was not tested at all until 2026-08-13:
+  // `top` was captured and never read. Both cases below pass the horizontal test, so the
+  // old one-axis predicate would have called each of them co-visible.
+  const run = (top, bottom) => ({ ...at(0, 200), top, bottom });
+  assert.equal(coVisible(run(0, 20), run(24, 44), 720), true,
+    'a name and price stacked 24px apart were called not-co-visible');
+  assert.equal(coVisible(run(0, 20), run(900, 920), 720), false,
+    'a name and a price 900px apart were called co-visible on a 720px screen');
+  assert.equal(coVisible(run(0, 20), run(700, 720), 720), true,
+    'a pair spanning exactly one screen height was called not-co-visible');
 
   // The population itself has to be real: a typo in a product key would otherwise make
   // this file measure nothing while reporting green.

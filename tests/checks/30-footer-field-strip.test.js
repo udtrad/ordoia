@@ -35,6 +35,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { withSite, IS_HANDOVER } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { CLIP_ORACLE } from '../lib/visibility.js';
 import { contrastRatio } from '../lib/contrast.js';
 import { footerLine } from '../../eleventy.config.js';
 
@@ -90,20 +91,10 @@ const HANDOVER_SKIP =
  * appears to start at the left edge of line 1 and end at the right edge of line 2.
  */
 async function strip(page) {
-  return page.evaluate(() => {
+  return page.evaluate(`(() => {
+    ${CLIP_ORACLE}
     const ul = document.querySelector('footer ul.legal');
-    if (!ul) return { found: false, runs: [], clip: null };
-
-    // The list clips its own overflow, so having a client rect is not the same as being
-    // on the page: a separator belonging to a field that begins a row is drawn past this
-    // edge and renders nowhere. The rule is about what a reader sees, so the clip box has
-    // to come back with the runs. Taken from the element rather than from the stylesheet
-    // — reading `overflow` and inferring would be the guard consulting the mechanism.
-    const box = ul.getBoundingClientRect();
-    const clipped = getComputedStyle(ul).overflow !== 'visible';
-    const clip = clipped
-      ? { left: box.left, right: box.right, top: box.top, bottom: box.bottom }
-      : null;
+    if (!ul) return { found: false, runs: [] };
 
     const runs = [];
     const walker = document.createTreeWalker(ul, NodeFilter.SHOW_TEXT);
@@ -120,23 +111,31 @@ async function strip(page) {
           bottom: rect.bottom,
           left: rect.left,
           right: rect.right,
+          // Decided HERE, against every clipping ancestor's real clip region, not
+          // inferred later from the list's border box. See tests/lib/visibility.js.
+          seen: __isVisible(rect, node),
         });
       }
     }
-    return { found: true, runs, clip };
-  });
+    return { found: true, runs };
+  })()`);
 }
 
 /**
  * The runs a reader can actually see.
  *
- * A hair of tolerance either side, so a glyph sitting exactly on the clip edge counts as
- * hidden rather than as a sub-pixel sliver. Note what this does NOT relax: a run inside
- * the box is always kept, so the end-of-row case — the one that has to be caught — is
- * untouched by this filter. It can only ever discard something drawn outside the list.
+ * Was a border-box comparison until 2026-08-13, and the red team drilled it dead: the
+ * list clips with `overflow: hidden` today, but `overflow: clip` with an
+ * `overflow-clip-margin` paints OUTSIDE the border box by design. With a 12px margin
+ * every row-leading separator rendered, was hit-testable, and this filter still threw it
+ * away as "outside the list" — so the guard written to catch a dangling separator could
+ * not see one. **A geometric proxy for the clip is not the clip.**
+ *
+ * Visibility is now decided in-page against every clipping ancestor's actual region,
+ * clip-margin included. What this filter does NOT relax is unchanged and load-bearing: a
+ * run inside the region is always kept, so the end-of-row case is untouched.
  */
-const visible = (runs, clip) =>
-  clip === null ? runs : runs.filter((r) => r.right > clip.left + 0.5 && r.left < clip.right - 0.5);
+const visible = (runs) => runs.filter((r) => r.seen);
 
 /**
  * Group rendered runs into visual lines.
@@ -150,13 +149,19 @@ const visible = (runs, clip) =>
 function lines(runs) {
   const out = [];
   for (const run of [...runs].sort((a, b) => a.top - b.top || a.left - b.left)) {
-    const row = out.find((r) => run.top < r.bottom - 1 && run.bottom > r.top + 1);
+    // Matched against the row's SEED extent, which never widens. Widening it made this
+    // single-linkage clustering: one run overlapping both sides of a gap chained two
+    // genuinely non-overlapping rows into one, and a dangling separator on the first of
+    // them stopped being at the end of anything. Drilled by the red team 2026-08-13 —
+    // a bridging run needs only a taller line box than its neighbours, which is the exact
+    // condition (the 44px email link) this grouping was written to tolerate.
+    const row = out.find((r) => run.top < r.seedBottom - 1 && run.bottom > r.seedTop + 1);
     if (row) {
       row.runs.push(run);
       row.top = Math.min(row.top, run.top);
       row.bottom = Math.max(row.bottom, run.bottom);
     } else {
-      out.push({ top: run.top, bottom: run.bottom, runs: [run] });
+      out.push({ top: run.top, bottom: run.bottom, seedTop: run.top, seedBottom: run.bottom, runs: [run] });
     }
   }
   for (const row of out) row.runs.sort((a, b) => a.left - b.left);
@@ -243,11 +248,11 @@ test('check 30 — no line of the footer strip begins or ends with a separator',
         await page.goto(origin + url, { waitUntil: 'load' });
         await settled(page);
 
-        const { found, runs, clip } = await strip(page);
+        const { found, runs } = await strip(page);
         assert.ok(found, `${url}: no footer ul.legal at all, so there is no strip to measure`);
         s.count('renders');
 
-        const shown = visible(runs, clip);
+        const shown = visible(runs);
         s.count('separators', shown.filter((r) => r.text === SEPARATOR).length);
 
         for (const row of lines(shown)) {
@@ -426,6 +431,101 @@ test('check 30 — the email field is a link, underlined, and a 44px target on m
   );
 });
 
+test('check 30 — the clip clears a row-leading separator and never the focus ring', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  // This test exists because styles.css claimed it already did. The comment above
+  // `footer ul.legal` asserted "Both are measured by check 30 rather than trusted" and
+  // named a 4px clip clearance; the real figure was 8px, and this file contained zero
+  // references to outline, focus, padding-left, column-gap or margin-right. It measured
+  // NEITHER number. Found by the red team 2026-08-13.
+  //
+  // The two clearances are one system pulling in opposite directions, which is why they
+  // belong in one test: the separator must sit far enough left of its field to be clipped,
+  // and the focus ring must not reach that far. Shrink the list's padding and the ring
+  // overhangs; grow the separator's offset past the gap and it collides with the previous
+  // field. Both are asserted as SIGNS, so the failure names which way the system broke.
+  const s = survey({
+    renders: 'renders measured (viewports)',
+    leading: 'row-leading separators whose clip clearance was measured',
+    rings: 'focus rings measured against the clip edge',
+  });
+
+  const findings = [];
+
+  await withSite(async ({ origin, browser }) => {
+    const page = await browser.newPage();
+
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      await page.goto(origin + '/', { waitUntil: 'load' });
+      await settled(page);
+      s.count('renders');
+
+      const m = await page.evaluate(() => {
+        const ul = document.querySelector('footer ul.legal');
+        const b = ul.getBoundingClientRect();
+        const cs = getComputedStyle(ul);
+        const clipLeft = b.left + (parseFloat(cs.borderLeftWidth) || 0);
+
+        const items = [...ul.querySelectorAll('li')];
+        const leading = [];
+        for (let i = 1; i < items.length; i += 1) {
+          const sep = items[i].querySelector('.sep');
+          if (!sep) continue;
+          const prev = items[i - 1].getBoundingClientRect();
+          const cur = items[i].getBoundingClientRect();
+          // Same visual row? Overlap, not equal top — the email link is taller.
+          if (prev.top < cur.bottom - 1 && prev.bottom > cur.top + 1) continue;
+          const r = sep.getBoundingClientRect();
+          leading.push({ clearance: +(clipLeft - r.right).toFixed(2) });
+        }
+
+        // The ring at its worst case: whichever link begins its row.
+        const rings = [];
+        for (const a of ul.querySelectorAll('a')) {
+          a.focus();
+          const acs = getComputedStyle(a);
+          const ab = a.getBoundingClientRect();
+          const reach = ab.left - (parseFloat(acs.outlineOffset) || 0) - (parseFloat(acs.outlineWidth) || 0);
+          rings.push({ clearance: +(reach - clipLeft).toFixed(2), startsRow: Math.abs(ab.left - clipLeft) < 12 });
+          a.blur();
+        }
+        return { leading, rings };
+      });
+
+      for (const l of m.leading) {
+        s.count('leading');
+        if (l.clearance <= 0) {
+          findings.push(
+            `${viewport.width}px: a row-leading separator is only ${l.clearance}px past the clip ` +
+              `edge, so it renders where a reader sees it`
+          );
+        }
+      }
+      for (const r of m.rings) {
+        s.count('rings');
+        if (r.clearance < 0) {
+          findings.push(
+            `${viewport.width}px: a focus ring overhangs the clip edge by ${-r.clearance}px and ` +
+              `is cut off (WCAG 2.4.11 — focus must not be obscured)`
+          );
+        }
+      }
+    }
+
+    await page.close();
+  });
+
+  const unique = [...new Set(findings)];
+  s.failAll(unique.slice(0, 10));
+  s.report(
+    `the footer clip system is out of balance:\n  ${unique.join('\n  ')}\n\n` +
+      `The separator's offset, the column gap and the list's padding are one system. The ` +
+      `separator must be clipped; the focus ring must not be.`
+  );
+});
+
 test('check 30 — a field whose value is empty takes its label with it', () => {
   // A unit test, deliberately: the rendered page can only show what today's data
   // produces, and today `vatNumber` is populated. The rule that matters is what happens
@@ -573,6 +673,34 @@ test('check 30 — the line detector still finds a separator it should (controls
     lines(uneven).flatMap(danglers),
     [],
     'grouping split one visual line into several because the runs had different heights'
+  );
+
+  // The case that could not fail before 2026-08-13. The control above pins MERGING as
+  // correct; nothing pinned merging as WRONG, which is the same non-discriminating shape
+  // as the five guards this branch has already had to rewrite. Here a bridging run
+  // overlaps both a row that ends on a separator and the row below it. Under the old
+  // widening grouping the three chained into one row, the separator stopped being last,
+  // and a real defect vanished.
+  // Placement matters and is chosen, not incidental: the bridge sits to the LEFT and the
+  // next row's field to the RIGHT of the separator. Under the widening grouping all four
+  // chain into one row and `UK-based` becomes its last run, so the separator stops being
+  // at the end of anything and the dangler disappears. Verified both ways before this was
+  // written — widening: 1 row, danglers []; seeded: 2 rows, danglers ["ends"].
+  const bridged = [
+    { text: 'BRIDGE', top: 15, bottom: 30, left: 0, right: 6 },
+    { text: 'Ordoia', top: 0, bottom: 20, left: 10, right: 60 },
+    { text: SEPARATOR, top: 0, bottom: 20, left: 70, right: 76 },
+    { text: 'UK-based', top: 26, bottom: 40, left: 90, right: 150 },
+  ];
+  assert.equal(
+    lines(bridged).length,
+    2,
+    'a run overlapping both sides of a gap chained two non-overlapping rows into one'
+  );
+  assert.deepEqual(
+    lines(bridged).flatMap(danglers),
+    ['ends'],
+    'the trailing separator on the first row was lost when a bridging run merged the rows'
   );
   assert.equal(lines(uneven).length, 1, 'three overlapping runs are one line');
 });
