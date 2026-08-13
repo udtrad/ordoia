@@ -456,4 +456,55 @@ test('check 14 — the posture evaluator still tells a widening from the shipped
     ),
     []
   );
+
+  /**
+   * The six collisions the detector could not see until 2026-08-13, as controls.
+   *
+   * Every row here is a real request path matched by both patterns, and every one of them
+   * was reported clean by the previous implementation, which compared each pattern against
+   * a single sample string built by rewriting `*` and `:name` as the literal `x`. One
+   * sample can only find a collision where a splat expands to one segment-internal token.
+   *
+   * This is not hypothetical tidying. Adding `/*.woff2` beside the existing `/fonts/*` —
+   * an unremarkable next edit — was measured putting two comma-joined `Cache-Control`
+   * values on the wire with the whole suite green, and pinning a non-fingerprinted font
+   * `immutable` for a year with it. The witness path is named in each case so a reader can
+   * check the claim rather than trust the pair.
+   */
+  const collide = (a, b, witness) => {
+    const found = overlappingDeclarations(
+      parseHeadersFile([a, '  Cache-Control: public, max-age=60', b, '  Cache-Control: immutable'].join('\n'))
+    );
+    assert.equal(
+      found.length,
+      1,
+      `${a} and ${b} both match ${witness}, so Cache-Control is declared twice for it and ` +
+        `the delivered value is the two joined with a comma. Reported: ${found.length}`
+    );
+  };
+
+  collide('/oal/v1.0/*.css', '/oal/v1.0/fonts/*', '/oal/v1.0/fonts/x.css');
+  collide('/fonts/*', '/*.woff2', '/fonts/a.woff2');
+  collide('/*.css', '/chrome/*', '/chrome/abc.css');
+  collide('/oal/*/styles.css', '/oal/v1.0/*', '/oal/v1.0/styles.css');
+  collide('/assets/*', '/*/logo.svg', '/assets/logo.svg');
+  collide('/:v/styles.css', '/oal/*', '/oal/styles.css');
+
+  // …and the other direction, so a predicate that simply started answering "overlap" to
+  // everything could not pass this test. A `:placeholder` cannot span a `/`, which is the
+  // one boundary that keeps these apart.
+  assert.deepEqual(
+    overlappingDeclarations(
+      parseHeadersFile(['/:v/x', '  Cache-Control: a', '/a/b/x', '  Cache-Control: b'].join('\n'))
+    ),
+    [],
+    ':placeholder matches one path segment, so /:v/x cannot reach /a/b/x'
+  );
+  assert.deepEqual(
+    overlappingDeclarations(
+      parseHeadersFile(['/fonts/*', '  Cache-Control: a', '/chrome/*', '  Cache-Control: b'].join('\n'))
+    ),
+    [],
+    'two disjoint directories stay disjoint however wide their splats are'
+  );
 });

@@ -50,6 +50,7 @@ import { readFileSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, withSite, withSource } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { ledgerFor } from '../lib/allowances.js';
 import { deriveChromeSheet, isChromeSelector, parse } from '../../tools/chrome-sheet.mjs';
 
 const HANDOVER_SKIP =
@@ -368,6 +369,233 @@ test('check 27 — the chrome stylesheet cannot reach inside <main>', async (t) 
       "document, the chrome sheet governs everything around it. A selector crossing that " +
       'line means a future redesign restyles a rubric that scorecards were issued against, ' +
       'and every manifest and byte check would stay green while it happened.'
+  );
+});
+
+test('check 27 — the chrome does not depend on a frozen version stylesheet', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  /**
+   * R1's forward half, and the exact mirror of the test above.
+   *
+   * That test asks whether the chrome sheet can reach *into* `<main>`. This one asks the
+   * opposite and previously unasked question: can the frozen sheet reach *out* to the
+   * chrome? Both must be false for the split to hold, and only one of them was measured.
+   *
+   * ── Why this is not the same as "the chrome matches across pages" ─────────────────
+   *
+   * It is tempting to compare rendered chrome between `/oal/v1.0/` and `/about/`. That
+   * comparison is **green today** and would therefore be worthless: `src/styles.css` and
+   * `versions/v1.0/styles.css` are still near-identical, right down to a byte-identical
+   * `:root` block, so every page genuinely does render the same chrome. R1 does not only
+   * say the chrome matches today — it says a visitor "must keep seeing the same chrome
+   * after future chrome changes without a version event." A cross-page check cannot see
+   * the difference between a mechanism that works and one that has never been asked to.
+   *
+   * So this asks the structural question instead: **strip the frozen sheet away and the
+   * chrome must not move.** If it moves, the live chrome is being rendered in part by a
+   * published document's stylesheet, and the two diverge the moment the live design does.
+   *
+   * ── Why it cannot inherit the bug it is looking for ───────────────────────────────
+   *
+   * `chromeRulesByContext` above builds its expectations by filtering the live sheet
+   * through `isChromeSelector` — the same predicate the derivation uses. A rule the
+   * derivation cannot keep is a rule that guard never asks for, so it is structurally
+   * incapable of seeing an under-emission. This test never consults the predicate. It
+   * takes its element set from the rendered DOM (everything outside `<main>`) and its
+   * verdict from the browser's own cascade, so a selector form nobody has thought of yet
+   * is covered by construction.
+   *
+   * ── Computed styles only, deliberately ────────────────────────────────────────────
+   *
+   * No geometry. Measured over 10,120 observations on this site: computed styles are a
+   * zero-noise channel while `getBoundingClientRect` jitters up to ~0.1px between
+   * identical loads, courtesy of the `font-display: optional` race that once produced a
+   * fabricated R2 violation. A guard that reports rect deltas would be reporting its own
+   * instrument, and this repository has already published one such number by mistake.
+   */
+  const s = survey({
+    pages: 'version pages whose chrome was measured with the frozen sheet disabled',
+    elements: 'chrome elements compared before and after',
+    properties: 'computed property values compared',
+  });
+
+  const isVersionPage = (url) => /^\/oal\/v[\d.]+\/$/.test(url);
+  const ledger = await ledgerFor(27);
+
+  /**
+   * The properties a chrome element can visibly differ by.
+   *
+   * Colour is load-bearing beyond its own row: `outline-color` and `border-color` follow
+   * `currentColor`, so a lost `a { color: … }` shows up here as several diffs rather than
+   * one. That is how the wordmark's focus ring turns UA-default blue without any rule
+   * mentioning outlines.
+   */
+  const PROPS = [
+    'color', 'background-color', 'opacity', 'visibility', 'display', 'position',
+    'font-family', 'font-size', 'font-weight', 'font-style', 'font-variation-settings',
+    'line-height', 'letter-spacing', 'word-spacing', 'text-transform', 'white-space',
+    'text-decoration-line', 'text-decoration-color', 'text-decoration-thickness',
+    'text-underline-offset', 'list-style-type', 'text-align',
+    'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+    'border-top-color', 'border-bottom-color', 'border-top-style', 'border-bottom-style',
+    'outline-color', 'outline-width', 'outline-style', 'outline-offset',
+    'gap', 'grid-column-start', 'flex-wrap', 'flex-direction', 'align-items', 'z-index',
+  ];
+
+  /**
+   * Every element outside `<main>`, keyed by a path a reader can find in the markup.
+   *
+   * `!el.closest('main')` excludes `<main>` and its subtree in one predicate. `<html>` and
+   * `<body>` are excluded and reported separately below — they are ancestors of `<main>`
+   * rather than chrome, and which sheet owns the page background behind a frozen document
+   * is a genuine design question this test should not answer by implication.
+   */
+  const capture = (props) => {
+    const key = (el) => {
+      const parts = [];
+      for (let n = el; n && n.tagName && n.tagName !== 'BODY'; n = n.parentElement) {
+        const nth = n.parentElement ? [...n.parentElement.children].indexOf(n) : 0;
+        parts.unshift(`${n.tagName.toLowerCase()}${n.className ? `.${String(n.className).trim().split(/\s+/).join('.')}` : ''}[${nth}]`);
+      }
+      return parts.join(' > ');
+    };
+    const skip = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'TITLE', 'NOSCRIPT']);
+    const out = {};
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.closest('main') || skip.has(el.tagName)) continue;
+      const cs = getComputedStyle(el);
+      const rec = {};
+      for (const p of props) rec[p] = cs.getPropertyValue(p);
+      out[key(el)] = rec;
+    }
+    return out;
+  };
+
+  await withSite(async ({ origin, pages, browser }) => {
+    const page = await browser.newPage();
+    try {
+      for (const { url } of pages) {
+        if (!isVersionPage(url)) continue;
+        s.count('pages');
+
+        await page.goto(`${origin}${url}`, { waitUntil: 'load' });
+        const before = await page.evaluate(capture, PROPS);
+
+        // Disable this version's own stylesheet, and confirm one was actually disabled —
+        // a selector that matched nothing would make the comparison trivially green,
+        // which is the vacuity this suite refuses.
+        const frozenHref = `${url}styles.css`;
+        const off = await page.evaluate((href) => {
+          let n = 0;
+          for (const sheet of document.styleSheets) {
+            if (sheet.href && new URL(sheet.href).pathname === href) {
+              sheet.disabled = true;
+              n += 1;
+            }
+          }
+          return n;
+        }, frozenHref);
+
+        if (off !== 1) {
+          s.fail(
+            `${url}: expected exactly one stylesheet at ${frozenHref} to disable, disabled ` +
+              `${off}. Without it this comparison is between a page and itself, and would ` +
+              `report clean over any dependency at all.`
+          );
+          continue;
+        }
+
+        const after = await page.evaluate(capture, PROPS);
+
+        const keys = Object.keys(before);
+        s.count('elements', keys.length);
+        const moved = [];
+        for (const k of keys) {
+          if (!after[k]) {
+            moved.push(`${url} ${k}: the element disappeared when the frozen sheet was disabled`);
+            continue;
+          }
+          for (const p of PROPS) {
+            s.count('properties');
+            if (before[k][p] !== after[k][p]) {
+              moved.push(`${url} ${k} — ${p}: ${before[k][p]} → ${after[k][p]}`);
+            }
+          }
+        }
+
+        // Named in full rather than counted. The point of the finding is *which*
+        // declarations the chrome is borrowing, because that is the fix list.
+        const live = moved.filter((m) => !ledger.allows(url, m));
+        s.failAll(live.slice(0, 40));
+        if (live.length > 40) {
+          s.fail(`${url}: and ${live.length - 40} further chrome properties supplied by the frozen sheet`);
+        }
+      }
+
+      /**
+       * Sensitivity control, and it is not optional.
+       *
+       * The assertion above passes when disabling a stylesheet changes nothing. A capture
+       * that silently returned the same object twice, an `evaluate` that threw and was
+       * swallowed, a `disabled` flag the browser ignored — every one of those produces a
+       * clean green over a broken instrument. So the same machinery is pointed at a page
+       * where the dependency is real and expected: on a live page the site stylesheet
+       * genuinely does style the chrome, and removing it MUST move something.
+       */
+      const live = pages.find((p) => p.url === '/about/');
+      if (!live) {
+        s.fail('the sensitivity control needs /about/ in the build and it was not there');
+      } else {
+        await page.goto(`${origin}${live.url}`, { waitUntil: 'load' });
+        const a = await page.evaluate(capture, PROPS);
+        const n = await page.evaluate(() => {
+          let k = 0;
+          for (const sheet of document.styleSheets) {
+            if (sheet.href && new URL(sheet.href).pathname === '/styles.css') {
+              sheet.disabled = true;
+              k += 1;
+            }
+          }
+          return k;
+        });
+        const b = await page.evaluate(capture, PROPS);
+        const changed = Object.keys(a).filter((k) => b[k] && PROPS.some((p) => a[k][p] !== b[k][p]));
+        if (n !== 1 || changed.length === 0) {
+          s.fail(
+            `the control disabled ${n} stylesheet(s) on /about/ and measured ${changed.length} ` +
+              `changed chrome elements. The live sheet indisputably styles the chrome there, ` +
+              `so zero means this test cannot detect a dependency and its green above is not ` +
+              `evidence of anything.`
+          );
+        }
+      }
+    } finally {
+      await page.close();
+    }
+  });
+
+  // A deviation log that keeps entries for violations that no longer exist stops being a
+  // record of judgement. If the body-box allowance ever covers nothing, the R1/R2 conflict
+  // it records has been resolved and the entry must go with it.
+  s.failAll(
+    ledger.unused().map(
+      (a) =>
+        `allowance ${a.id} covered nothing this run. It records a decision about ` +
+        `${a.page}; if that decision no longer has a violation behind it, delete the entry.`
+    )
+  );
+
+  s.report(
+    "the live chrome is partly rendered by a published version's stylesheet. Those bytes are " +
+      'frozen forever, so every declaration listed above is one the chrome can never change ' +
+      'again: edit it in src/styles.css and the version page keeps the 2026 value, delete it ' +
+      'and the version page keeps it alone. R1 says a visitor must keep seeing the same chrome ' +
+      'after future chrome changes, and that is the half no byte comparison can reach — the ' +
+      'chrome matches across pages today only because the two stylesheets have not yet been ' +
+      'asked to differ.'
   );
 });
 

@@ -139,6 +139,59 @@ export function isChromeSelector(selector) {
   });
 }
 
+/** A trailing pseudo-element. It cannot live inside `:is()`, so it is carried outside. */
+const PSEUDO_ELEMENT = /(::[a-z-]+(?:\([^)]*\))?)\s*$/i;
+
+/**
+ * Is this selector unscoped — able to match chrome without naming it?
+ *
+ * The gap `isChromeSelector` leaves, and it was a live defect rather than a tidiness
+ * point. That predicate keeps a selector only if it *begins* with a chrome root, so every
+ * rule written as a bare type selector was dropped: `nav`, `a`, `a:hover`,
+ * `a[href^="http"]::after`, `:focus-visible`, and the ten-selector utility rule that lists
+ * `nav` and `footer` among its members. Measured 2026-08-13 by disabling the frozen sheet
+ * on `/oal/v1.0/`: the masthead nav's typeface came back as **Source Serif**, because
+ * Archivo was reaching it from `versions/v1.0/styles.css` and not from the chrome sheet at
+ * all. The live chrome was being rendered by a published document's stylesheet — the
+ * R2-into-R1 leak this module's header claims cannot happen, for the second time.
+ *
+ * A class or an id names something specific, and a chrome one starts with a chrome root by
+ * convention this module enforces. A bare type selector names nothing, so it has to be
+ * scoped rather than dropped. Attribute selectors are stripped before the test because
+ * `a[href^="http"]` is unscoped despite the dot in the value.
+ */
+export function isUnscopedSelector(selector) {
+  const s = selector.trim();
+  if (!s || isChromeSelector(s) || REHOME.has(s)) return false;
+  return !/[.#]/.test(s.replace(/\[[^\]]*\]/g, ''));
+}
+
+/**
+ * Scope an unscoped selector to the chrome, in both of the ways it can match.
+ *
+ * `.masthead a` covers descendants. `.skip:is(a)` covers the root *itself* — `.skip` is an
+ * `<a>`, so a bare `a` rule applies to it directly, and a descendant-only re-home would
+ * have left the skip link taking its colour and underline from the frozen sheet. `:is()`
+ * rather than a bare root because `.masthead:is(a)` must match nothing: a `<header>` is
+ * not an anchor, and re-homing `a { color }` onto `.masthead` unconditionally would paint
+ * the whole header.
+ *
+ * Every emitted form is anchored at a chrome root, so the sibling test that forbids this
+ * sheet from reaching inside `<main>` still holds by construction.
+ */
+export function rehomeUnscoped(selector) {
+  const s = selector.trim();
+  const pe = PSEUDO_ELEMENT.exec(s);
+  const base = pe ? s.slice(0, pe.index).trim() : s;
+  const tail = pe ? pe[1] : '';
+  const out = [];
+  for (const root of SCOPE_ROOTS) {
+    if (base) out.push(`${root}:is(${base})${tail}`);
+    out.push(`${root} ${s}`);
+  }
+  return out.join(', ');
+}
+
 /**
  * Split a CSS source into top-level nodes.
  *
@@ -301,13 +354,24 @@ function convert(node, dropped) {
     return decls.length ? `${rehomed} {\n${decls.join('\n')}\n}\n` : '';
   }
 
+  /**
+   * Per selector, not per prelude — which is where `.rail` was being lost.
+   *
+   * `REHOME` was consulted only against the whole prelude, so `.rail` re-homed when a rule
+   * said exactly `.rail` and was silently dropped when it appeared as one of ten selectors
+   * in the shared utility rule. Measured: `footer .rail` then took its letter-spacing by
+   * inheritance from `footer` at 17px rather than by matching at its own 12px — 5.1px
+   * against the 3.6px every other page renders. Same map, applied one level down.
+   */
   const selectors = prelude.split(',').map((s) => s.trim()).filter(Boolean);
-  const kept = selectors.filter((s) => isChromeSelector(s));
-  if (kept.length === 0) {
-    for (const s of selectors) dropped.add(s);
-    return '';
+  const kept = [];
+  for (const s of selectors) {
+    if (isChromeSelector(s)) kept.push(s);
+    else if (REHOME.has(s)) kept.push(REHOME.get(s));
+    else if (isUnscopedSelector(s)) kept.push(rehomeUnscoped(s));
+    else dropped.add(s);
   }
-  for (const s of selectors) if (!kept.includes(s)) dropped.add(s);
+  if (kept.length === 0) return '';
 
   const body = node.body.trim();
   return `${kept.join(', ')} {\n${body

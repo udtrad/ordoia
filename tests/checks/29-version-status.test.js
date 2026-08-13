@@ -221,7 +221,20 @@ test('check 29 — no other surface restates a status the record does not carry'
 
   await withSource(({ sources }) => {
     for (const { url, html } of sources) {
-      if (!/^\/(changelog|oal)\//.test(url)) continue;
+      /**
+       * Every rendered page, and the widening is the finding.
+       *
+       * This loop used to skip anything outside `/changelog/` and `/oal/`, so it scanned
+       * three of the nine rendered pages. The comparison itself was sound — changing the
+       * rail's value turns it red — but the denominator was drawn around the two routes
+       * where the bug had already been found, which is the same shape as the version of
+       * this test that switched itself off when `supersededCount === 0`.
+       *
+       * Demonstrated 2026-08-13: pasting the exact stale markup this check exists to catch
+       * into `about.njk` left the suite green, because `/about/` was never read. A second
+       * hand-maintained surface is a hazard wherever someone types it, and nothing about
+       * the hazard is specific to the two routes that happen to carry the rail today.
+       */
       s.count('surfaces');
 
       const found = RAIL.exec(html);

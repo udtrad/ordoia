@@ -373,11 +373,94 @@ export function patternToRegExp(pattern) {
   return new RegExp(`^${source}$`);
 }
 
-/** A concrete request path that the pattern certainly matches. */
-function sampleFor(pattern) {
-  return (pattern.replace(/^https?:\/\/[^/]*/i, '') || '/')
-    .replace(/\*/g, 'x')
-    .replace(/:[A-Za-z]\w*/g, 'x');
+/**
+ * A pattern as a token sequence: one literal character, `*`, or a `:placeholder`.
+ *
+ * `*` matches any run of characters including `/`; `:name` matches one or more characters
+ * that are not `/`. That is the whole grammar, which is what makes an exact intersection
+ * test tractable below.
+ */
+function tokenise(pattern) {
+  const pathOnly = pattern.replace(/^https?:\/\/[^/]*/i, '') || '/';
+  const tokens = [];
+  for (let i = 0; i < pathOnly.length; i += 1) {
+    if (pathOnly[i] === '*') {
+      tokens.push({ star: true });
+      continue;
+    }
+    const placeholder = /^:[A-Za-z]\w*/.exec(pathOnly.slice(i));
+    if (placeholder) {
+      tokens.push({ seg: true });
+      i += placeholder[0].length - 1;
+      continue;
+    }
+    tokens.push({ ch: pathOnly[i] });
+  }
+  return tokens;
+}
+
+/**
+ * Can any one request path match both patterns?
+ *
+ * ── Why this replaced a single sample string ──────────────────────────────────────
+ *
+ * The previous test asked whether pattern A matched *one* concrete sample built from
+ * pattern B by rewriting every `*` and `:name` as the literal `x`. One sample per pattern
+ * can only ever find collisions where a splat expands to a single segment-internal token,
+ * and the comment above it recorded a narrower limitation than it actually had. Measured
+ * 2026-08-13, all six of these real collisions were invisible to it:
+ *
+ *   /oal/v1.0/*.css  ×  /oal/v1.0/fonts/*   →  /oal/v1.0/fonts/x.css
+ *   /fonts/*         ×  /*.woff2            →  /fonts/a.woff2
+ *   /*.css           ×  /chrome/*           →  /chrome/abc.css
+ *   /oal/*​/styles.css ×  /oal/v1.0/*        →  /oal/v1.0/styles.css
+ *   /assets/*        ×  /*​/logo.svg         →  /assets/logo.svg
+ *   /:v/styles.css   ×  /oal/*              →  /oal/styles.css
+ *
+ * The rule was: blind whenever the collision needs a splat to absorb a `/`, to carry a
+ * literal suffix, or to meet a `:placeholder`. Adding `/*.woff2` beside the existing
+ * `/fonts/*` — an entirely ordinary next edit — put two comma-joined `Cache-Control`
+ * values on the wire with the suite green, which is the 2026-08-09 defect returning by
+ * the route its own detector was written to close.
+ *
+ * ── Why an exact test rather than more samples ────────────────────────────────────
+ *
+ * More samples is the same mistake with a longer list: it fails closed only for the
+ * collisions somebody thought of, and this repository has now twice shipped a guard that
+ * covered the author's model of a bug rather than the bug. The grammar is small enough to
+ * decide exactly, so it is decided exactly — a product walk over the two token sequences,
+ * memoised on position, which answers whether any common string exists at all.
+ */
+export function patternsIntersect(a, b) {
+  const A = tokenise(a);
+  const B = tokenise(b);
+  const seen = new Map();
+
+  const walk = (i, j) => {
+    const key = i * (B.length + 1) + j;
+    if (seen.has(key)) return seen.get(key);
+    seen.set(key, false); // cycles cannot produce a witness
+
+    let result;
+    const x = i < A.length ? A[i] : null;
+    const y = j < B.length ? B[j] : null;
+
+    if (!x && !y) result = true;
+    // A `*` may match the empty string, so trailing splats can still meet the end.
+    else if (x?.star) result = walk(i + 1, j) || (Boolean(y) && walk(i, j + 1));
+    else if (y?.star) result = walk(i, j + 1) || (Boolean(x) && walk(i + 1, j));
+    else if (!x || !y) result = false;
+    else if (x.seg && y.seg) result = walk(i + 1, j + 1) || walk(i + 1, j) || walk(i, j + 1);
+    // A `:placeholder` matches one or more characters, none of which may be `/`.
+    else if (x.seg) result = y.ch !== '/' && (walk(i + 1, j + 1) || walk(i, j + 1));
+    else if (y.seg) result = x.ch !== '/' && (walk(i + 1, j + 1) || walk(i + 1, j));
+    else result = x.ch === y.ch && walk(i + 1, j + 1);
+
+    seen.set(key, result);
+    return result;
+  };
+
+  return walk(0, 0);
 }
 
 /**
@@ -412,10 +495,7 @@ export function overlappingDeclarations(blocks) {
     for (let j = i + 1; j < blocks.length; j += 1) {
       const a = blocks[i];
       const b = blocks[j];
-      const overlap =
-        patternToRegExp(a.pattern).test(sampleFor(b.pattern)) ||
-        patternToRegExp(b.pattern).test(sampleFor(a.pattern));
-      if (!overlap) continue;
+      if (!patternsIntersect(a.pattern, b.pattern)) continue;
 
       for (const name of a.headers.keys()) {
         if (!b.headers.has(name)) continue;

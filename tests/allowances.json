@@ -20,6 +20,15 @@
       "reason": "'Independent is a word for a practice with apparatus behind it' — the section named 'The word we do not use' must say the word to disclaim it, and the sentence is affirmative in form so the negation rule cannot reach it.",
       "dated": "2026-08-08",
       "addedBy": "engineering, pass 1"
+    },
+    {
+      "id": "c27-frozen-page-owns-its-own-document-box",
+      "check": 27,
+      "page": "/oal/v1.0",
+      "match": "div.sheet[0] — margin-",
+      "reason": "R1 and R2 genuinely conflict at body's box model and only there: body{margin:0} sets the page width, which positions the chrome (R1's) and also decides <main>'s width below the max-width breakpoint (R2's), so this is a requirements decision and not an engineering one — flagged, not resolved.",
+      "dated": "2026-08-13",
+      "addedBy": "engineering, red-team + design remediation"
     }
   ]
 }

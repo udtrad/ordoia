@@ -324,8 +324,37 @@ test('check 21 — a published version is served from its stored bytes, not from
     }
     s.count('versions');
 
-    const built = path.join(REPO_ROOT, '_site', versionDir(version));
-    if (!existsSync(built)) continue;
+    // TARGET, not a hardcoded `_site`. Every sibling test in this file reads the target
+    // the run declares; this one read the real build regardless, so `test:empty` and
+    // `test:handover` counted it among their passes while measuring a directory they were
+    // not pointed at. Measuring something real but not the declared subject is its own
+    // small vacuity — the run's own name stops describing what was checked.
+    const built = path.join(TARGET, versionDir(version));
+    if (!existsSync(built)) {
+      /**
+       * No build to compare the stored bytes against, and that is a real limit rather
+       * than a pass.
+       *
+       * Reading TARGET instead of a hardcoded `_site` is what surfaced this: against the
+       * handover there is no rendered version directory at all, so the two populations
+       * this test exists to fill stay at zero. Saying so by name keeps the distinction
+       * the empty-population rule was written for — a check that measured nothing must
+       * not be indistinguishable from one that measured everything and found it sound.
+       * The `versions` population above still counts, so a missing `versions/v1.0/`
+       * remains a failure here even with nothing built.
+       */
+      s.mayBeEmpty(
+        'assets',
+        `no ${versionDir(version)}/ in this target, so the stored assets have nothing to ` +
+          `be compared against; this population fills whenever the suite runs over a build`
+      );
+      s.mayBeEmpty(
+        'fragments',
+        `no ${versionDir(version)}/index.html in this target, so the rendered <main> cannot ` +
+          `be held to the stored fragment; this population fills whenever the suite runs over a build`
+      );
+      continue;
+    }
 
     /**
      * The fragment, which is the half a copy loop cannot cover.

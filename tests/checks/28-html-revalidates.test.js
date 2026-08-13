@@ -143,7 +143,20 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
    * them and is part of how R2 holds. Dropping it to satisfy R3 would trade a real
    * guarantee for a cosmetic one.
    */
-  const s = survey({ assets: 'frozen version assets whose delivered Cache-Control was read' });
+  /**
+   * Two populations, because the two arms below guard two different files.
+   *
+   * They shared one until 2026-08-13, and that made the chrome arm assert nothing of its
+   * own: `rm -rf _site/chrome` and this test still passed, because the three frozen-version
+   * files kept the single population non-empty and `report()` therefore never fired its
+   * empty-population failure. The arm written to guard the derived chrome stylesheet was
+   * green with no derived chrome stylesheet in the build at all — the same shape as the
+   * `defaulted` note above, one population over.
+   */
+  const s = survey({
+    chrome: 'derived chrome stylesheets whose delivered Cache-Control was read',
+    assets: 'frozen version assets whose delivered Cache-Control was read',
+  });
 
   const site = await serve(TARGET, { applyHeaders: true });
   try {
@@ -160,7 +173,7 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
     for (const file of await readdir(path.join(TARGET, 'chrome')).catch(() => [])) {
       const url = `/chrome/${file}`;
       const res = await fetch(new URL(url, site.origin));
-      s.count('assets');
+      s.count('chrome');
       const cc = res.headers.get('cache-control') ?? '';
       if (!/\bimmutable\b/i.test(cc)) {
         s.fail(
