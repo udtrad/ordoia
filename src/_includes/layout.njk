@@ -114,14 +114,32 @@
         the same principle the signatory block was built on. Adding a field is one
         line in site.json and moves nothing here.
 
-        The separators are drawn in CSS rather than written into the markup: the
-        <ul>/<li> structure already carries the semantics, so the middot is purely
-        visual and nothing reads a stray character between fields.
+        The practice name is a field like any other (`{name}`), not a hardcoded first
+        item. One list means one filter and one separator rule; a name outside the loop
+        would need the leading-separator case handled twice.
+
+        ── The separator is a TEXT NODE, and that is not a style choice ──────────────
+
+        It was `li:not(:last-child)::after { content: "·" }` until 2026-08-13. Generated
+        content is not in the DOM, so `getComputedStyle` cannot report its colour and
+        check 7 is structurally blind to it — which is how this project shipped a
+        separator at 1.37:1 (CHANGES.md row 49) with the suite green. Draft 6 §5.4 rules
+        it out everywhere, and check 30 now asserts the absence rather than the presence.
+
+        §5.4 asks for the separator bound to the field BEFORE it. Measured, that cannot
+        satisfy the rule it was given for. The strip wants 766px against a 592px column at
+        1280 — short by 174px at the widest viewport — so it wraps at every width, and a
+        trailing separator dangles at the end of every wrapped row exactly as a leading one
+        hangs in the left margin. Neither binding satisfies "no line may begin or end with
+        ·". So the separator is emitted with the field it FOLLOWS, and styles.css takes it
+        out of flow and clips it, which leaves it visible only between two fields on the
+        same row. Deviation from §5.4's letter, in service of §5.4's rule, and check 30
+        holds the outcome rather than the arrangement.
       #}
       <ul class="legal">
-        <li>{{ site.name }}</li>
-        {%- for field in site.footerFields %}
-        <li>{% if field.href %}<a href="{{ field.href }}">{{ field.text | tok }}</a>{% else %}{{ field.text | tok }}{% endif %}</li>
+        {%- set fields = site.footerFields | footerLine %}
+        {%- for f in fields %}
+        <li>{% if not loop.first %}<span class="sep" aria-hidden="true">·</span>{% endif %}{% if f.href %}<a href="{{ f.href }}">{{ f.text }}</a>{% else %}{{ f.text }}{% endif %}</li>
         {%- endfor %}
       </ul>
     </div>

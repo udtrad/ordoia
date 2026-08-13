@@ -49,7 +49,7 @@ What that looks like in practice
 The same instrumented pass finds the ordinary defects too. In a system Ordoia built, it surfaced an agent serving fabricated company records as live results because the offline fallback was instructed in the prompt rather than enforced in code — and, separately, a signup path where every account created would have been locked out around twenty-four hours later. Neither was reported by anyone. Both were found by looking.
 
 @@ failures.instrument
-We find these because we instrument systems to be found out: OpenTelemetry tracing through the full agent path into Langfuse and Grafana, evaluation harnesses that run each case many times and score the distribution rather than the sample, and alerting tuned to the shape of the answers rather than uptime. Instrumentation is how we gather evidence — it is not what we sell. What we sell is the assessment it makes possible.
+We find these because we instrument systems to be found out: OpenTelemetry tracing through the full agent path, evaluation harnesses that run each case many times and score the distribution rather than the sample, and alerting tuned to the shape of the answers rather than uptime. Instrumentation is how we gather evidence — it is not what we sell. What we sell is the assessment it makes possible.
 
 @@ scoreyourself.heading
 Score yourself in five minutes

@@ -640,26 +640,70 @@ footer .foot { grid-column: 2; font-size: 0.78rem; color: var(--slate); }
 footer .foot a { color: var(--slate); }
 footer ul { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 1.2rem; }
 
-/* The legal field list. Fields wrap independently, and the separator is drawn between
-   them rather than written into the markup — this is a list, so the structure already
-   says where one field ends. It is not a rule: on this site a free-standing rule always
-   means a scale, and a middot between two fields is the same separator the stamp and
-   the rail use. `margin: 0` overrides the footer nav's bottom margin above. */
-/* The separator is bound to the PRECEDING field, not the following one, so it can only
-   ever trail a line. Bound to the following field it always landed at the start of a
-   wrapped line — measured at 1280px, where this list already wraps: line 2 opened with a
-   middot hanging in the left margin. Terms and Privacy add two more fields, so it will
-   wrap more, not less.
+/* The legal field list. It is not a rule: on this site a free-standing rule always means
+   a scale, and a middot between two fields is the same separator the stamp and the rail
+   use. `margin: 0` overrides the footer nav's bottom margin above.
 
-   No `color` here. It inherits `footer .foot`'s --slate (6.21:1). Setting it to
-   --untravelled measured 1.37:1 on rendered text — the same violation this file records
-   at .grid .scope .sep, and check 7 cannot see it because generated content is not a DOM
-   text node, so the suite stays green over it.
+   The separator is bound to the PRECEDING field, in that field's own `<li>`, so it can
+   never open a line. Bound to the following field it always landed at the start of a
+   wrapped line — measured at 1280px: line 2 opened with a middot hanging in the left
+   margin.
+
+   It is a template-emitted TEXT NODE since 2026-08-13, not `::after` content. Generated
+   content is not in the DOM, so check 7's `getComputedStyle` cannot read its colour and
+   the suite stays green over a separator at any ratio — which has happened here (row 49).
+   Check 30 now asserts no `::before`/`::after` draws anything in this list at all.
+
+   No `color`. It inherits `footer .foot`'s --slate on --page: 6.21:1, measured by check
+   30 rather than asserted here.
 
    Non-zero row-gap: with `gap: 0 0.75rem` the wrapped rows of this list were tighter than
    the nav list directly above it. */
-footer ul.legal { gap: 0.25rem 0.75rem; margin: 0; }
-footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem; }
+/* ── Why the separator is out of flow, and clipped ──────────────────────────────
+   Measured 2026-08-13: the strip wants 766px and the column it sits in is 592px at
+   1280 and 272px at 320. It is short by 174px at the WIDEST viewport this site
+   supports, so it is two to four rows at every width and has never been one line.
+   Terms and Privacy add two more fields, so it widens rather than narrows.
+
+   That kills both in-flow bindings. Bound to the preceding field a separator trails
+   every wrapped row; bound to the following field it opens every wrapped row in the
+   left margin. Both were measured before this rule was written, and §5.4 forbids both.
+
+   So the separator is taken OUT of flow and drawn in the column gap to the left of its
+   field, and the list clips its own overflow. A field mid-row draws its separator inside
+   the box; a field that begins a row draws it past the clip edge, where it does not
+   render. The wrap decision is therefore made on field widths alone and a separator can
+   only ever appear BETWEEN two fields on one row — which is the whole of what §5.4 asks
+   for, and the one arrangement that survives a field being added.
+
+   The three numbers are one system and are not independently adjustable:
+     column-gap 1.75rem (28px)  — the trough the separator lives in
+     .sep right offset 0.74rem  — centres the glyph: 12px left, 11.8px right, MEASURED
+     padding-left 0.5rem (8px)  — the clip edge, between the two
+   A separator at a row start is clipped by 3.8px. A focus ring extends 5px (2px outline
+   at 3px offset) and clears the same edge by 3px. Both measured at 320/375/768/1280.
+
+   The offset was 1rem until 2026-08-13, and this comment claimed it put the glyph
+   "mid-trough, 12px clear either side". **It did not.** Measured 7.8px left against 16px
+   right — a 2:1 asymmetry at every width — because the number was written from arithmetic
+   that was never checked against a render. Corrected here rather than quietly, because a
+   comment asserting a measurement nobody took is the same defect as a document asserting
+   a fix that does not exist, and this repository has shipped that twice (rows 28, 30).
+
+   Check 30 measures the clip and the ring. **Nothing measures the centring** — this line
+   is the only thing keeping it honest, so re-measure if you touch the gap or the offset.
+
+   Negative margin-left cancels the padding, so the strip stays aligned with the nav
+   list above it. No `color`: it inherits `footer .foot`'s --slate at 6.21:1. */
+footer ul.legal {
+  gap: 0.25rem 1.75rem;
+  margin: 0;
+  padding-left: 0.5rem;
+  margin-left: -0.5rem;
+  overflow: hidden;
+}
+footer ul.legal li { position: relative; }
+footer ul.legal .sep { position: absolute; right: 100%; margin-right: 0.74rem; }
 
 /* Named values for a screen reader where the visual design carries them by
    position. BRIEF §7 authorises this markup explicitly. */
@@ -689,6 +733,16 @@ footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem
   .rail:empty { display: none; }
   .rail { padding-bottom: 1.4rem; }
   .masthead nav ul { gap: 1rem; }
+  /* §5.4: the footer address is a 44px target on mobile. A procurement reader pastes it
+     into a form, so it stays plain selectable text with a real mailto — the target is
+     made by growing the box, never by turning it into a button.
+
+     `align-items: center` on the row keeps the middots on the optical centre line of the
+     taller link rather than on its baseline; without it the separator beside the email
+     field sits ~16px low. Padding is horizontal-only so the glyph stays clear of the
+     clip edge the separator depends on. */
+  footer ul.legal { align-items: center; }
+  footer ul.legal a { display: inline-flex; align-items: center; min-height: 44px; }
   .paper { padding: 1.6rem 1.1rem; }
   .fields dl, .sig { grid-template-columns: minmax(0, 1fr); }
 
@@ -748,15 +802,76 @@ footer ul.legal li:not(:last-child)::after { content: "·"; margin-left: 0.75rem
   .na__t { white-space: normal; }
   .measure__rule + .stamp { margin-top: 1.6rem; }
   table, .grid { font-size: 0.8rem; }
-  /* Vertical flow instead of horizontal scroll. Below this width the meta line's two
-     fields each take their own line and the separator goes, which drops the cell's
-     min-content width from "price · duration" to the longer of the two. The table is
-     narrower by that much, and the measured consequence is what matters: at 320px the
-     retainer column was entirely outside the scroller at rest, so the last product on
-     the ladder was invisible to anyone who did not discover the horizontal scroll. */
-  .grid .scope .v { display: block; }
-  .grid .scope .sep { display: none; }
-  .grid th.rowhead { width: auto; }
+
+  /* ── §8: the coverage × depth grid reflows here, and does not scroll ──────────────
+     `CHANGES.md` row 14 put this table in a scroller, reading WCAG 1.4.10's data-table
+     exemption, and that fixed the page while leaving the reader worse off. Measured at
+     320px: scroller 272px, table 418px, columns Coverage 101 / Inspected 91 / Tested 90 /
+     Sustained 136 — so the retainer, the top of the ladder, sat **entirely outside the box
+     at rest**, name and price both. A price reachable only by scrolling looks correct to a
+     glancing reader and to every check that measures the page instead of the reader, which
+     is why it survived from launch (row G).
+
+     Narrowing the cells cannot reach it. `from £3,000/month + VAT` is one NBSP-joined run
+     at 136px on its own, and three depth columns plus a row head do not fit 272px at any
+     type size this design would accept. So the table stops being a table below 46rem: each
+     cell becomes its own block, the coverage head becomes the section heading above its
+     cells, and the depth label moves into the cell.
+
+     Both axes survive, which is the part that could have been silently lost — coverage
+     from the row structure, depth from `.depth`. Check 31 asserts each of them separately
+     from the co-visibility it also asserts, because a stacked layout that drops an axis
+     passes every co-visibility test and stops being a ladder.
+
+     The meta line goes back to ONE line here. Stacking `.v` and hiding `.sep` was the
+     mitigation for a 90px column; the row is now full width and §8 asks for
+     `£2,500 + VAT · 1 week` as written.
+
+     `overflow-x: visible` is NOT load-bearing for today's content and a drill says so:
+     restore the scroller and check 31 stays green, because the reflowed table measures
+     272px inside a 272px box and there is nothing to scroll. It is kept for the failure
+     mode rather than the failure. Should an unbreakable run ever exceed the column, a
+     scroll container would hide it silently and recreate exactly the defect §8 exists to
+     remove; without one the page overflows and check 13 says so out loud. Loud beats
+     hidden, and that is the only reason this line is here. */
+  .scroller--reflow { overflow-x: visible; }
+  .grid, .grid caption, .grid tbody, .grid tr, .grid th, .grid td { display: block; width: auto; }
+  .grid thead { display: none; }
+  .grid tr { border-bottom: 1px solid var(--untravelled); padding-bottom: 1.1rem; margin-bottom: 1.1rem; }
+  .grid tr:last-child { border-bottom: 0; margin-bottom: 0; }
+  .grid th, .grid td { border-bottom: 0; padding: 0; }
+  .grid td:empty { display: none; }
+  /* --ink, not --slate, and the grid's two axes are the reason. The reflow puts the
+     coverage head and the depth label in the same column, one above the other, and until
+     2026-08-13 they rendered at 11.52px uppercase --slate with the same letter-spacing —
+     identical but for font-weight 500 against 400. Two DIFFERENT axes of the same table,
+     visually indistinguishable, on the one width where a reader has to tell them apart.
+
+     Coverage is the parent of the depth cells beneath it, so it takes the darker token:
+     14.42:1 against the depth label's 6.21:1. Palette only — no new size, no new weight,
+     no new rule. Check 31 asserts both axes are legible; it cannot assert they are
+     distinguishable from each other, so that judgement lives here. */
+  .grid th.rowhead {
+    width: auto;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: 0.9rem;
+  }
+  .grid td { margin-top: 1rem; }
+  .grid .depth {
+    display: block;
+    font-family: var(--util);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin-bottom: 0.15rem;
+  }
+  /* The path row is a note about the two products either side of it, not a fourth cell. */
+  .grid tr .path { display: block; }
+  .grid th.rowhead .path { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
   .cta { grid-auto-flow: row; gap: 0.35rem; }
   .cta .f + .f { border-left: 0; padding-left: 0; }
 }

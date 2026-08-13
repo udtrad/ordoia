@@ -13,11 +13,11 @@
     "rubric version, not a correction to this one."
   ],
   "version": "1.0",
-  "frozen": "2026-08-12",
+  "frozen": "2026-08-13",
   "publishedDocument": {
     "$comment": "The sha256 of the document v1.0 was published as, retained whole at v1.0.published-index.html. main.html is a byte-exact substring of it; check 21 re-runs that comparison on every commit.",
     "file": "v1.0.published-index.html",
-    "sha256": "0289c300dd07280815e09595d21794e097d2089170a16b3b3b02462053f32c9b"
+    "sha256": "da0ed36ecf244523aebd09eb481a80f96651b37caa3b05967bd695b851952897"
   },
   "files": {
     "favicon.svg": "08d67d5b611baf8fb895201cfe8ea9bfe3483479ef1bd06e62420024fc4ade80",
@@ -28,7 +28,7 @@
     "fonts/ibm-plex-mono-400-subset.woff2": "f697e17543bda18a79f3a1fb6ef31bf773bf4f94dbb7c4696228417c01064600",
     "fonts/source-serif-4-italic-subset.woff2": "cd6a8cff47f1721caa20b0c02506324d5d9f9817f6cb2868cd8f63dea28076fa",
     "fonts/source-serif-4-subset.woff2": "c40a8d8f974d5bcebe471667e705395c7acf651ca69bed5ac91ca33ac64072ff",
-    "main.html": "69e5401f3cb8209b96ede554291bb915f254481775adc40f5cb99603e9b7814a",
-    "styles.css": "81e8c1559a63ad5b104ae85b64001f8393321450064d39a77a0992d13996b402"
+    "main.html": "ceaf24d0cc60af204a4c49810a2ff563390f9d0dfe6507470a04eeeff9436310",
+    "styles.css": "935d5f33bdc0debd4774b0b892594e9bb2f5e119a29afb844ef58dd1dab252ab"
   }
 }

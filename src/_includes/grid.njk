@@ -10,12 +10,31 @@
 
 {% macro grid(products) %}
 {%- set path = products.products | product("top-up") %}
-<div class="scroller" tabindex="0">
+{#-
+  `scroller--reflow` marks the ONE scroller that stops scrolling below 46rem, because §8's
+  reflow applies to this table and to no other. There are fourteen scrollers on this site —
+  eleven of them on the rubric page — and an unscoped `overflow-x: visible` took the scroll
+  container away from all of them while only the two grid ones had been reflowed. Check 13
+  caught it as 7px of page overflow on `/changelog/`, which is a table this session never
+  touched and had no business moving.
+-#}
+<div class="scroller scroller--reflow" tabindex="0">
   <table class="grid">
     <caption>{{ products.grid.caption }}</caption>
     <thead>
       <tr>
-        <th scope="col"><span class="skip">{{ products.grid.coverageHeading }}</span></th>
+        {#-
+          `.vh`, not `.skip`. This is a visually hidden heading for a screen reader; `.skip`
+          is the skip-link class, which carries a `:focus` rule that reveals it at the top
+          left of the page and a print rule that removes it. It hid this heading only by
+          coincidence of both being off-screen.
+
+          Harmless while chrome and content are styled by the same sheet, and not harmless
+          after that: `.skip` is a chrome selector, so check 27 reports it reaching inside
+          `<main>` on two pages, and a class shared between chrome and content is one the
+          chrome derivation must either carry into every frozen page or drop from one.
+        -#}
+        <th scope="col"><span class="vh">{{ products.grid.coverageHeading }}</span></th>
         {%- for column in products.grid.columns %}
         <th scope="col">{{ column }}</th>
         {%- endfor %}
@@ -27,11 +46,26 @@
       <tr>
         <th scope="row" class="rowhead">{{ row.head }}</th>
         {%- for key in row.cells %}
+        {#-
+          The depth label, repeated into every cell. `display: none` above 46rem, where the
+          column header carries it and this would be a duplicate in the accessibility tree;
+          shown below 46rem, where §8's reflow stacks the cells and `thead` goes.
+
+          Markup rather than `content: attr(...)` deliberately. Generated content is not a
+          DOM text node, so `getComputedStyle` cannot report its colour and check 7 is
+          structurally unable to measure it — the exact hole that let a separator ship at
+          1.37:1 (CHANGES.md row 49) and the reason §5.4 banned it in the footer. A label
+          this reflow makes load-bearing must be measurable.
+
+          It is not copy: the string is `products.grid.columns`, the same array the header
+          row prints, so the two cannot disagree.
+        -#}
+        {%- set depth = products.grid.columns[loop.index0] %}
         {%- if key %}
         {%- set p = products.products | product(key) %}
-        <td><span class="prod">{{ p.name }}</span><span class="scope"><span class="v">{{ p | price }}</span>&nbsp;<span class="sep" aria-hidden="true">&middot;</span> <span class="v">{{ p.duration }}</span></span></td>
+        <td><span class="depth">{{ depth }}</span><span class="prod">{{ p.name }}</span><span class="scope"><span class="v">{{ p | price }}</span>&nbsp;<span class="sep" aria-hidden="true">&middot;</span> <span class="v">{{ p.duration }}</span></span></td>
         {%- else %}
-        <td class="none">{{ products.grid.notOffered }}</td>
+        <td class="none"><span class="depth">{{ depth }}</span>{{ products.grid.notOffered }}</td>
         {%- endif %}
         {%- endfor %}
       </tr>

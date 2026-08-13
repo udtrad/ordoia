@@ -34,13 +34,19 @@
  * and been disabled — and it applies exactly here. This check goes red only when
  * something is genuinely wrong.
  *
- * ── Why frozen version directories are excluded ───────────────────────────────────
+ * ── Frozen version directories are no longer excluded, and that is the 2026-08-13 fix ──
  *
- * `/oal/v1.0/` was published before the entity existed, and since row 50 its
- * `index.html` is served from stored bytes, so its footer is frozen at what it said on
- * publication day — with no VAT field. That is not a defect; it is what freezing means,
- * and row 50 recorded it as the price of the pin. Asserting a VAT footer there would be
- * asserting that a published document should have changed.
+ * They were, and the reason was good while it lasted: `/oal/v1.0/`'s whole `index.html`
+ * was served from stored bytes recorded before the entity existed, so its footer was
+ * frozen with no VAT field, and asserting one would have been asserting that a published
+ * document should have changed.
+ *
+ * **Commit A re-cut the frozen unit to the `<main>` fragment**, so the chrome — footer
+ * included — renders live on every version page. Measured on the build: `/oal/v1.0/`
+ * states the configured registration exactly like every other page. The exclusion
+ * therefore stopped describing the site and started hiding a page from its own check,
+ * which is this repository's most-repeated defect: a population that shrank silently on
+ * a premise that had changed. Denominator went 8 → 9.
  */
 
 import test from 'node:test';
@@ -102,18 +108,16 @@ async function scannedFiles() {
 }
 
 /**
- * Frozen snapshot URLs, which carry the footer they were published with.
+ * Frozen version URLs — kept, but no longer used to exclude anything.
  *
- * Keyed on **manifest presence**, which is this repo's own definition of frozen
- * (`freeze-version.mjs`: "The manifest for a version, or null if that version is not
- * frozen"), not on membership of `oal.versions`. Those are different sets: the build's
- * `eleventy.after` hook copies a version directory from live `src/` whenever no stored
- * bytes exist, so a version listed in `oal.json` but not yet passed to
- * `tools/freeze-version.mjs` renders with the LIVE footer — and excluding it by version
- * number would skip a page that genuinely must carry the VAT field, before it was even
- * counted.
+ * It reports how many of the measured pages are frozen ones, so the fact that the footer
+ * now reaches them is stated as a number rather than assumed. Keyed on **manifest
+ * presence**, which is this repo's own definition of frozen (`freeze-version.mjs`: "The
+ * manifest for a version, or null if that version is not frozen"), not on membership of
+ * `oal.versions` — the build's `eleventy.after` hook copies a version directory from live
+ * `src/` whenever no stored bytes exist, so the two sets differ.
  */
-const isFrozenSnapshot = (url) =>
+const isFrozenVersion = (url) =>
   oal.versions.some((v) => readManifest(v.version) && url.startsWith(`/oal/v${v.version}/`));
 
 test('check 25 — the rendered footer states the configured VAT registration', async (t) => {
@@ -128,14 +132,15 @@ test('check 25 — the rendered footer states the configured VAT registration', 
   const s = survey({
     pages: 'built pages whose footer was read',
     footers: 'footers carrying a VAT field',
+    frozen: 'frozen version pages among them, which the live chrome now reaches',
   });
 
   const findings = [];
 
   for (const file of await htmlFiles()) {
     const url = urlFor(file);
-    if (isFrozenSnapshot(url)) continue;
     s.count('pages');
+    if (isFrozenVersion(url)) s.count('frozen');
 
     const html = await readFile(path.join(TARGET, file), 'utf8');
     const footer = /<footer[\s\S]*?<\/footer>/i.exec(html)?.[0] ?? '';

@@ -613,6 +613,48 @@ into the frozen directory on every run, so "self-contained" was true of the snap
 was **the living stylesheet becoming un-editable**, because check 21 went red on any
 change to it. See `CHANGES.md` row 40.
 
+### When a published version is re-frozen
+
+Twice now, so this is a practice and not an exception, and pretending otherwise is how a
+document starts lying about its own repository.
+
+| When | Why | What moved |
+|---|---|---|
+| 2026-08-11 | The frozen directory was re-copying the living `src/styles.css` on every build, which made the living sheet un-editable. `CHANGES.md` row 40. | The mechanism. No published word changed. |
+| 2026-08-13 | Draft 6 §5.3 cut the rubric intro's intention clause. `CHANGES.md` row 114. | One sentence of published `<main>`, deliberately. |
+
+**The rule, stated so the next one is a decision rather than a habit.** A re-freeze is
+available only while a version's own publication date has not passed, and it is the
+user's call, never engineering's. It costs three things every time, and all three are
+deliverables rather than side effects:
+
+1. **The provenance anchor is destroyed and re-minted.** `versions/v<n>.published-index.html`
+   and the `PUBLISHED_SHA256` literal both change. The tool refuses to do this by itself
+   (check 32 holds that refusal), so the override is deliberate: delete the manifest, the
+   pinned directory **and** the retained document, rebuild, re-freeze, then update the
+   literal in a reviewed diff.
+2. **The frozen stylesheet becomes the stylesheet as at the re-freeze**, not as at
+   publication. On 2026-08-13 that pulled a session's live design into the snapshot. It
+   reached nothing — 0 computed-style differences across 45,444 values inside the frozen
+   `<main>` — but that was **measured afterwards**, and it is the reason a re-freeze must
+   be paired with the R2 comparison rather than assumed safe.
+3. **This page has to be corrected.** It called the first re-freeze "not a precedent"; the
+   second made that false, and a document claiming a constraint the repository does not
+   observe is worse than one that is merely out of date.
+4. **Returning visitors keep the old frozen stylesheet, and nothing can tell them not
+   to.** `/oal/v1.0/styles.css` is served `immutable` for a year at a **stable,
+   unfingerprinted URL** — correct while a published version never changes, which is the
+   assumption a re-freeze breaks. A visitor who loaded the page before the re-freeze
+   renders the new document against the old sheet, and a cache purge cannot reach them.
+   Measured on 2026-08-13: **0 computed-style differences across 45,444 values** at four
+   widths, so that deploy was safe — but it was safe because the session's CSS happened
+   to touch only the footer and the grid, not because anything prevented otherwise.
+   **Before the next re-freeze, either fingerprint the frozen stylesheet or run that same
+   comparison.** The `immutable`-at-a-stable-URL shape is what row 71 already caught once
+   on `/styles.css`.
+
+After the publication date passes, the answer is a new version, not a re-freeze.
+
 ### What is frozen, since 2026-08-12: the content and its rendering, not the document
 
 `index.html` was pinned too between 2026-08-11 and 2026-08-12 (`CHANGES.md` row 50). That
@@ -706,9 +748,12 @@ These are not deploy steps. They are decisions, and they sit in `CHANGES.md`:
 
 **Done 2026-08-10, and no longer outstanding:**
 
-- **Freeze `/oal/v1.0/`.** Performed in the change that took the site live. Re-taken once
-  on 2026-08-11 — see *Publishing a rubric version* below and `CHANGES.md` row 40 for the
-  reasoning, which is not a precedent.
+- **Freeze `/oal/v1.0/`.** Performed in the change that took the site live. Re-taken
+  **twice** since: 2026-08-11 (`CHANGES.md` row 40, decoupling the frozen stylesheet) and
+  2026-08-13 (row 114, draft 6 §5.3 cutting the rubric intro's intention clause). This
+  entry said the first was *"not a precedent"* until the second one made that untrue, and
+  it is withdrawn here rather than left standing — see *When a published version is
+  re-frozen* below for what the practice actually is.
 - **A mailbox at `hello@ordoia.com`.** Stood up on Namecheap Private Email and **proved
   end to end on 2026-08-11**: a message sent from the site's own CTA arrived in the
   mailbox, and a reply sent from it arrived back. That closes the one failure on this page

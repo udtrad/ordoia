@@ -284,8 +284,7 @@ function buildTokens() {
     vatNumber: site.legalEntity.vatNumber,
     domain: site.domain,
     email: site.email,
-    elsewhereLabel: site.elsewhere.label,
-    elsewhereUrl: site.elsewhere.url,
+    name: site.name,
 
     // Every price token goes through the same renderer the templates use, so copy
     // and markup cannot disagree about what a price looks like.
@@ -308,6 +307,56 @@ function buildTokens() {
 
 const TOKENS = buildTokens();
 
+/**
+ * The footer's field list, resolved and filtered, ready to render.
+ *
+ * Draft 6 §5.4. One rule closes four separate defects, which is the reason it is a filter
+ * over the data rather than four conditions in the template:
+ *
+ *   - `VAT registration no.` left standing with nothing after it. **A field is one unit**:
+ *     the label and its value drop together or not at all. The registration belongs to the
+ *     current legal person and does not survive incorporation (VAT68 is open), so an empty
+ *     `vatNumber` is a scheduled state, not a hypothetical one.
+ *   - A leading separator, when the first field is the one that dropped.
+ *   - A trailing separator, when the last field is.
+ *   - The known empty-anchor defect — a field with an `href` and no text rendered `<a></a>`
+ *     and the build succeeded. Cosmetic until the array contained a link; it does now.
+ *
+ * The emptiness test is applied to the **token**, before substitution, and that distinction
+ * is the whole point. Testing the resolved string instead passes `VAT registration no. `
+ * — non-empty, and a published label with nothing behind it.
+ */
+export function footerLine(fields, extra = {}) {
+  const TOKEN = /\{[A-Za-z][A-Za-z0-9.]*\}/g;
+
+  /** The resolved string, or null if any token in it resolved to nothing. */
+  const resolve = (raw, where) => {
+    const text = String(raw ?? '');
+    for (const token of text.match(TOKEN) ?? []) {
+      if (!substitute(token, where, extra).trim()) return null;
+    }
+    const done = substitute(text, where, extra).trim();
+    return done || null;
+  };
+
+  const out = [];
+  for (const field of fields ?? []) {
+    const text = resolve(field.text, 'site.json footerFields text');
+    if (text === null) continue;
+
+    if (field.href === undefined) {
+      out.push({ text });
+      continue;
+    }
+    const href = resolve(field.href, 'site.json footerFields href');
+    // A link whose target did not resolve is worse than a missing field: it renders as
+    // an anchor a reader can click into nothing.
+    if (href === null) continue;
+    out.push({ text, href });
+  }
+  return out;
+}
+
 function substitute(text, where, extra = {}) {
   const vocabulary = { ...TOKENS, ...extra };
   return text.replace(/\{([A-Za-z][A-Za-z0-9.]*)\}/g, (whole, key) => {
@@ -318,7 +367,11 @@ function substitute(text, where, extra = {}) {
           `or fix the typo.`
       );
     }
-    return vocabulary[key];
+    // A KNOWN token holding null or undefined resolves to nothing, never to the strings
+    // "null" or "undefined". An unknown token still throws above — the two cases are
+    // different and only the first is a value question. Found by check 30's unit test:
+    // `{ vatNumber: null }` published "VAT registration no. null".
+    return String(vocabulary[key] ?? '');
   });
 }
 
@@ -597,6 +650,15 @@ export default function (eleventyConfig) {
 
   /** Substitute tokens in a template-side string (link text, aria labels). */
   eleventyConfig.addFilter('tok', (text) => substitute(String(text ?? ''), 'template string'));
+
+  /**
+   * The footer's fields, resolved and filtered. See `footerLine` above.
+   *
+   * Filtering happens here rather than in the template because the template has to know
+   * which field is LAST in order to place separators between fields and after none of
+   * them — and "last" only means anything once the empty ones are gone.
+   */
+  eleventyConfig.addFilter('footerLine', (fields) => footerLine(fields));
 
   /** Dimensions belonging to a pair, in order. */
   eleventyConfig.addFilter('inPair', (dimensions, pair) =>

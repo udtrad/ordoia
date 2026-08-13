@@ -9,7 +9,7 @@ from one record (BRIEF.md §6). What is here is the prose around them.
 The Ordoia Assurance Levels state how far a behaviour has travelled from being asked for to being proved: undefined, asserted, enforced, evidenced. Version {version}, published {published} at `{domain}/oal/v{version}`. Published under Creative Commons Attribution 4.0.
 
 @@ intro
-Every assessment we perform scores a system against eight dimensions, on the same four levels. Both are published here in full. Read them before you talk to us, and score yourself — the rubric is written to be used without us, and most people who read it will never contact us. That is the intention.
+Every assessment we perform scores a system against eight dimensions, on the same four levels. Both are published here in full. Read them before you talk to us, and score yourself — the rubric is written to be used without us.
 
 @@ scale.caption
 The scale
