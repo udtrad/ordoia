@@ -879,6 +879,35 @@ content and is kept for the failure mode rather than the failure — an unbreaka
 outgrew the column would be hidden silently by a scroll container and reported loudly by
 check 13 without one.
 
+**Check 32 — the publication path, exercised.** Denominators: the provenance artifacts
+compared across a refused command, and the manifest entries verified against the stored
+snapshot. Added 2026-08-13, ahead of §4's exit rather than with it, and the reason is that
+`tools/freeze-version.mjs` is the only thing in this repository that writes a frozen
+version and **nothing had ever run it.** Check 21 reads what the tool produced. That is a
+different claim, and the difference is the whole of what a re-freeze passes through.
+
+Every test runs against a copy of the tool in a temporary directory, which that copy then
+treats as the repository — `REPO_ROOT` resolves from the module's own location and the
+module imports nothing but node builtins. This is a safety property rather than tidiness:
+a test that ran the real CLI against the real repo to prove it refuses would, on the day
+the refusal broke, **destroy the artifact it was written to protect**, and would do so
+while reporting a failure.
+
+The load-bearing assertion is not the error message. A message is a claim; unchanged bytes
+are the property. So the refused command is followed by a hash comparison of the retained
+document and the manifest, and the drill that justifies it is a synthetic tool which prints
+the documented refusal, exits non-zero, and writes anyway — caught, naming the anchor moving
+from `0289c300dd07` to `24f5cbc8dac2`. Deleting both refusals outright re-froze v1.0 in the
+sandbox and **reported success**, which is the pre-`b10fad8` failure reproduced exactly.
+
+**The check was vacuous when first written, and its own controls caught it.** `main()` runs
+only when `process.argv[1] === fileURLToPath(import.meta.url)`; on macOS `os.tmpdir()` is a
+symlink, so the CLI imported, defined everything, ran nothing and exited 0 — against which
+"refuses to re-freeze" and "refuses with no build" both passed for the same wrong reason.
+The control arm requires the command to *succeed* once the manifest is removed, and that is
+what went red. Fifth guard on this branch that could not fail, and the first caught by its
+own controls rather than by a reader.
+
 It also holds the changelog rail's superseded list to the record. **That sentence was
 false when it was first written here** — the rail was still a hand-typed copy fragment
 reading `None`, `src/changelog.njk` had not been touched, and the check's third test
