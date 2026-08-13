@@ -794,15 +794,66 @@ footer ul.legal .sep { position: absolute; right: 100%; margin-right: 1rem; }
   .na__t { white-space: normal; }
   .measure__rule + .stamp { margin-top: 1.6rem; }
   table, .grid { font-size: 0.8rem; }
-  /* Vertical flow instead of horizontal scroll. Below this width the meta line's two
-     fields each take their own line and the separator goes, which drops the cell's
-     min-content width from "price · duration" to the longer of the two. The table is
-     narrower by that much, and the measured consequence is what matters: at 320px the
-     retainer column was entirely outside the scroller at rest, so the last product on
-     the ladder was invisible to anyone who did not discover the horizontal scroll. */
-  .grid .scope .v { display: block; }
-  .grid .scope .sep { display: none; }
-  .grid th.rowhead { width: auto; }
+
+  /* ── §8: the coverage × depth grid reflows here, and does not scroll ──────────────
+     `CHANGES.md` row 14 put this table in a scroller, reading WCAG 1.4.10's data-table
+     exemption, and that fixed the page while leaving the reader worse off. Measured at
+     320px: scroller 272px, table 418px, columns Coverage 101 / Inspected 91 / Tested 90 /
+     Sustained 136 — so the retainer, the top of the ladder, sat **entirely outside the box
+     at rest**, name and price both. A price reachable only by scrolling looks correct to a
+     glancing reader and to every check that measures the page instead of the reader, which
+     is why it survived from launch (row G).
+
+     Narrowing the cells cannot reach it. `from £3,000/month + VAT` is one NBSP-joined run
+     at 136px on its own, and three depth columns plus a row head do not fit 272px at any
+     type size this design would accept. So the table stops being a table below 46rem: each
+     cell becomes its own block, the coverage head becomes the section heading above its
+     cells, and the depth label moves into the cell.
+
+     Both axes survive, which is the part that could have been silently lost — coverage
+     from the row structure, depth from `.depth`. Check 31 asserts each of them separately
+     from the co-visibility it also asserts, because a stacked layout that drops an axis
+     passes every co-visibility test and stops being a ladder.
+
+     The meta line goes back to ONE line here. Stacking `.v` and hiding `.sep` was the
+     mitigation for a 90px column; the row is now full width and §8 asks for
+     `£2,500 + VAT · 1 week` as written.
+
+     `overflow-x: visible` is NOT load-bearing for today's content and a drill says so:
+     restore the scroller and check 31 stays green, because the reflowed table measures
+     272px inside a 272px box and there is nothing to scroll. It is kept for the failure
+     mode rather than the failure. Should an unbreakable run ever exceed the column, a
+     scroll container would hide it silently and recreate exactly the defect §8 exists to
+     remove; without one the page overflows and check 13 says so out loud. Loud beats
+     hidden, and that is the only reason this line is here. */
+  .scroller--reflow { overflow-x: visible; }
+  .grid, .grid caption, .grid tbody, .grid tr, .grid th, .grid td { display: block; width: auto; }
+  .grid thead { display: none; }
+  .grid tr { border-bottom: 1px solid var(--untravelled); padding-bottom: 1.1rem; margin-bottom: 1.1rem; }
+  .grid tr:last-child { border-bottom: 0; margin-bottom: 0; }
+  .grid th, .grid td { border-bottom: 0; padding: 0; }
+  .grid td:empty { display: none; }
+  .grid th.rowhead {
+    width: auto;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin-bottom: 0.9rem;
+  }
+  .grid td { margin-top: 1rem; }
+  .grid .depth {
+    display: block;
+    font-family: var(--util);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--slate);
+    margin-bottom: 0.15rem;
+  }
+  /* The path row is a note about the two products either side of it, not a fourth cell. */
+  .grid tr .path { display: block; }
+  .grid th.rowhead .path { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
   .cta { grid-auto-flow: row; gap: 0.35rem; }
   .cta .f + .f { border-left: 0; padding-left: 0; }
 }

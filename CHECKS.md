@@ -852,6 +852,33 @@ Two numbers that were claimed in a comment and then measured rather than left as
 a row-leading separator is clipped by 4px, and a row-leading link's focus ring clears the
 same edge by **3px** — drilled by reordering the fields so the address leads a row.
 
+**Check 31 — a product's name and price are on screen together.** Denominator: the five
+products in `products.json`. Added 2026-08-13 with Commit D, and its interest is the gap it
+covers between two checks that were both green: **check 13 asserts the page does not push
+sideways, and it passed for the entire period this defect was live.** The page genuinely did
+not overflow — row 14's scroller absorbed it — while at 320px the retainer sat entirely
+outside the scroll box at rest, name and price both. A layout check cannot see that, because
+nothing about the layout is wrong. So this invariant is written about the **reader**: at
+rest, with nothing scrolled, can you see a product and what it costs at the same time?
+
+Runs are located by searching the rendered text for each product's own name and its own
+price, taken from `products.json` through the same `renderPrice` the templates use. That is
+the anti-pattern this branch has hit six times, avoided on purpose: had the check asked for
+`.grid td .prod`, the reflow that fixes the defect could have stopped emitting `.prod` and
+emptied the population, and the check would have gone quiet rather than red.
+
+The second test is separate and it is the one that would otherwise be missed — **a stacked
+layout that drops an axis passes every co-visibility assertion ever written.** Coverage and
+depth are what this table is for, so each is asserted to be on screen in its own right.
+
+Four drills. Reflow removed entirely, depth label hidden and coverage head hidden all turn
+it red on the arm they should. The fourth is recorded because it did **not**: restoring the
+scroller leaves the check green, since the reflowed table measures 272px inside a 272px box
+and there is nothing left to scroll. `overflow-x: visible` is therefore inert for today's
+content and is kept for the failure mode rather than the failure — an unbreakable run that
+outgrew the column would be hidden silently by a scroll container and reported loudly by
+check 13 without one.
+
 It also holds the changelog rail's superseded list to the record. **That sentence was
 false when it was first written here** — the rail was still a hand-typed copy fragment
 reading `None`, `src/changelog.njk` had not been touched, and the check's third test
