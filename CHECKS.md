@@ -161,34 +161,46 @@ Ten tests added — check 19's four on the workflows, check 20's three on the re
 check 21's three on the version freeze. The seven skips are still check 15 and still only
 under `npm test`. `npm run test:live-local` remains **69 pass, 0 fail, 0 skipped**.
 
-**Updated 2026-08-13 (check 33): 129 tests, 119 pass, 0 fail, 10 skipped.** The table below
-had been carrying the 2026-08-09 figures through four sessions and fifty-eight added tests,
-which is drift in the one document that claims to hold the measurements. All four rows are
-re-measured here rather than carried forward.
+**Updated 2026-08-13 (check 33's visible arm): 130 tests, 120 pass, 0 fail, 10 skipped.**
+The table below had been carrying the 2026-08-09 figures through four sessions and
+fifty-eight added tests, which is drift in the one document that claims to hold the
+measurements. All four rows are re-measured on every change to it rather than carried
+forward — including the rows a change is not expected to move, which is how the handover
+row below is evidence rather than a leftover.
 
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 129 | 119 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 129 | 127 | 0 | 2 |
-| the handover | `npm run test:handover` | 129 | 79 | **10** | 40 |
-| an empty directory | `npm run test:empty` | 129 | 55 | **64** | 10 |
+| the build | `npm test` | 130 | 120 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 130 | 128 | 0 | 2 |
+| the handover | `npm run test:handover` | 130 | 79 | **10** | 41 |
+| an empty directory | `npm run test:empty` | 130 | 55 | **65** | 10 |
 
 `test:live-local`'s two skips are checks 22 and 24 — the Cloudflare zone and the external
 monitor, both of which want a credential and neither of which existed when this row last
 read `0`. Setting `ORDOIA_ZONE_CHECK` and `ORDOIA_MONITOR_CHECK` against the live deployment
-is what produces the **129/129/0/0** run, and that is a deploy-time claim rather than a
-local one.
+is what turns those two skips into passes, and **that is a deploy-time claim rather than a
+local one**. It is therefore not written here as a number until it has been run: the
+previous figure was `129/129/0/0` at 129 tests, and the 130-test equivalent is recorded in
+the session log for the deploy that establishes it, not predicted here.
 
 > The first draft of this paragraph said `127/127/0/0` — the previous session's figure with
 > only part of check 33 added, in the one paragraph whose subject is stale numbers. Caught
 > by the adversarial pass, not by re-reading. A re-measurement is not a re-measurement until
-> every number in it has been measured.
+> every number in it has been measured. The rule that follows from it is the one applied
+> above: a figure that can only be produced by a deploy does not get written down before
+> the deploy.
 
 The handover's failures moved **8 → 9 → 10**, once per check that found a real defect in it:
 check 23's collision, and now check 33 rediscovering `CHANGES.md` row 13's
 *"Self-checkIf you deleted the sentence…"* on all eight rubric dimensions. That number going
 *down* would mean a check had stopped finding a defect it used to find; it going up for any
 other reason would mean a new check was measuring the build's shape by accident.
+
+**It held at 10 through check 33's visible arm (2026-08-13), and holding was the assertion.**
+That arm skips the handover for check 31's reason, so a move would have meant the skip was
+not taking and the check was measuring a hand-authored grid against a product record that
+postdates it. The skip count moved 40 → 41 instead, which is where a correctly-skipped test
+is supposed to show up.
 
 ## Baseline D — the empty target, 2026-08-09
 
@@ -855,6 +867,95 @@ check was not told where to look. Rediscovering a defect the repository had alre
 recorded and fixed — from the rendering, five days later, by a different route — is the
 strongest statement a new check can make about itself. The only prior move of this baseline
 was check 23's 8 → 9, for the same reason.
+
+### The repair was reversed, and the check had to grow a second arm
+
+Later the same day the owner read the result of hiding the label and ruled the other way:
+the depth belongs **inside** the cell, above the price, and the missing space is the only
+thing that was wrong. That reverses the repair recorded above; it does not touch the
+finding, and the space is still what closes it.
+
+Reversing it exposed something the file had not had to say out loud. **Two of check 33's
+assertions now pull against each other**, and the tension is the whole value:
+
+- *visible* — every body cell prints the depth it belongs to, at every width.
+- *announced* — a screen reader hears that depth **exactly once**, at every width.
+
+Hiding the label satisfies the second and breaks the first. Showing it plainly satisfies the
+first and breaks the second, because `<th scope="col">` already announces the depth above
+46rem. Neither may be relaxed to make the other pass, and the only markup that satisfies
+both is two spans — one visible and `aria-hidden`, one the reflow reveals — because
+`aria-hidden` is a static attribute while the header's presence is not.
+
+**The visible arm was written red-first against the pre-reversal build: 24 findings, six
+cells on each of two pages at 768 and 1280, silent at 320 and 375.** Four drills, and the
+point of the table is that B and D isolate the two arms from each other:
+
+| Drill | Result |
+|---|---|
+| the literal space removed from `grid.njk` | **abutment arm red, alone** |
+| `aria-hidden` removed from the wide span | **announced arm red, alone** — *"hears the depth twice"* at 768 and 1280 |
+| the narrow span deleted | **both cell arms red** — correctly: that span carries the visible label *and* the announcement below 46rem |
+| the wide span hidden above 46rem again | **visible arm red, alone** |
+
+The third row is not a redundancy finding. One deletion causing two arms to fire is what
+should happen when one element carries two obligations; B and D are what prove the arms are
+independent.
+
+**This arm can never move the handover baseline**, because it skips the handover for check
+31's reason — the hand-authored grid predates `products.json`. A check that cannot produce
+that evidence should say so in its own file rather than sit next to checks that have, which
+is what its header now does. Its evidence is the red-first count and drill D instead.
+
+**One thing was measured before the design was chosen rather than after**, which is the
+order that would have saved the previous three sessions: whether Chromium's unpruned
+accessibility tree leaks `aria-hidden` subtrees, since the entire two-span design fails if
+it does. Probed against the exact call the announced arm makes — at 1280 the cells return
+`["Audit"]` and `["not offered"]`; at 320, `["INSPECTED Audit", …]` and
+`["TESTED not offered", …]`. It does not leak, and that was established before a line of
+the fix was written.
+
+### And the adversarial pass found eight ways it still could not fail
+
+The arm above was written red-first, drilled four ways and reviewed before it was handed to
+an adversary. **The adversary found eight holes, four of which held all three CI gates at
+their committed numbers — `npm test` 130/120/0/10, handover 10, empty 65 — with the owner's
+ruling visibly broken on the page.** That is the second consecutive session in which a
+drilled-and-reviewed guard failed an independent pass, and the rule that produced it is now
+paying for itself twice.
+
+**Every high-severity finding was the same shape, and it is the shape this file names:
+the predicate was sound and the population was undefended.** `SHOWS_DEPTH`'s per-cell logic
+survived nine of sixteen attacks. What it could not survive was anything that changed *how
+many cells it ran on*, or *at which widths*.
+
+| Attack | Before | After |
+|---|---|---|
+| `clip-path: inset(50%)` on the label — one declaration, and not `overflow` | **green**, label gone from all 6 cells on both pages | red, 48 |
+| `font-size: 0.5px` — a 2.47 × 1px speck with a real rect | **green** | red, 48 |
+| one `<span class="path">` in a coverage rowhead → that row leaves **both** arms, 48 cells → 24, then restore the original defect | **green**, all gates at committed numbers | red |
+| `VIEWPORTS` halved + an ordinary `@media (min-width: 60rem)` hiding the label | **green**, and the control written to defend the list green too | red — the list is pinned by value |
+| `{{ grid(products) }}` deleted from `services.njk` — half the population leaves with its page | **green**; `survey()` only fails at exactly zero | red — renders are counted against `GRID_PAGES` |
+| the wide span shown below 46rem too — the label printed twice per cell | **green** at narrow widths | red, 48 |
+| the label deleted and the word "tested" planted in a duration string | credited the cell from its own price line | red — only a text node that *is* the depth counts |
+| the label ordered below the price | **green** | red — the credited run must be topmost in its cell |
+
+**The clip-path fix is in `tests/lib/visibility.js`, not here**, because that module's own
+header says "one oracle, one place to be wrong, one place to fix" — and checks 30 and 31
+were blind to the same thing. It **fails closed**: any non-`none` `clip-path` means not
+visible, rather than parsing a grammar that spans `inset()`, `circle()`, `polygon()`,
+`path()` and `<clipPath>` references. The whole stylesheet declares `clip-path` exactly once
+— `.vh`, whose purpose is to be unreadable — so "clipped by a shape this cannot parse" and
+"hidden" coincide, and if that stops being true the cost is a loud false finding.
+
+**None of this moved a baseline.** All four targets are unchanged, which is the tell that
+the hardening is in what the check can *see* and not in what it counts.
+
+One hole is left open and named in the file: **occlusion by an opaque sibling**. Closing it
+needs `elementFromPoint`, which `visibility.js` refuses for a reason that still holds — the
+answer would depend on scroll position and z-order, and a run below the fold is scrolled
+past rather than hidden. Buying that one case costs three checks their scroll-independence.
+Stated rather than papered over, in the manner of `abuts`'s two holes.
 
 ## The monitor the repository cannot run — check 24
 

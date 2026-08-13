@@ -41,11 +41,31 @@
  * import. Defines `__clipRegion(el)` and `__isVisible(rect, el)` in page scope.
  */
 export const CLIP_ORACLE = `
+/** A region nothing can intersect. Returned when an ancestor clips in a way this
+    oracle cannot compute, so the answer is "not visible" rather than "unclipped". */
+const __NOWHERE = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+
 function __clipRegion(el) {
   // Start unbounded; every clipping ancestor narrows it.
   let region = { left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity };
   for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
     const cs = getComputedStyle(n);
+
+    // \`clip-path\` clips, and it is NOT \`overflow\`. Until 2026-08-13 this loop read only
+    // overflow, so a run inside \`clip-path: inset(50%)\` was reported fully visible —
+    // proven by the adversarial pass, which added that one declaration to the grid's depth
+    // label and watched check 33's visible arm stay green with the label gone from every
+    // cell on both pages, all three CI gates at their committed numbers.
+    //
+    // Fail CLOSED rather than parse it. \`inset()\`, \`circle()\`, \`polygon()\`, \`path()\` and
+    // a \`<clipPath>\` reference are not one grammar, and a partial parser that silently
+    // mishandles the shapes it does not know is the vacuous-check shape again. The whole
+    // site declares clip-path exactly once — \`.vh\`, styles.css L724, whose entire purpose
+    // is to be unreadable — so "clipped by an unknown shape" and "hidden" coincide here.
+    // If that stops being true the cost is a LOUD false finding naming the element, which
+    // is the direction this repository has chosen every time.
+    if (cs.clipPath && cs.clipPath !== 'none') return __NOWHERE;
+
     const clips = cs.overflowX !== 'visible' || cs.overflowY !== 'visible';
     if (!clips) continue;
 

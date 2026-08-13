@@ -51,9 +51,14 @@ jobs:
     #            CHANGES.md row 13 — recorded, and fixed in the build, five days before the
     #            check existed. Rediscovering a known defect from the rendering, without
     #            being told where to look, is the strongest evidence a check can offer.
+    #
+    # The handover number HOLDING is also an assertion. CHANGES.md row 129: check 33's
+    # visible arm skips the handover, so a move here would mean the skip was not taking and
+    # the check was measuring a hand-authored grid against a product record that postdates
+    # it. Both numbers below were measured on all four targets, not derived from the last.
     env:
       HANDOVER_EXPECTED_FAILURES: '10'
-      EMPTY_EXPECTED_FAILURES: '64'
+      EMPTY_EXPECTED_FAILURES: '65'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

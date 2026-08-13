@@ -530,18 +530,12 @@ td.lv { font-family: var(--util); white-space: nowrap; width: 4.5rem; }
 .grid td { border-bottom: 1px solid var(--untravelled); padding: 1rem 1rem 1rem 0; }
 .grid .prod { display: block; font-weight: 600; font-size: 0.95rem; }
 .grid .scope { display: block; color: var(--slate); font-size: 0.8rem; margin-top: 0.2rem; }
-/* The depth label is markup in every cell rather than `content: attr(...)`, so check 7 can
-   read its colour — grid.njk has that reasoning. Above 46rem the column header carries the
-   depth axis, so an in-cell copy prints the depth twice in the same column and says it
-   twice to a screen reader ("Tested … Tested not offered").
-
-   This rule is what grid.njk's comment has described since draft 6 and what the designer
-   handover renders, and it was never written. Without it the span is an ordinary inline
-   box hard against the text node beside it, and the `not offered` cells published
-   `Testednot offered` and `Sustainednot offered` on Home and Services for every reader
-   above 736px. §8's reflow turns it back on below 46rem, where `thead` is gone and this is
-   the only thing carrying the axis. Check 33 measures the rendering, not this rule. */
-.grid .depth { display: none; }
+/* Two depth spans per cell, one visible per width — grid.njk carries why there are two.
+   The wide one takes no declarations at all: the owner asked for it as it was, which is
+   the cell's own --util at 0.86rem, --ink here and --slate in `.none`. §8's rule below
+   swaps the pair over — it hides the wide span and dresses the narrow one. Check 33
+   measures the rendering rather than either rule, at both widths. */
+.grid .depth--narrow { display: none; }
 /* The meta line is composed from fields with a template-emitted separator rather than
    one pre-joined string, so the narrow-width rule can take the separator out and let
    each field have its own line. The separator is aria-hidden: it is punctuation between
@@ -872,7 +866,11 @@ footer ul.legal .sep { position: absolute; right: 100%; margin-right: 0.74rem; }
     margin-bottom: 0.9rem;
   }
   .grid td { margin-top: 1rem; }
-  .grid .depth {
+  /* The reflow drops `thead`, so below here the cell is the only carrier of the depth
+     axis — and the carrier has to be the span a screen reader can hear, not the
+     `aria-hidden` one the header speaks for above 46rem. */
+  .grid .depth--wide { display: none; }
+  .grid .depth--narrow {
     display: block;
     font-family: var(--util);
     font-size: 0.72rem;
