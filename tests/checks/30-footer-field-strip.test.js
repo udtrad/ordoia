@@ -473,6 +473,66 @@ test('check 30 — a field whose value is empty takes its label with it', () => 
   assert.equal(line[1].href, 'mailto:hello@ordoia.com', 'the email must hold position 2');
 });
 
+test('check 30 — the filter drops every shape of empty field, not only an empty token', () => {
+  // §5.4 says "fields with absent or empty `text` are dropped". The ABSENT case had no
+  // assertion at all until now, and absent is the one a hand-edit to site.json actually
+  // produces — `{ "href": "..." }` with the text forgotten renders the empty anchor this
+  // filter exists to prevent. The token-resolves-empty case above is the scheduled one;
+  // these are the fat-fingered ones.
+  const shapes = [
+    ['no text key at all', {}],
+    ['text explicitly undefined', { text: undefined }],
+    ['text explicitly null', { text: null }],
+    ['text empty string', { text: '' }],
+    ['text whitespace only', { text: '   ' }],
+    ['no text, but an href', { href: 'mailto:x@y.z' }],
+    ['text present, href empty', { text: 'Ordoia', href: '' }],
+  ];
+  for (const [what, field] of shapes) {
+    assert.deepEqual(
+      footerLine([field]),
+      [],
+      `a field with ${what} survived the filter and would render into the strip`
+    );
+  }
+
+  // A missing array is not an empty strip, it is a mistake — but it must not throw during
+  // a build. Nunjucks passes `undefined` when the key is absent from site.json.
+  assert.deepEqual(footerLine(undefined), [], 'an absent field list threw instead of rendering nothing');
+  assert.deepEqual(footerLine(null), [], 'a null field list threw instead of rendering nothing');
+  assert.deepEqual(footerLine([]), [], 'an empty field list should render nothing');
+
+  // And the control: a good field still survives all of the above.
+  assert.deepEqual(
+    footerLine([{ text: 'UK-based' }]),
+    [{ text: 'UK-based' }],
+    'the filter rejected a perfectly good field'
+  );
+});
+
+test('check 30 — an unknown token in a footer field still fails the build (controls)', () => {
+  // This guards a behaviour NOT changed by this commit, next to one that WAS. The
+  // `?? ''` coercion added on 2026-08-13 sits two lines from the vocabulary check, and
+  // that check had no test anywhere in the suite. The two cases are deliberately
+  // different and both have to keep working:
+  //
+  //   a KNOWN token holding null/undefined -> resolves to nothing, field drops (above)
+  //   an UNKNOWN token                     -> throws, build fails, nobody ships a typo
+  //
+  // Collapsing them — making an unknown token resolve to '' — would publish a footer
+  // silently missing a field, which is the failure the vocabulary exists to prevent.
+  assert.throws(
+    () => footerLine([{ text: 'VAT no. {vatNumbr}' }]),
+    /unknown copy token/i,
+    'a typo in a footer field resolved to nothing instead of failing the build'
+  );
+  assert.throws(
+    () => footerLine([{ text: 'ok', href: 'mailto:{emial}' }]),
+    /unknown copy token/i,
+    'a typo in a footer href resolved to nothing instead of failing the build'
+  );
+});
+
 test('check 30 — the line detector still finds a separator it should (controls)', () => {
   // Without this the grouping above is a function nobody has watched fail. Both drills
   // that were accepted on this branch planted the CORRECT current value and could not
