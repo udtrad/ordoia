@@ -1,8 +1,25 @@
 /**
- * Check 33 — two words never print with nothing between them.
+ * Check 33 — the coverage × depth grid's in-cell label reads correctly, to both readers.
  *
  * Reported by the user against the live site on 2026-08-13: the coverage × depth grid on
  * Home and Services rendered `Testednot offered` and `Sustainednot offered`.
+ *
+ * ── Three assertions about one label, and two of them pull against each other ───────
+ *
+ * The first repair hid the label above 46rem. The owner then ruled the other way — the
+ * depth belongs *inside* the cell, above the price, for clarity — and asked only for the
+ * missing space. That reverses the repair, not the finding, so the file now carries:
+ *
+ *   1. abutment    no two runs print with nothing between them. The space.
+ *   2. visible     every body cell prints the depth it belongs to, at every width.
+ *   3. announced   a screen reader hears that depth EXACTLY once, at every width.
+ *
+ * 2 and 3 are in deliberate tension and neither may be relaxed to satisfy the other.
+ * Hiding the label satisfies 3 and breaks 2; showing it plainly satisfies 2 and breaks 3,
+ * because `<th scope="col">` already announces the depth above 46rem. The markup that
+ * satisfies both is two spans — one visible and `aria-hidden`, one the reflow reveals —
+ * and it exists because `aria-hidden` is a static attribute while the header's presence
+ * is not. A single span cannot be silent at 1280 and spoken at 320.
  *
  * ── What was actually wrong, and why it is worth a check rather than a space ────────
  *
@@ -101,6 +118,74 @@ const VIEWPORTS = [
 ];
 
 const settled = (page) => page.evaluate(() => document.fonts.ready);
+
+/**
+ * Which depth column a `<td>` belongs to, or -1 for a cell that owns no depth axis.
+ *
+ * Page-side source interpolated into `page.evaluate`, in the manner of `CLIP_ORACLE` and
+ * for the same reason: a function handed to Playwright loses its module scope. Defines
+ * `__depthColumn(td)` in page scope.
+ *
+ * Shared by the two tests below that walk cells, so the visible arm and the announced arm
+ * cannot disagree about which column they are asserting against. Two copies of this
+ * derivation is the "two surfaces that can disagree" shape, and it is the one that would
+ * silently assert one cell's axis against another cell's header.
+ */
+const COLUMN_ORACLE = `
+function __depthColumn(td, pathRows) {
+  const tr = td.closest('tr');
+  if (!tr) return -1;
+
+  // The path row is "a note about the two products either side of it, not a fourth cell" —
+  // grid.njk and styles.css both say so in as many words. It sits in the Inspected column
+  // by table geometry and owns no depth axis, so asserting one against it reported the axis
+  // missing on every narrow render.
+  //
+  // Excluded by its POSITION, taken from products.json, rather than by matching \`.path\`.
+  // The class test was \`tr.querySelector('.path')\`, which matches any descendant: the
+  // adversarial pass put one \`<span class="path">\` in a coverage row's head and that row's
+  // three cells left the population of BOTH cell-walking arms — 48 cells to 24 — after
+  // which stripping the depth spans from the \`not offered\` cells held all three CI gates
+  // at their committed numbers with the user's original defect back on the page. A row's
+  // identity is data; \`.path\` is styling that happens to correlate with it.
+  const rows = [...tr.parentElement.children];
+  if (pathRows.includes(rows.indexOf(tr))) return -1;
+
+  // The row-head \`th\` occupies slot 0, so a \`td\`'s depth column is its index among the
+  // row's children minus that head.
+  return [...tr.children].indexOf(td) - 1;
+}
+`;
+
+/** Row indices in \`tbody\` that carry no depth axis. Data, not markup — see COLUMN_ORACLE. */
+const PATH_ROWS = products.grid.rows
+  .map((row, i) => (row.type === 'coverage' ? -1 : i))
+  .filter((i) => i >= 0);
+
+/**
+ * How many depth-owning cells one rendered grid must contain.
+ *
+ * The population is PINNED rather than counted, because `survey()` only fails at exactly
+ * zero and every high-severity finding against this check was a partial loss: a row leaving
+ * the population (48 cells -> 24) and a whole page leaving it (48 -> 24) each held all three
+ * CI gates at their committed numbers. Half a population is not a smaller measurement, it is
+ * a different one, and nothing in the harness can notice the difference.
+ */
+const CELLS_PER_GRID =
+  products.grid.rows.filter((r) => r.type === 'coverage').length * products.grid.columns.length;
+
+/**
+ * How many pages render this grid. Home and Services — BRIEF.md §10 and grid.njk's header.
+ *
+ * A literal, and deliberately not derived from the templates: derive it and deleting
+ * `{{ grid(products) }}` from `services.njk` lowers the expectation to match, which is the
+ * silence this constant exists to break. It moves in a reviewed diff, the rule
+ * `PUBLISHED_SHA256` and the CI baselines already follow.
+ */
+const GRID_PAGES = 2;
+
+/** The smallest painted height a real label can have, in CSS px. See SHOWS_DEPTH. */
+const MIN_INK = 6;
 
 /**
  * Every visible run of text on the page, one entry per rendered line box.
@@ -262,6 +347,205 @@ test('check 33 — no two runs of text print with no space between them', async 
 });
 
 /**
+ * Every body cell prints the depth it belongs to, at every width.
+ *
+ * The owner's ruling, made executable. Without it the grid's clarity rests on a comment —
+ * and a comment is exactly what failed last time: `grid.njk` described a `display: none`
+ * for five days before anyone noticed nobody had written it. The next person to read that
+ * comment re-applies the rule, and every other test in this file stays green.
+ *
+ * ── Located by TEXT, never by class ────────────────────────────────────────────────
+ *
+ * Check 31's header states the rule and the reason: "Nothing here selects on a class that
+ * the fix also touches: had this check asked for `.grid td .prod`, a reflow that stopped
+ * emitting `.prod` would have emptied the population and gone quiet." Asking for `.depth`
+ * here would do exactly that — rename the class and this check measures nothing while
+ * reporting green. So it searches the cell's own text nodes for the column's depth name
+ * and asks whether any of it was painted, which any mechanism can satisfy.
+ *
+ * Case-insensitive on the SOURCE text, for the reason CHANGES.md row 124 records: §8
+ * uppercases the reflowed label with `text-transform`, which changes the rendering and not
+ * the node, so a case-sensitive compare is a false finding waiting for a design change.
+ *
+ * ── What this cannot earn, and what it offers instead ───────────────────────────────
+ *
+ * It skips the handover, so the handover baseline cannot move for it and it will never
+ * carry the evidence check 23 and the abutment test above both carry. Its evidence is
+ * elsewhere: run against the previous rendering it reported all six cells on both pages at
+ * 768 and 1280 — the exact absence the owner asked to have reversed — and went quiet at
+ * 320 and 375, where the label was already there.
+ *
+ * ── The stated hole ────────────────────────────────────────────────────────────────
+ *
+ * **Occlusion.** A label painted underneath an opaque sibling is reported visible. Proven
+ * by the adversarial pass: `.grid td { position: relative }` with a `::after` overlay in
+ * `--ground` covers every label and every `not offered` string, and this check stays green.
+ *
+ * It is left open deliberately. Catching it needs `elementFromPoint`, which
+ * `tests/lib/visibility.js` refuses in its header with a reason that still holds — the
+ * answer would depend on scroll position and z-order, and a run below the fold is scrolled
+ * past rather than hidden. Buying this one case costs the scroll-independence three checks
+ * rely on. Named here rather than papered over, in the manner of `abuts`'s two holes.
+ *
+ * The neighbouring failure modes ARE covered, and none of them was before 2026-08-13:
+ * `clip-path` (the clip oracle now fails closed on it), sub-legible type (`MIN_INK`),
+ * `color: transparent` (check 7, not this one), and the label rendering below the price
+ * rather than above it.
+ */
+const SHOWS_DEPTH = `(depths, pathRows, minInk) => {
+  ${CLIP_ORACLE}
+  ${COLUMN_ORACLE}
+  const out = [];
+
+  for (const td of document.querySelectorAll('table.grid tbody td')) {
+    const column = __depthColumn(td, pathRows);
+    if (column < 0 || column >= depths.length) continue;
+    const depth = depths[column];
+    const wanted = depth.toLowerCase();
+
+    // Every visible text run in the cell, so the label can be compared to what sits
+    // beside it. Collected in one pass because two of the three questions below are
+    // about the label's RELATION to the rest of the cell, not about the label alone.
+    const runs = [];
+    const walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const raw = node.nodeValue || '';
+      if (!raw.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) {
+        if (!(r.width > 0 && r.height > 0)) continue;
+        if (!__isVisible(r, node)) continue;
+        runs.push({ text: raw.trim(), top: r.top, height: r.height });
+      }
+    }
+
+    // A run counts as the label only if the whole text node IS the depth name.
+    // Substring matching credited a cell with no label at all from its own price line:
+    // the adversarial pass set the Review product's duration to "3 weeks, tested end to
+    // end", deleted both depth spans, and eight findings disappeared. A label is its own
+    // run; prose that mentions the word is not a label.
+    const labels = runs.filter((r) => r.text.toLowerCase() === wanted);
+
+    // Painted, not merely boxed. \`font-size: 0.5px\` renders a 2.47 x 1px speck that
+    // satisfies every geometric test in the clip oracle. The smallest type this design
+    // uses anywhere is 0.66rem, so anything under \`minInk\` is not a size the site can
+    // legitimately produce.
+    const inked = labels.filter((r) => r.height >= minInk);
+
+    // Topmost in the cell, which is the ruling: the depth reads ABOVE the price. Same
+    // line is fine and is what the \`not offered\` cells do, hence the tolerance.
+    const highestOther = runs
+      .filter((r) => r.text.toLowerCase() !== wanted)
+      .reduce((min, r) => Math.min(min, r.top), Infinity);
+    const above = inked.some((r) => r.top <= highestOther + 1);
+
+    out.push({
+      column,
+      depth,
+      count: inked.length,
+      above,
+      shortest: labels.length ? Math.min(...labels.map((r) => r.height)) : 0,
+      text: (td.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 40),
+    });
+  }
+
+  return out;
+}`;
+
+test('check 33 — every grid cell prints the depth it belongs to, at every width', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  const s = survey({
+    renders: 'grid renders measured (pages with a grid x viewports)',
+    cells: 'depth-column body cells whose rendering was read',
+  });
+
+  const findings = [];
+  const depths = products.grid.columns;
+  let gridsSeen = 0;
+
+  await withSite(async ({ origin, pages, browser }) => {
+    const page = await browser.newPage();
+
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      for (const { url } of pages) {
+        await page.goto(origin + url, { waitUntil: 'load' });
+        await settled(page);
+
+        const grids = await page.evaluate(() => document.querySelectorAll('table.grid').length);
+        if (!grids) continue;
+        gridsSeen += grids;
+
+        const args = [depths, PATH_ROWS, MIN_INK].map((a) => JSON.stringify(a)).join(', ');
+        const cells = await page.evaluate(`(${SHOWS_DEPTH})(${args})`);
+        s.count('renders');
+
+        // Per RENDER, not in total. A grid that lost a row still contributes cells, and a
+        // total only has to be non-zero to satisfy the harness.
+        if (cells.length !== CELLS_PER_GRID * grids) {
+          findings.push(
+            `${url} at ${viewport.width}px: ${cells.length} depth-owning cells found, ` +
+              `expected ${CELLS_PER_GRID * grids} (${CELLS_PER_GRID} per grid x ${grids}) — ` +
+              `the population changed shape, so whatever this check reports is about a ` +
+              `different table than the one products.json describes`
+          );
+        }
+
+        for (const cell of cells) {
+          s.count('cells');
+          if (cell.count === 0) {
+            findings.push(
+              `${url} at ${viewport.width}px: the cell in the "${cell.depth}" column prints ` +
+                `no depth label — it reads "${cell.text}", so which depth this price buys ` +
+                `is readable only from the column header` +
+                (cell.shortest > 0
+                  ? ` (a "${cell.depth}" run is present but only ${cell.shortest.toFixed(2)}px tall)`
+                  : '')
+            );
+          } else if (cell.count > 1) {
+            findings.push(
+              `${url} at ${viewport.width}px: the cell in the "${cell.depth}" column prints ` +
+                `that depth ${cell.count} times — it reads "${cell.text}". One span per ` +
+                `width is visible by design; both means a display rule stopped swapping them`
+            );
+          } else if (!cell.above) {
+            findings.push(
+              `${url} at ${viewport.width}px: the "${cell.depth}" label is printed below ` +
+                `something else in its cell — it reads "${cell.text}". The ruling is that ` +
+                `the depth reads above the price, not merely somewhere in the cell`
+            );
+          }
+        }
+      }
+    }
+
+    await page.close();
+  });
+
+  // The page list itself. BRIEF.md §10 and grid.njk both say this grid renders on Home AND
+  // Services; nothing asserted it, and deleting the Services one took the population from
+  // 48 cells to 24 with all three CI gates unmoved.
+  assert.equal(
+    gridsSeen,
+    GRID_PAGES * VIEWPORTS.length,
+    `expected ${GRID_PAGES} grids (Home and Services) at each of ${VIEWPORTS.length} ` +
+      `viewports, found ${gridsSeen} renders in total — a page that stopped rendering the ` +
+      'grid removes itself from every assertion below instead of failing one'
+  );
+
+  const unique = [...new Set(findings)];
+  s.failAll(unique.slice(0, 12));
+  s.report(
+    `a grid cell does not say which depth it belongs to, exactly once, above its price:\n  ${unique.join('\n  ')}\n\n` +
+      `The owner's ruling: the depth reads inside the cell, above the price, at every ` +
+      `width. Below 46rem it is the only carrier, because the reflow drops thead; above it ` +
+      `the column header carries the axis too and this is the copy a reader's eye lands on.`
+  );
+});
+
+/**
  * The second half of the same defect, and the half the test above cannot see.
  *
  * `abuts` measures what a reader *sees*, which is why it accepts either repair — and that
@@ -320,19 +604,12 @@ test('check 33 — the depth label is out of the accessibility tree where the he
         // Both lists come from the SAME selector, so they align index for index. Deriving
         // the column indices from a different query than the handles is how the two drift
         // apart and the check starts asserting one cell's axis against another's header.
-        const columnOf = await page.$$eval('table.grid tbody td', (tds) =>
-          tds.map((td) => {
-            const tr = td.closest('tr');
-            // The path row is "a note about the two products either side of it, not a
-            // fourth cell" — grid.njk and styles.css both say so in as many words. It
-            // sits in the Inspected column by table geometry and owns no depth axis, so
-            // asserting one against it reported the axis missing on every narrow render.
-            if (!tr || tr.querySelector('.path')) return -1;
-            // The row-head `th` occupies slot 0, so a `td`'s depth column is its index
-            // among the row's children minus that head.
-            return [...tr.children].indexOf(td) - 1;
-          })
-        );
+        const columnOf = await page.evaluate(`(() => {
+          ${COLUMN_ORACLE}
+          const pathRows = ${JSON.stringify(PATH_ROWS)};
+          return [...document.querySelectorAll('table.grid tbody td')]
+            .map((td) => __depthColumn(td, pathRows));
+        })()`);
         const handles = await page.$$('table.grid tbody td');
         if (!handles.length) continue;
         s.count('renders');
@@ -413,15 +690,20 @@ test('check 33 — the depth label is out of the accessibility tree where the he
           // NOT saying it means the cell must — an axis reachable twice is a duplicate
           // and an axis reachable nowhere is a lost axis. Both directions are asserted,
           // which is what the previous version's message claimed and its code did not.
+          // `n` identifies WHICH cell. Without it two cells in the same column on the same
+          // page at the same width produce byte-identical messages and `new Set` collapses
+          // them: stripping the label from four populated cells reported 12 findings where
+          // 16 were true. No pass/fail consequence — it costs the reader the row.
+          const where = `${url} at ${viewport.width}px, body cell ${n + 1}`;
           if (headerSays[column] && inCell) {
             findings.push(
-              `${url} at ${viewport.width}px: a grid cell announces "${depth}" and its ` +
-                `rendered column header already says it — a screen reader hears the depth twice`
+              `${where}: it announces "${depth}" and its rendered column header already ` +
+                `says it — a screen reader hears the depth twice`
             );
           } else if (!headerSays[column] && !inCell) {
             findings.push(
-              `${url} at ${viewport.width}px: neither the "${depth}" column header nor the ` +
-                `cell beneath it announces that depth — the axis is unreachable at this width`
+              `${where}: neither the "${depth}" column header nor this cell announces that ` +
+                `depth — the axis is unreachable at this width`
             );
           }
         }
@@ -455,30 +737,53 @@ test('check 33 — the depth label is out of the accessibility tree where the he
  * appearing in a second file with nothing reconciling it is the "two surfaces that can
  * disagree" shape twice over, and this check has already been caught doing it once.
  */
-test('check 33 — the viewport list still spans the reflow breakpoint (controls)', async () => {
-  const css = await readFile(path.join(REPO_ROOT, 'src/styles.css'), 'utf8');
-  const declared = [...css.matchAll(/@media\s*\(\s*max-width:\s*([\d.]+)rem\s*\)/g)].map((m) =>
-    Number(m[1])
-  );
-  assert.ok(
-    declared.length > 0,
-    'no `@media (max-width: Nrem)` found in styles.css — the reflow breakpoint this check ' +
-      'brackets could not be read, so the viewport list cannot be shown to bracket it'
+test('check 33 — the viewport list still spans every declared breakpoint (controls)', async () => {
+  // Pinned BY VALUE first, and that is the 2026-08-13 hardening. The previous version
+  // asserted only that SOME viewport sat above the widest max-width breakpoint and SOME at
+  // or below — two bits, against a four-entry list. The adversarial pass cut `VIEWPORTS` to
+  // [320, 768], added an ordinary `@media (min-width: 60rem)` rule hiding the depth label,
+  // and every gate held at its committed number with no label on any desktop width while
+  // THIS control stayed green. A list whose contents are load-bearing has to be pinned, not
+  // characterised. 1280 in particular is the width the design has been measured at since
+  // CHANGES.md row 4; 375 is the common phone §8 names.
+  assert.deepEqual(
+    VIEWPORTS.map((v) => v.width),
+    [320, 375, 768, 1280],
+    'the viewport list changed. It is load-bearing in both directions — the original defect ' +
+      'existed only above 736px and the reflow arm only runs below it — so it is pinned here ' +
+      'and moves in a reviewed diff rather than by edit'
   );
 
-  // The grid's reflow is the widest max-width breakpoint the stylesheet declares.
-  const breakpointPx = Math.max(...declared) * 16;
+  const css = await readFile(path.join(REPO_ROOT, 'src/styles.css'), 'utf8');
+
+  // BOTH directions. Reading only `max-width` left every `min-width` rule unbracketed, and
+  // a desktop-only rule is exactly how the label was removed above while this passed.
+  const declared = [
+    ...css.matchAll(/@media\s*\(\s*(max|min)-width:\s*([\d.]+)rem\s*\)/g),
+  ].map((m) => ({ kind: m[1], px: Number(m[2]) * 16 }));
+
   assert.ok(
-    VIEWPORTS.some((v) => v.width > breakpointPx),
-    `no viewport above the ${breakpointPx}px reflow breakpoint — the defect this check was ` +
-      'written for existed only above it, and a list on one side of the breakpoint is green ' +
-      'against the bug'
+    declared.length > 0,
+    'no `@media (max-width: Nrem)` or `(min-width: Nrem)` found in styles.css — the ' +
+      'breakpoints this check brackets could not be read, so the viewport list cannot be ' +
+      'shown to bracket them'
   );
-  assert.ok(
-    VIEWPORTS.some((v) => v.width <= breakpointPx),
-    `no viewport at or below the ${breakpointPx}px reflow breakpoint — the reflow arm of the ` +
-      'accessibility assertion would never run'
-  );
+
+  // Every breakpoint the stylesheet declares must have a viewport on each side of it, or
+  // the arm that only exists on one side of it never runs.
+  for (const { kind, px } of declared) {
+    const boundary = kind === 'max' ? px : px - 1;
+    assert.ok(
+      VIEWPORTS.some((v) => v.width > boundary),
+      `no viewport above the ${boundary}px ${kind}-width breakpoint — a rule that applies ` +
+        'only above it is never rendered by this check'
+    );
+    assert.ok(
+      VIEWPORTS.some((v) => v.width <= boundary),
+      `no viewport at or below the ${boundary}px ${kind}-width breakpoint — a rule that ` +
+        'applies only at or below it is never rendered by this check'
+    );
+  }
 });
 
 test('check 33 — the detector still tells a separator from a junction (controls)', () => {

@@ -47,9 +47,28 @@
         <th scope="row" class="rowhead">{{ row.head }}</th>
         {%- for key in row.cells %}
         {#-
-          The depth label, repeated into every cell. `display: none` above 46rem, where the
-          column header carries it and this would be a duplicate in the accessibility tree;
-          shown below 46rem, where §8's reflow stacks the cells and `thead` goes.
+          The depth label, repeated into every cell, as TWO spans. The owner's ruling: the
+          depth reads inside the cell, above the price, at every width.
+
+          Two, because `aria-hidden` is a static attribute and the column header's presence
+          is not. Above 46rem `<th scope="col">` announces the depth, so a spoken copy in
+          the cell is a duplicate ("Tested … Tested not offered"); below 46rem §8's reflow
+          drops `thead` and the cell is the only carrier. One span cannot be silent at 1280
+          and spoken at 320, so each width gets its own and the other is `display: none`.
+          Check 33 asserts both halves — visible in every cell, announced exactly once.
+
+          Both keep the shared `depth` class, and that is not tidiness. `/styles.css` is
+          unfingerprinted and served with a browser cache, so a returning reader can hold
+          the old sheet against this markup; the shared class is what makes its old
+          `display: none` still reach both spans above 46rem. Without it that reader sees
+          the label twice on every width.
+
+          The literal space before `notOffered` is the reader-visible half of the original
+          defect. Above 46rem the narrow span generates no box, so the space sits directly
+          after the wide one in inline flow and paints; below it the narrow span is a
+          block, so the space opens an anonymous block and collapses at its edge. Real
+          whitespace rather than a margin, for the reason `.sep` already carries:
+          whitespace survives `display: none` and a margin does not.
 
           Markup rather than `content: attr(...)` deliberately. Generated content is not a
           DOM text node, so `getComputedStyle` cannot report its colour and check 7 is
@@ -63,9 +82,9 @@
         {%- set depth = products.grid.columns[loop.index0] %}
         {%- if key %}
         {%- set p = products.products | product(key) %}
-        <td><span class="depth">{{ depth }}</span><span class="prod">{{ p.name }}</span><span class="scope"><span class="v">{{ p | price }}</span>&nbsp;<span class="sep" aria-hidden="true">&middot;</span> <span class="v">{{ p.duration }}</span></span></td>
+        <td><span class="depth depth--wide" aria-hidden="true">{{ depth }}</span><span class="depth depth--narrow">{{ depth }}</span><span class="prod">{{ p.name }}</span><span class="scope"><span class="v">{{ p | price }}</span>&nbsp;<span class="sep" aria-hidden="true">&middot;</span> <span class="v">{{ p.duration }}</span></span></td>
         {%- else %}
-        <td class="none"><span class="depth">{{ depth }}</span>{{ products.grid.notOffered }}</td>
+        <td class="none"><span class="depth depth--wide" aria-hidden="true">{{ depth }}</span><span class="depth depth--narrow">{{ depth }}</span> {{ products.grid.notOffered }}</td>
         {%- endif %}
         {%- endfor %}
       </tr>
