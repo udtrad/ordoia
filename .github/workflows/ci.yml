@@ -53,7 +53,7 @@ jobs:
     #            being told where to look, is the strongest evidence a check can offer.
     env:
       HANDOVER_EXPECTED_FAILURES: '10'
-      EMPTY_EXPECTED_FAILURES: '63'
+      EMPTY_EXPECTED_FAILURES: '64'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

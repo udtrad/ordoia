@@ -161,23 +161,28 @@ Ten tests added — check 19's four on the workflows, check 20's three on the re
 check 21's three on the version freeze. The seven skips are still check 15 and still only
 under `npm test`. `npm run test:live-local` remains **69 pass, 0 fail, 0 skipped**.
 
-**Updated 2026-08-13 (check 33): 127 tests, 117 pass, 0 fail, 10 skipped.** The table below
+**Updated 2026-08-13 (check 33): 129 tests, 119 pass, 0 fail, 10 skipped.** The table below
 had been carrying the 2026-08-09 figures through four sessions and fifty-eight added tests,
 which is drift in the one document that claims to hold the measurements. All four rows are
 re-measured here rather than carried forward.
 
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 127 | 117 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 127 | 125 | 0 | 2 |
-| the handover | `npm run test:handover` | 127 | 78 | **10** | 39 |
-| an empty directory | `npm run test:empty` | 127 | 54 | **63** | 10 |
+| the build | `npm test` | 129 | 119 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 129 | 127 | 0 | 2 |
+| the handover | `npm run test:handover` | 129 | 79 | **10** | 40 |
+| an empty directory | `npm run test:empty` | 129 | 55 | **64** | 10 |
 
 `test:live-local`'s two skips are checks 22 and 24 — the Cloudflare zone and the external
 monitor, both of which want a credential and neither of which existed when this row last
 read `0`. Setting `ORDOIA_ZONE_CHECK` and `ORDOIA_MONITOR_CHECK` against the live deployment
-is what produces the 127/127/0/0 run, and that is a deploy-time claim rather than a local
-one.
+is what produces the **129/129/0/0** run, and that is a deploy-time claim rather than a
+local one.
+
+> The first draft of this paragraph said `127/127/0/0` — the previous session's figure with
+> only part of check 33 added, in the one paragraph whose subject is stale numbers. Caught
+> by the adversarial pass, not by re-reading. A re-measurement is not a re-measurement until
+> every number in it has been measured.
 
 The handover's failures moved **8 → 9 → 10**, once per check that found a real defect in it:
 check 23's collision, and now check 33 rediscovering `CHANGES.md` row 13's
@@ -782,6 +787,50 @@ is not a weak check, it is not a check.** `VIEWPORTS` in check 33 spans the brea
 The second row is the one worth keeping. It is the difference between believing the
 viewport list matters and having watched the check go green with the defect fully present
 when it was shortened.
+
+**The third test exists because the first one cannot fail on half the defect.** `abuts`
+measures what a reader *sees*, and accepting either repair is the property that makes it a
+measurement rather than the fix restated. It is also a hole: the space-repair — leave the
+label visible, put a literal space in the template — turns the abutment test **green while
+a screen reader still hears the depth twice**, once from the column header and once from
+inside the cell. Drilled exactly that way; abutment green, accessibility red. The invariant
+is *exactly once at every width*: above 46rem the column header, below it the in-cell label,
+because the reflow drops `thead`. Twice is a duplicate, none is a lost axis, and the visible
+check can see neither.
+
+Two things it taught on its first run. `page.accessibility.snapshot()` needs
+`interestingOnly: false` — with the default, a `<td>` carrying no accessible name of its own
+returns an **empty** subtree, so the check would have passed against nothing on every page,
+which is lesson 8 one option flag away. And the depth comparison has to be case-insensitive:
+Chromium reports the **rendered** text, so `text-transform: uppercase` makes the node read
+`TESTED` while `products.json` says `Tested`. The narrow arm could only ever report a false
+finding; the wide arm matched by luck, and would have gone silently blind the day that label
+was uppercased.
+
+### Four more, from the adversarial pass — three of them the same pathology again
+
+The check above was written, drilled three ways, and reviewed inline. An independent
+adversarial pass with no knowledge of how it was built then found **four ways it could not
+fail**, three of them in guards added by that inline review. Recorded in full because the
+pattern is the point: *the author of a guard is the worst judge of whether it can fire.*
+
+| It could not see | Proven by | Now |
+|---|---|---|
+| the depth axis vanishing entirely above 46rem | emptying every `<th scope="col">` — the suite stayed **119 pass / 0 fail** | the header is read for its **text, per column**, so the assertion is *exactly once* rather than *at most once*, which is what its failure message had always claimed |
+| its own viewport list being narrowed | restoring the defect **and** cutting `VIEWPORTS` to 320/375 — every `ci.yml` gate passed at its committed number, because the handover's abutment findings fire at all four widths so the failure count cannot move | a controls test parses the breakpoint out of `styles.css` and asserts the list brackets it |
+| its declared population going to zero | `pairs` counted 557,065 scan candidates of which **499** were on the same line; losing every junction on the site moved it under 0.1% | the population is `junctions`, counted after the same-line test — 499 healthy, 0 the moment the collector breaks |
+| a space that collapsed at a line box edge | `<span>Audit </span><span>not offered</span>` in an inline-block renders `Auditnot offered`; the predicate read `text.slice(-1)`, saw the source space and answered "separated" | the boundary is resolved against the **painted** edge in `COLLECT` and handed to `abuts` as a boolean, so no text parsing decides a rendering question |
+
+The fourth is the sharpest. The control written to protect that case planted touching rects
+with a source-trailing space and asserted `false` — which is the collapsed-space geometry
+exactly. **The control guaranteed the detector could not fire on the defect it was written
+for**, and it is now inverted, with the Chromium measurement beside it.
+
+Also corrected, from the same pass: the accessibility population was `td.none`, which is two
+of the seven cells the defect reached — the five populated cells leak their label onto their
+own line, where there is no junction for the abutment test either. It is now every body cell
+of the grid, with the path row excluded because it "is a note about the two products either
+side of it, not a fourth cell".
 
 **Site-wide, with the predicate narrowed by measurement.** Run over every page and every
 text node, the first version reported the two real cells and **fourteen others** —

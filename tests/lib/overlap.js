@@ -68,25 +68,44 @@ export function collides(a, b) {
  *                 guessed at.
  *   edges touch    |gap| within TOLERANCE. The upper bound is what makes a rendered space
  *                 — or an nbsp, or a margin — not a finding. The LOWER bound keeps this
- *                 disjoint from `collides`: a real overlap is a collision, reported once,
- *                 by check 23, with the amount.
+ *                 disjoint from `collides`: an overlap is a collision rather than an
+ *                 abutment, and the two predicates meet without a seam (`abuts` owns
+ *                 gap ∈ [-1, 1], `collides` owns gap < -1). It does NOT mean something
+ *                 else reports every overlap: check 23's population is `.measure__dim,
+ *                 .label, .span, .stamp, .na` inside three containers, so two arbitrary
+ *                 text runs overlapping elsewhere on the site are reported by neither.
  *
  * Runs carry `first` / `last` because a soft-wrapped text node renders one rect per line
  * and only its outermost edges are junctions with other content. An interior edge is where
  * one word continues onto the next line, and treating it as a junction reports every
  * wrapped paragraph on the site.
  *
- * **The stated limit.** Requiring a word character on both sides means a run ending in
+ * ── `endsWord` / `startsWord` are RENDERED, and that is the whole point ─────────────
+ *
+ * This tested `a.text.slice(-1)` against the raw `nodeValue` until the adversarial pass
+ * drilled it. Whitespace at the end of a line box is removed in rendering, so a source
+ * trailing space can be **gone on screen while `slice(-1)` still sees it** — and the
+ * detector returned "separated" for text a reader sees as one word. Proven in Chromium:
+ * `<p style="display:inline-block"><span>Audit </span><span>not offered</span></p>`
+ * renders `Auditnot offered`, rects touching, and the old predicate answered `false`.
+ * The control that was supposed to protect this pinned the blind spot in place instead.
+ *
+ * So the caller resolves the boundary against the rendering and hands over two booleans.
+ * `abuts` does no text parsing at all: a value that depends on what was painted cannot be
+ * derived from what was typed.
+ *
+ * **The stated limits.** Requiring a word character on both sides means a run ending in
  * punctuation cannot open a finding: `£`+`2,500` and `Tested`+`(not offered)` would both
- * pass. That is the cost of not reporting every abbreviation and every parenthesis on the
- * site, and it is a real hole rather than a tidy edge case. Nothing else covers it.
+ * pass. And an astral-plane letter at a junction resolves through a lone surrogate, so it
+ * reads as a non-word. Both are real holes rather than tidy edge cases; nothing else
+ * covers them, and the site's copy happens to contain no instance of either.
  */
-const JOINS = /[\p{L}\p{N}]/u;
+export const JOINS = /[\p{L}\p{N}]/u;
 
 export function abuts(a, b) {
   if (!a.last || !b.first) return false;
   if (intersection(a.rect, b.rect).vertical <= TOLERANCE) return false;
-  if (!JOINS.test(a.text.slice(-1)) || !JOINS.test(b.text.slice(0, 1))) return false;
+  if (!a.endsWord || !b.startsWord) return false;
   const gap = b.rect.left - a.rect.right;
   return gap >= -TOLERANCE && gap <= TOLERANCE;
 }
