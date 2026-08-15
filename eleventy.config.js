@@ -48,6 +48,7 @@ import {
   frozenMain,
   stylesheetFile,
   stylesheetHref,
+  isStaleStylesheet,
 } from './tools/freeze-version.mjs';
 import { deriveChromeSheet } from './tools/chrome-sheet.mjs';
 
@@ -827,9 +828,7 @@ export default function (eleventyConfig) {
           // bare `styles.css` is swept by the same pass — it is the pre-fingerprint name,
           // and it is the exact URL that used to carry a year of immutable caching.
           for (const stale of await readdir(target)) {
-            if (stale !== served && /^styles\.(?:[0-9a-f]+\.)?css$/.test(stale)) {
-              await rm(path.join(target, stale), { force: true });
-            }
+            if (isStaleStylesheet(stale, served)) await rm(path.join(target, stale), { force: true });
           }
           await copyFile(source, path.join(target, served));
           continue;

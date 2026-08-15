@@ -168,24 +168,24 @@ measurements. All four rows are re-measured on every change to it rather than ca
 forward — including the rows a change is not expected to move, which is how the handover
 row below is evidence rather than a leftover.
 
-**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the two controls
-the adversarial pass forced): 135 tests, 125 pass, 0 fail, 10 skipped.** All four rows
+**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the controls two
+audit passes forced): 136 tests, 126 pass, 0 fail, 10 skipped.** All four rows
 re-measured on every change, including the ones a change is not expected to move.
 
 Five tests added across the branch, in two waves, and each target moved by exactly the
 arithmetic that predicts it. The first three were two site-touching arms plus one pure
 control: build +3 passes, handover +1 pass and +2 skips, empty +1 pass and +2 failures
-(65 → 67). The last two are **pure** — a module-load check and a resolver control, neither
-touching the site — so they pass on all four targets and **both CI failure counts held**,
-handover at 10 and empty at 67. A new test that moves no failure count is either pure or
+(65 → 67). The last three are **pure** — a module-load check, a resolver control and a sweep-predicate
+control, none touching the site — so they pass on all four targets and **both CI failure
+counts held**, handover at 10 and empty at 67. A new test that moves no failure count is either pure or
 not being run; these are pure, and the +2 in every pass column is what says so.
 
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 135 | 125 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 135 | 133 | 0 | 2 |
-| the handover | `npm run test:handover` | 135 | 82 | **10** | 43 |
-| an empty directory | `npm run test:empty` | 135 | 58 | **67** | 10 |
+| the build | `npm test` | 136 | 126 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 136 | 134 | 0 | 2 |
+| the handover | `npm run test:handover` | 136 | 83 | **10** | 43 |
+| an empty directory | `npm run test:empty` | 136 | 59 | **67** | 10 |
 
 **The handover's failure count held at 10, and that is the assertion rather than the
 absence of one.** Check 34 reads a frozen version directory, which the handover does not

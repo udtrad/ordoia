@@ -42,7 +42,7 @@ import os from 'node:os';
 import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, serve } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
-import { stylesheetFile, builtStylesheet } from '../../tools/freeze-version.mjs';
+import { stylesheetFile, builtStylesheet, isStaleStylesheet } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is the point';
 
@@ -140,10 +140,67 @@ test('check 34 — every immutable URL under a frozen version is content-address
     await site.close();
   }
 
+  // The allowlist must self-liquidate, like every other allowance here — checks 9, 16, 17
+  // and 27 all fail on a stale entry via `ledgerFor(...).unused()`. This one had no such
+  // rule: adding `fonts/never-existed.woff2` left the check green, so the list could grow
+  // by one line per re-freeze and never shrink. An allowlist nobody has to justify keeping
+  // is how a residual stops being a residual and becomes the design.
+  const present = new Set(
+    (await readdir(path.join(versionsDir, 'v1.0'), { recursive: true }).catch(() => []))
+      .map((f) => String(f).split(path.sep).join('/'))
+  );
+  const dead = [...KNOWN_STABLE].filter((entry) => !present.has(entry));
+  assert.deepEqual(
+    dead,
+    [],
+    `KNOWN_STABLE names ${dead.length} asset(s) the build does not contain: ${dead.join(', ')}. ` +
+      `Every entry is a decision to leave something immutable at a stable URL, so an entry ` +
+      `for a file that no longer exists is an exemption nobody is accountable for.`
+  );
+
   s.failAll(findings);
   s.report(
     `immutable at a stable URL under a frozen version:\n  ${findings.join('\n  ')}`
   );
+});
+
+test('check 34 — the build sweeps a stale fingerprint, and the predicate says which (controls)', () => {
+  // Deleting the sweep from eleventy.config.js leaves a CLEAN build green — there is no
+  // stale file on a fresh `_site`, and CI always starts fresh — so the sweep's *code* had
+  // no coverage at all while the state it prevents was well guarded (a planted second
+  // sheet produces seven failures across checks 21, 28, 32 and 34). That asymmetry is the
+  // trap: the mechanism only bites during a LOCAL re-freeze, which is exactly the workflow
+  // DEPLOY.md tells an operator to run, and it is the one run nobody re-tests afterwards.
+  const served = 'styles.ef0b25e2.css';
+
+  assert.equal(
+    isStaleStylesheet('styles.935d5f33.css', served),
+    true,
+    'a previous fingerprint was not identified as stale — it would keep being served ' +
+      'immutable for a year alongside the current one'
+  );
+  assert.equal(
+    isStaleStylesheet('styles.css', served),
+    true,
+    'the pre-fingerprint name was not identified as stale. It is the exact URL that used ' +
+      'to carry a year of immutable caching, so leaving it behind is the worst case.'
+  );
+  assert.equal(
+    isStaleStylesheet(served, served),
+    false,
+    'the CURRENT stylesheet was identified as stale — the sweep would delete the sheet it ' +
+      'just wrote and every version page would render unstyled'
+  );
+
+  // Neighbours that must survive the sweep. `favicon.svg` and the fonts are the rest of
+  // the frozen unit; deleting any of them mid-build stores a half-published snapshot.
+  for (const keep of ['favicon.svg', 'fonts', 'main.html', 'index.html', 'stylesheet.css']) {
+    assert.equal(
+      isStaleStylesheet(keep, served),
+      false,
+      `the sweep would have deleted ${keep}, which is not a stylesheet fingerprint`
+    );
+  }
 });
 
 test('check 34 — the stylesheet names the digest of the bytes actually served', async (t) => {
@@ -322,6 +379,42 @@ test('check 34 — the re-freeze comparison tool still loads and exports what DE
   );
 
   assert.ok(tool, 'tools/frozen-render-diff.mjs failed to load');
+
+  // The comparison's ACTUAL logic, exercised. `diffCaptures` is the pure half of the tool
+  // — the half that decides whether a re-freeze is safe — and running the browser half per
+  // commit would cost four viewports on every `npm test`, which is the operator's cost at
+  // re-freeze time rather than every commit's. This covers what a load check cannot: that
+  // the comparison can still tell same from different.
+  const before = { 'a[0]': { color: 'rgb(0, 0, 0)' }, 'b[1]': { color: 'rgb(1, 1, 1)' } };
+
+  const same = oracle.diffCaptures(before, structuredClone(before));
+  assert.equal(same.findings.length, 0, 'identical captures reported a difference');
+  assert.equal(same.compared, 2, 'the comparison counted the wrong number of values');
+
+  const changed = oracle.diffCaptures(before, {
+    ...structuredClone(before),
+    'a[0]': { color: 'rgb(255, 0, 0)' },
+  });
+  assert.equal(changed.findings.length, 1, 'a changed property was not reported');
+  assert.equal(changed.findings[0].prop, 'color');
+
+  // An element appearing or vanishing is its own finding, not a skip. A stylesheet cannot
+  // add or remove an element, so if this ever fires the comparison is being handed two
+  // different documents and its answer about styles would be meaningless — which is worth
+  // a loud finding rather than a quiet one.
+  const { 'b[1]': _gone, ...missing } = structuredClone(before);
+  const removed = oracle.diffCaptures(before, missing);
+  assert.equal(removed.findings.length, 1, 'a vanished element was not reported');
+  assert.equal(removed.findings[0].after, 'absent');
+
+  const added = oracle.diffCaptures(missing, before);
+  assert.equal(added.findings.length, 1, 'a new element was not reported');
+  assert.equal(added.findings[0].after, 'present');
+
+  // Zero values compared is the vacuity case: a comparison over nothing must be visible as
+  // nothing, not indistinguishable from a clean result. The tool's own `run()` refuses to
+  // report success on it, and this is the predicate that refusal rests on.
+  assert.equal(oracle.diffCaptures({}, {}).compared, 0, 'an empty comparison claimed values');
 });
 
 test('check 34 — the served-stylesheet resolver refuses none and refuses two (controls)', async () => {

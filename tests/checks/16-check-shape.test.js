@@ -73,7 +73,12 @@ const CHECKS_DIR = path.join(REPO_ROOT, 'tests', 'checks');
  * wrapper but not the thing it wraps would have let the recovery check — the one code path
  * here that only ever runs in an emergency — sit outside the population rule.
  */
-const REACHES_SITE = ['withSite(', 'withSource(', 'htmlFiles(', 'serve('];
+// `readdir(TARGET` joined this list on 2026-08-15. Check 34's second arm walks the build
+// directory directly rather than through the harness helpers, so the scanner did not count
+// it as site-touching and its population was one route narrower than the suite. Harmless
+// on the day it was found — that arm calls `.report()` anyway — but a scanner that cannot
+// see a route cannot enforce anything about it, which is this check's whole subject.
+const REACHES_SITE = ['withSite(', 'withSource(', 'htmlFiles(', 'serve(', 'readdir(TARGET'];
 
 /**
  * Shapes this scanner does not understand. Their presence is a failure, not a skip.

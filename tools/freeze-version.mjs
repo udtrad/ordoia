@@ -229,6 +229,23 @@ export function stylesheetHref(version) {
 const SERVED_STYLESHEET = /^styles\.(?:[0-9a-f]+\.)?css$/;
 
 /**
+ * Is `name` a stylesheet the build should sweep out of a version directory?
+ *
+ * Exported so the sweep has a testable predicate rather than an inline regex nobody can
+ * reach. Deleting the sweep entirely leaves a CLEAN build green — there is no stale file
+ * to remove on a fresh `_site`, and CI always starts fresh — so the only place a sweep
+ * regression bites is a local re-freeze, which is exactly the workflow `DEPLOY.md` tells
+ * an operator to run. The resulting *state* is caught loudly by checks 21, 28, 32 and 34
+ * (a planted second sheet produces seven failures); this predicate is what makes the
+ * *mechanism* checkable too.
+ *
+ * The bare `styles.css` matches on purpose: it is the pre-fingerprint name, and it is the
+ * one URL that used to carry a year of immutable caching.
+ */
+export const isStaleStylesheet = (name, served) =>
+  name !== served && SERVED_STYLESHEET.test(name);
+
+/**
  * The stylesheet inside a built version directory, by its served name.
  *
  * The build writes `styles.<sha>.css` and the repository stores `styles.css`, so every
