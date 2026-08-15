@@ -740,6 +740,13 @@ Proven end to end on 2026-08-09 rather than argued:
 | freezing a second time | refused, naming the existing manifest |
 | manifest deleted, `npm run build` | green again |
 
+> **The path in row three has moved, and the row is left as it was.** Since 2026-08-15 the
+> frozen stylesheet is served content-addressed, so the file to append a byte to is
+> `_site/oal/v1.0/styles.<sha>.css` — resolve it with `builtStylesheet()` rather than
+> spelling it, which is the rule three checks had to learn on that date. The table records
+> what was observed on 2026-08-09 and stays accurate about that; editing the path would
+> make it a claim about a drill nobody ran.
+
 The manifest was then removed, because v1.0 is not published. The mechanism ships; the act
 does not, and `DEPLOY.md` holds it as a publication step.
 
