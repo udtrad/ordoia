@@ -286,7 +286,7 @@
       "status": "Current",
       "classification": "clarifying",
       "title": "initial publication",
-      "body": "First published version of the Ordoia Assurance Levels: eight dimensions in four pairs, four levels, the depth grid, and the reporting rules. No prior version exists, so no system's score can move."
+      "body": "First published version of the Ordoia Assurance Levels: eight dimensions in four pairs, four levels, the depth grid, and the reporting rules. No prior version exists, so no system's score can move. Amended in place on 2026-08-15, before this version's effective date and before any scorecard was issued under it: seven criteria were tightened so that each supports a yes-or-no determination rather than a judgement — the tool inventory's enumeration method (dimension 2, level 2), the egress map's denominator (dimension 3, level 2), the privileged-action set (dimension 4, level 2), the model-call inventory (dimension 6, level 2), the scope of the no-mutation assertion (dimension 3, level 3), the per-case record of scorer type (dimension 5, level 2), and the requirement that tracing be in place at run time (dimension 7, level 2). At least four of the seven could have moved a score for an unchanged system, and would have been breaking changes had this version been in effect; it was not, and no score existed to move. The amendment is recorded here rather than folded into the initial publication, because a version readable at its permanent address before it takes effect is still a version somebody may have copied."
     }
   ]
 }
