@@ -168,8 +168,8 @@ measurements. All four rows are re-measured on every change to it rather than ca
 forward — including the rows a change is not expected to move, which is how the handover
 row below is evidence rather than a leftover.
 
-**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the controls three
-audit passes forced): 137 tests, 127 pass, 0 fail, 10 skipped.** All four rows
+**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the controls four
+audit passes forced): 138 tests, 128 pass, 0 fail, 10 skipped.** All four rows
 re-measured on every change, including the ones a change is not expected to move.
 
 Five tests added across the branch, in two waves, and each target moved by exactly the
@@ -182,10 +182,10 @@ not being run; these are pure, and the +2 in every pass column is what says so.
 
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 137 | 127 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 137 | 135 | 0 | 2 |
-| the handover | `npm run test:handover` | 137 | 84 | **10** | 43 |
-| an empty directory | `npm run test:empty` | 137 | 60 | **67** | 10 |
+| the build | `npm test` | 138 | 128 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 138 | 136 | 0 | 2 |
+| the handover | `npm run test:handover` | 138 | 84 | **10** | 44 |
+| an empty directory | `npm run test:empty` | 138 | 60 | **68** | 10 |
 
 **The handover's failure count held at 10, and that is the assertion rather than the
 absence of one.** Check 34 reads a frozen version directory, which the handover does not

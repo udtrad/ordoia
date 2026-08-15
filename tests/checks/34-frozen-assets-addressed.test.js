@@ -41,8 +41,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { IS_HANDOVER, REPO_ROOT, TARGET, serve } from '../lib/harness.js';
+import { IS_HANDOVER, REPO_ROOT, TARGET, serve, withSite } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { VISUAL_PROPS, capture } from '../lib/computed-style.js';
 import { stylesheetFile, builtStylesheet, isStaleStylesheet } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is the point';
@@ -481,17 +482,34 @@ test('check 34 — the re-freeze comparison tool still loads and exports what DE
     path.join(REPO_ROOT, 'tests/checks/27-one-chrome.test.js'),
     'utf8'
   );
-  assert.match(
-    check27,
-    /from '\.\.\/lib\/computed-style\.js'/,
+  // The BINDING, not the module specifier, and no local declaration of ANY form.
+  //
+  // The first version of this asserted `doesNotMatch(/const\s+capture\s*=\s*\(props\)\s*=>/)`
+  // — the exact spelling of the copy that was deleted. Re-growing it as
+  // `function capture({ props, scope })` passed: check 34 7/7, check 27 8/8. A control
+  // written from the artifact it removed can only catch that artifact returning byte for
+  // byte. Matching the import specifier alone is no better: `import { VISUAL_PROPS }` with
+  // a local `capture` satisfies it, which is precisely the one-commit state this exists to
+  // prevent.
+  const imported = check27.match(/import\s*\{([^}]*)\}\s*from\s*'\.\.\/lib\/computed-style\.js'/);
+  assert.ok(
+    imported,
     'check 27 no longer imports the shared computed-style oracle, so the oracle has one ' +
       'consumer that is never run and the duplicate it was extracted to remove is back'
   );
+  const bound = imported[1].split(',').map((n) => n.trim().split(/\s+as\s+/)[0]);
+  for (const name of ['VISUAL_PROPS', 'capture']) {
+    assert.ok(
+      bound.includes(name),
+      `check 27 imports [${bound.join(', ')}] from the shared oracle but not ${name}. ` +
+        `Importing one half and keeping the other local is the duplicate wearing an import.`
+    );
+  }
   assert.doesNotMatch(
     check27,
-    /const\s+capture\s*=\s*\(props\)\s*=>/,
-    'check 27 has re-grown its own private capture(). Two copies of one predicate is the ' +
-      'shape that made checks 30 and 31 blind to the same clip-path on 2026-08-13.'
+    /^\s*(?:const|let|var|function)\s+capture\b/m,
+    'check 27 declares its own capture(), in some spelling. Two copies of one predicate is ' +
+      'the shape that made checks 30 and 31 blind to the same clip-path on 2026-08-13.'
   );
 
   assert.ok(tool, 'tools/frozen-render-diff.mjs failed to load');
@@ -531,6 +549,67 @@ test('check 34 — the re-freeze comparison tool still loads and exports what DE
   // nothing, not indistinguishable from a clean result. The tool's own `run()` refuses to
   // report success on it, and this is the predicate that refusal rests on.
   assert.equal(oracle.diffCaptures({}, {}).compared, 0, 'an empty comparison claimed values');
+});
+
+test('check 34 — capture() separates the frozen <main> from the chrome', async (t) => {
+  if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
+
+  /**
+   * `scope: 'main'` is the population `frozen-render-diff` certifies a re-freeze over, and
+   * NOTHING executed it. Check 27 only ever passes `'chrome'`; check 34's other arm
+   * exercises `diffCaptures` alone; the tool itself is import-loaded, never run.
+   *
+   * Drilled: collapse the scope selector to `if (inMain) continue;` — ignoring the argument
+   * entirely — and the full suite stays at 137/127/0/10. With that one token changed,
+   * `frozen-render-diff 1.0 --against src/styles.css` reports **48 elements / 9,216 values
+   * / 0 computed-style differences** and exits 0, instead of 541 / 103,872. It measures the
+   * CHROME, which check 27 has already proved is independent of the frozen sheet, so it can
+   * never report a difference — a re-freeze that restyled the published rubric would be
+   * certified clean. The tool's own vacuity guard cannot help: the wrong population is
+   * non-empty. Only `--self-test` catches it, and nothing runs `--self-test`.
+   *
+   * So the two scopes are asserted to PARTITION: both non-empty, disjoint, and `main`
+   * actually selecting elements under `<main>`.
+   */
+  const s = survey({ pages: 'version pages captured at both scopes' });
+
+  await withSite(async ({ origin, browser }) => {
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${origin}/oal/v1.0/`, { waitUntil: 'load' });
+      const chrome = await page.evaluate(capture, { props: VISUAL_PROPS, scope: 'chrome' });
+      const main = await page.evaluate(capture, { props: VISUAL_PROPS, scope: 'main' });
+      s.count('pages');
+
+      const ck = Object.keys(chrome);
+      const mk = Object.keys(main);
+
+      if (!ck.length) s.fail('the chrome scope captured no element');
+      if (!mk.length) {
+        s.fail(
+          'the main scope captured no element, so frozen-render-diff would certify a ' +
+            're-freeze having compared nothing inside the published document'
+        );
+      }
+      const overlap = ck.filter((k) => k in main);
+      if (overlap.length) {
+        s.fail(
+          `scope does not partition: ${overlap.length} element(s) in both, e.g. ` +
+            `${overlap[0]}. A tool asking about <main> would be answered about the chrome.`
+        );
+      }
+      if (mk.length && !mk.some((k) => k.includes('main'))) {
+        s.fail(
+          'no captured key sits under <main>, so scope:"main" is selecting something other ' +
+            'than the frozen document'
+        );
+      }
+    } finally {
+      await page.close();
+    }
+  });
+
+  s.report('capture() no longer separates the frozen <main> from the chrome');
 });
 
 test('check 34 — the served-stylesheet resolver refuses none and refuses two (controls)', async () => {

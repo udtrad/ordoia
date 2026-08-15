@@ -199,7 +199,30 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
       // dropped from 3 to 2 with the check still green. The one asset this arm exists to
       // defend — the published rendering of a cited document — was the one it stopped
       // covering, and a count of findings cannot notice a population that shrank.
-      const served = [builtStylesheet(frozen), 'favicon.svg', 'fonts/archivo-subset.woff2'];
+      //
+      // Resolved INSIDE a try, because `builtStylesheet` throws on a missing sheet and this
+      // list is built one line above the loop. Spelled without the guard, an absent
+      // stylesheet aborted the whole arm before any finding could be recorded and before
+      // `s.report()` ran — so the populations were never asserted on the one path the
+      // comment above is entirely about, and the loud failure named a resolver error rather
+      // than the missing member of the frozen unit.
+      let sheet = null;
+      try {
+        sheet = builtStylesheet(frozen);
+      } catch (err) {
+        s.count('assets');
+        s.fail(
+          `the frozen stylesheet cannot be resolved in the build: ${err.message} Its ` +
+            `caching cannot be verified, and it is the published rendering of a document ` +
+            `scorecards cite.`
+        );
+      }
+
+      const served = [
+        ...(sheet ? [sheet] : []),
+        'favicon.svg',
+        'fonts/archivo-subset.woff2',
+      ];
       for (const rel of served) {
         // A declared frozen asset missing from the build is a FINDING, not a skip. The
         // skip is what let this arm go quiet; an absent member of the frozen unit means
