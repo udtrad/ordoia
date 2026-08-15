@@ -38,6 +38,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, serve } from '../lib/harness.js';
@@ -102,6 +103,7 @@ test('check 34 — every immutable URL under a frozen version is content-address
   const s = survey({
     assets: 'frozen version assets whose delivered Cache-Control was read',
     immutable: 'those that were actually served immutable',
+    documents: 'frozen version DOCUMENTS whose Cache-Control was read',
   });
 
   const versionsDir = path.join(TARGET, 'oal');
@@ -114,8 +116,37 @@ test('check 34 — every immutable URL under a frozen version is content-address
       const root = path.join(versionsDir, entry.name);
 
       for (const rel of await walk(root)) {
-        if (rel === 'index.html') continue; // the document is deliberately not immutable
         const url = `/oal/${entry.name}/${rel.split(path.sep).join('/')}`;
+
+        // The DOCUMENT is exempt from the addressing rule and subject to the OPPOSITE
+        // one, so it is measured rather than skipped.
+        //
+        // This read `continue` until an adversarial pass drilled it. `_headers` line 85
+        // says "The DOCUMENT at /oal/v1.0/ is deliberately not listed" — a constraint
+        // nothing enforced. Adding three lines to `_headers` served
+        // `/oal/v1.0/index.html` as `200 public, max-age=31536000, immutable` with all
+        // four targets on their committed numbers: build 136/126/0/10, handover
+        // 136/83/10/43, empty 136/59/67/10. Check 28's HTML arm fetches the clean URL
+        // `/oal/v1.0/` through `urlFor` and never requests the `.html` form; check 14's
+        // overlap detector renders splats as a single `x`, so `styles.x` never intersects
+        // `index.html`. A visitor or crawler landing on the file URL would cache the
+        // published rubric for a year, and no purge could recall it. That is R3's exact
+        // failure, in the branch whose subject is R3.
+        if (/\.html$/.test(rel)) {
+          const doc = await fetch(new URL(url, site.origin));
+          const docCC = doc.headers.get('cache-control') ?? '';
+          s.count('documents');
+          if (/\bimmutable\b/.test(docCC)) {
+            findings.push(
+              `${url} is a DOCUMENT served \`${docCC}\`. A published version's bytes are ` +
+                `immutable; the page that delivers them is not, because its chrome renders ` +
+                `live and a reader holding a year-old copy sees last year's site with no ` +
+                `way to be told otherwise. R3: no cache header may stop a visitor seeing ` +
+                `the site as it is currently designed.`
+            );
+          }
+          continue;
+        }
 
         const res = await fetch(new URL(url, site.origin));
         const cc = res.headers.get('cache-control') ?? '';
@@ -200,6 +231,67 @@ test('check 34 — the build sweeps a stale fingerprint, and the predicate says 
       false,
       `the sweep would have deleted ${keep}, which is not a stylesheet fingerprint`
     );
+  }
+
+  // The CALL SITE, asserted separately from the predicate. Extracting `isStaleStylesheet`
+  // covered the logic and left its invocation uncovered: deleting the loop in
+  // eleventy.config.js still leaves a clean build green, because a fresh `_site` has
+  // nothing stale to sweep and no gated target ever builds incrementally. The behavioural
+  // proof is the test below; this is the cheap structural half, and it is what fails if
+  // someone deletes the loop while keeping the helper.
+  const config = readFileSync(path.join(REPO_ROOT, 'eleventy.config.js'), 'utf8');
+  assert.match(
+    config,
+    /isStaleStylesheet\(/,
+    'eleventy.config.js no longer invokes isStaleStylesheet. The predicate would still ' +
+      'pass its own controls while nothing swept, and a local re-freeze would ship two ' +
+      'stylesheets both served immutable for a year.'
+  );
+});
+
+test('check 34 — the sweep removes every stale fingerprint and nothing else', async () => {
+  // The sweep LOOP, over a real directory.
+  //
+  // Extracting `isStaleStylesheet` covered the predicate and left its call site uncovered:
+  // deleting the loop from eleventy.config.js leaves a clean build green, because a fresh
+  // `_site` has nothing stale to remove and no gated target ever builds incrementally. The
+  // structural assertion above catches deletion of the call; this reproduces the loop's
+  // semantics over a directory that actually contains the mess an operator's second build
+  // finds — several generations of fingerprint plus the pre-fingerprint name.
+  //
+  // It does NOT drive Eleventy. The first version of this test did, and it broke check 32
+  // three ways: node:test runs files in parallel, check 32 sandboxes a copy of
+  // `_site/oal/v1.0`, and rebuilding underneath it raced. `--output` is no escape either —
+  // the after-hook's `dir.output` does not track the CLI flag, so the build wrote its pages
+  // to the temp tree and its assets to `_site`. A test that mutates shared state to prove a
+  // point about isolation is its own counter-example.
+  const box = await mkdtemp(path.join(os.tmpdir(), 'ordoia-sweep-'));
+  try {
+    const served = 'styles.ef0b25e2.css';
+    const stale = ['styles.935d5f33.css', 'styles.aaaaaaaa.css', 'styles.css'];
+    const keep = ['favicon.svg', 'main.html', 'index.html', 'stylesheet.css'];
+
+    for (const f of [served, ...stale, ...keep]) await writeFile(path.join(box, f), 'x');
+
+    // The loop, exactly as eleventy.config.js runs it.
+    for (const name of await readdir(box)) {
+      if (isStaleStylesheet(name, served)) await rm(path.join(box, name), { force: true });
+    }
+
+    const left = (await readdir(box)).sort();
+    assert.deepEqual(
+      left,
+      [served, ...keep].sort(),
+      `the sweep left the wrong set. Every stale fingerprint is served \`immutable\` for a ` +
+        `year, so one surviving generation is one unrecallable stylesheet a reader can be ` +
+        `handed instead of the current one.`
+    );
+    assert.ok(
+      left.includes(served),
+      'the sweep deleted the CURRENT stylesheet — every version page would render unstyled'
+    );
+  } finally {
+    await rm(box, { recursive: true, force: true });
   }
 });
 
@@ -352,10 +444,34 @@ test('check 34 — the re-freeze comparison tool still loads and exports what DE
 
   assert.equal(typeof oracle.capture, 'function', 'the shared capture oracle is gone');
   assert.equal(typeof oracle.diffCaptures, 'function', 'the shared diff oracle is gone');
+  // NAMED, not counted. `length > 20` was the whole content guard until an adversarial
+  // pass replaced the list with four margins and sixteen `--inert-N` custom properties:
+  // length 21, five effective properties, and every gated target on its committed number.
+  // Unknown custom properties resolve to '' on both sides of any comparison, so they can
+  // never produce a finding — the list would have been long enough to pass and blind
+  // enough to certify "0 computed-style differences" for a re-freeze that restyled the
+  // published document. A count cannot defend a population; only the members can.
+  assert.ok(Array.isArray(oracle.VISUAL_PROPS), 'VISUAL_PROPS is not a list');
+  const required = [
+    'color', 'background-color', 'font-family', 'font-size', 'font-weight', 'font-style',
+    'line-height', 'letter-spacing', 'text-transform', 'text-decoration-line',
+    'display', 'visibility', 'opacity', 'position',
+    'padding-top', 'padding-left', 'border-top-width', 'border-top-color',
+    'outline-color', 'outline-width',
+  ];
+  const absent = required.filter((prop) => !oracle.VISUAL_PROPS.includes(prop));
+  assert.deepEqual(
+    absent,
+    [],
+    `VISUAL_PROPS no longer measures ${absent.join(', ')}. The re-freeze comparison would ` +
+      `report "0 computed-style differences" for a published document whose type, colour, ` +
+      `spacing or visibility had changed — a clean answer to a question it stopped asking.`
+  );
   assert.ok(
-    Array.isArray(oracle.VISUAL_PROPS) && oracle.VISUAL_PROPS.length > 20,
-    'VISUAL_PROPS is not a populated list — a comparison over a short property list ' +
-      'reports 0 differences for the same reason an empty one does'
+    oracle.VISUAL_PROPS.every((prop) => !prop.startsWith('--')),
+    'VISUAL_PROPS contains a custom property. Unknown custom properties resolve to the ' +
+      'empty string on both sides of every comparison, so they pad the list without ever ' +
+      'being able to report a difference.'
   );
 
   // The oracle must have a real consumer, or "shared" is a claim rather than a fact. It
