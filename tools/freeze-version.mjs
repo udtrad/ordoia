@@ -100,41 +100,43 @@ export const publishedDocument = (version) =>
  * deliberate act in a reviewed diff, which is what publishing a version should be.
  */
 /*
- * v1.0 changed here once, on 2026-08-13, and it is the **second** re-freeze of this
- * version. The first was 2026-08-11 (CHANGES.md row 40), recorded in DEPLOY.md as "not a
- * precedent" — a sentence this change makes untrue, and which is therefore withdrawn in
- * the same commit rather than left standing. Two re-freezes is a practice, not an
- * exception, and DEPLOY.md now says what the practice is.
+ * v1.0 has changed here twice. The first re-freeze was 2026-08-11 (CHANGES.md row 40),
+ * recorded in DEPLOY.md as "not a precedent" — a sentence the second made untrue and which
+ * was withdrawn rather than left standing. Three re-freezes is emphatically a practice, and
+ * DEPLOY.md says what the practice is and what it costs.
  *
  *   0289c300dd07…  the document published 2026-08-11, carrying the rubric intro's
  *                  intention clause
  *   da0ed36ecf24…  the document after draft 6 §5.3 cut that clause
+ *   9573e343fbb2…  the document after the seven rubric tightenings and §H's
+ *                  pre-effective-amendment clause, 2026-08-15
  *
- * What moved, measured rather than assumed — and the first draft of this comment got it
- * wrong, which is why it says so:
+ * What moved on 2026-08-15, measured rather than assumed:
  *
- *   `main.html`      42,494 -> 42,420 bytes. One sentence, the intended cut.
- *   fonts, favicon   byte-identical to the 2026-08-11 freeze.
- *   `styles.css`     **CHANGED**, and this comment first claimed it had not. A re-freeze
- *                    copies the CURRENT `src/styles.css`, so the frozen sheet now carries
- *                    this session's design work rather than 2026-08-11's.
+ *   `main.html`      42,420 -> 44,748 bytes. Seven criteria and one policy paragraph.
+ *   fonts, favicon   byte-identical to the 2026-08-13 freeze.
+ *   `styles.css`     **CHANGED**, 935d5f33 -> ef0b25e2. A re-freeze copies the CURRENT
+ *                    `src/styles.css`, so the frozen sheet carries commit 47d216b's
+ *                    `.grid .depth--wide` / `.depth--narrow` repair.
  *
- * That byte change is the one worth understanding, because it is R2's exact hazard: a
- * redesign reaching a published document. It did not happen, and that is measured, not
- * argued — **0 computed-style differences across 45,444 values** on every element inside
- * the frozen `<main>` at 320/375/768/1280, against the pre-session build. This session's
- * CSS touched the footer (chrome, outside `<main>`) and the coverage grid (not on this
- * page), so none of it can reach the rubric. The geometry does move — 2,033 deltas, up to
- * 81px — and every one of them is downstream of the intro paragraph losing a line, which
- * is the edit.
+ * That byte change is R2's exact hazard — a redesign reaching a published document — and
+ * this time it was measured BEFORE the re-freeze rather than after, by a committed tool
+ * rather than by hand: `tools/frozen-render-diff.mjs 1.0 --against src/styles.css` reported
+ * **0 computed-style differences across 103,872 values**, 541 elements inside the frozen
+ * `<main>`, at 320/375/768/1280. The tool's own self-test fired both arms first, because a
+ * comparison that cannot report a difference cannot certify the absence of one.
  *
- * The durable consequence: `versions/v1.0/styles.css` is now the stylesheet as at
- * 2026-08-13, not as at publication. Under exit 2's re-freeze that is intended. It is
- * recorded because the next person to compare the frozen sheet against the site's history
- * will otherwise wonder which date they are looking at.
+ * The 2026-08-13 entry above recorded this measurement as 45,444 values taken by hand after
+ * the fact; the figure differs because the property list is wider and this run covers only
+ * elements inside `<main>`. Neither number is comparable to the other and both are recorded.
+ *
+ * The durable consequence is unchanged and worth restating: `versions/v1.0/styles.css` is
+ * the stylesheet as at the most recent re-freeze, not as at publication. What IS new is that
+ * the served URL now carries that sheet's digest — `/oal/v1.0/styles.<sha>.css` — so a
+ * reader who cached the previous one is never handed the new document to render against it.
  */
 export const PUBLISHED_SHA256 = {
-  '1.0': 'da0ed36ecf244523aebd09eb481a80f96651b37caa3b05967bd695b851952897',
+  '1.0': '9573e343fbb2fad29d7603765ca0dfb6a7d5bd507489c021f296483c3f193e8e',
 };
 
 /** The name of the stored `<main>` fragment inside a version's directory. */

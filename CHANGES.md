@@ -169,6 +169,9 @@ next person does not have to rediscover it.
 | 133 | `tools/frozen-render-diff.mjs`, `tests/lib/computed-style.js` — both new | `DEPLOY.md:652`, which required this before the next re-freeze | A computed-style comparison of the frozen `<main>` at 320/375/768/1280, isolating the stylesheet by intercepting its response and substituting the candidate bytes. `--self-test` proves both arms. | **The precondition existed only as prose.** `DEPLOY.md` cost 4 said that before the next re-freeze one must "either fingerprint the frozen stylesheet or run that same comparison" — the 45,444-value measurement of 2026-08-13. Neither was in the repository: no script produced that figure, `45,444` appears only in prose, and the sheet was still unfingerprinted. The variable is isolated by **route interception rather than two builds**, because a version event changes the rubric's words in the same commit series that changes the stylesheet, and a build-to-build comparison reports both without being able to tell them apart. Geometry is deliberately outside `VISUAL_PROPS` for the same reason — it moves whenever the text moves, which is exactly what a version event does. The oracle is shared with check 27 rather than copied into it: those two measure complementary populations of the same thing, and 2026-08-13's `clip-path` blindness in checks 30 and 31 was two copies of one predicate. Self-test: identity reports 0 over 103,872 values, one planted `main { letter-spacing }` reports 1,800. **Measured for this re-freeze: 0 computed-style differences, 541 elements, four widths** — so the `.grid .depth--*` drift from `47d216b` does not reach the rubric page. |
 | 134 | `tools/freeze-version.mjs` `stylesheetFile`/`builtStylesheet`, `eleventy.config.js` copy hook, `src/_includes/layout.njk` L46, `src/oal-version.njk`, `src/_headers` | `DEPLOY.md` cost 4, and the owner's decision to close it rather than measure it again | The frozen stylesheet is served **content-addressed** — `/oal/v1.0/styles.<sha>.css` — and stored bare as `styles.css`. `_headers` moves from the exact path to `/oal/v1.0/styles.*`. | **`immutable` at a stable URL is only correct while a published version never changes, and re-freezes exist.** A visitor holding the old sheet renders the new document against it for up to a year and no purge reaches them; 2026-08-13 was safe by luck, not construction. Now the URL moves when the bytes move and the stale copy is never requested again, because the document is `max-age=0` and always names the current name. **It is free only while v1.0 is pre-effective** — changing a published version's asset URLs afterwards is itself a version event — which is the italic re-subset's argument of 2026-08-09 applied a second time. Two things the first attempt got wrong, both caught rather than reasoned about: the sheet was put in a `css/` subdirectory, which re-based all four relative `@font-face` URLs to `/oal/v1.0/css/fonts/…` and **check 17 reported four font files fetched and none of them under the build**; and `_headers` then wanted a splat this file already rejects. Both are answered by keeping the sheet in the version's own directory and using `styles.*` — a splat in the TRAILING position with a literal prefix, which is the documented form, and which cannot overlap `fonts/*` or `favicon.svg`. |
 | 135 | `tests/checks/34-frozen-assets-addressed.test.js` — new; `tests/checks/21`, `27`, `32` — name resolution | row 134 | Check 34 asserts every immutable URL under a frozen version names its own bytes, with fonts and favicon as a **named literal residual** rather than a glob. Checks 21, 27 and 32 resolve the served name through `builtStylesheet` instead of spelling `styles.css`. | **Only one of the three older guards noticed the rename, and the two that did not are the interesting ones.** Check 27's chrome-order regex pinned `styles.css` and went red — correct behaviour, and it is widened rather than loosened to `[^"]*\.css`, which would also match the chrome sheet and let the order assertion pass against itself. Check 21's asset arm resolves the built path and then skips it when `existsSync` comes back false, so an unfindable name is a **skip** rather than a failure: the byte-identity assertion proving the build serves the snapshot rather than `src/` silently stopped covering the stylesheet. Check 32's half-stored control deletes the built stylesheet to prove a partial snapshot is refused — `rm --force` on an absent path is silent, so it was asserting over an intact snapshot and the control could not fail. Both are the undefended-population pathology, found by drilling the fingerprint out rather than by reading. Check 34's own first draft had it too: its second arm compared the served name against `stylesheetFile(bytes)` and stayed green under the drill because both sides moved together; it now asserts `isContentAddressed` first, which knows nothing about the naming helper. The residual is a literal list because `fonts/*` would also excuse a stylesheet someone moved into `fonts/`. Baselines re-measured on all four targets: build **133/123/0/10**, live-local **133/131/0/2**, handover **133/80/10/43** with failures **held at 10**, empty **133/56/67/10**. `EMPTY_EXPECTED_FAILURES` 65 → 67; `HANDOVER_EXPECTED_FAILURES` unchanged. |
+| 136 | `src/_data/oal.json` — seven level descriptors and evidence rows across dimensions 2, 3, 4, 5, 6 and 7 | the determination catalogue of 2026-08-14, and the owner's decision to amend v1.0 before its effective date | Seven criteria tightened so each supports a yes-or-no determination. Quoted in full in *The seven tightenings* below. 14 strings, 14 lines, no other byte of the file moved. | **A version event, taken as a pre-effective amendment rather than as v1.1 or v2.0.** The catalogue found the published wording would not support a binary determination in these places, and deferred them — which left the instrument knowingly wrong on one criterion: dimension 3's deny case would award OAL 3 on a global row count that an in-place update walks straight past, and the methodology says so in terms. **The catalogue also contradicted itself**: rows D3-L3-04, D5-L2-03 and D7-L2-05 already stated the tightened rule as operative while the section governing them said the assessor scores the published wording, so two assessors reading it faithfully reached different answers. **Seven, not the six the catalogue listed** — D6-L2-00 carried a "See §H" reference and appeared in no table; it is the same shape as tightenings 1 and 3, a denominator for a completeness criterion, and adopting the six while deferring it would have recreated the contradiction being closed. The clarifying/breaking labels are deliberately **not** relied on: on audit at least four of the seven fail §H's own symmetric test, which asks whether a score could be *different*, not whether it could be lower. Rubric §H predicted precisely this — *"the first breaking change will be tempting to classify as clarifying, because the classification is self-applied and the incentive runs one way"* — so the route chosen does not depend on the classification at all. Not changed: every `selfCheck`, `inspectedCap`, `inspectedMax`, `testedMax`, `buyerQuestion`, the depth grid, and every level 0/1/3 descriptor not listed below. **No depth cap moves.** |
+| 137 | `src/_data/copy/oal.md` `changes.body`, `src/_data/copy/changelog.md` `intro` | rubric §H offering no route for what this change is | A third case added to the published change policy: **before a version takes effect**, its text may be amended in place rather than superseded, because no score exists that an amendment could move. The window closes on the effective date or the first scorecard, whichever comes first. | **The instrument's own change policy did not cover the change being made to it, and pretending otherwise was the alternative.** §H offered exactly two routes — v1.1 for clarifying, v2.0 for breaking — and in-place amendment is neither. This amendment is authorised by `DEPLOY.md`'s re-freeze practice and the owner's decision under it, not by the rubric; the clause is added so the **next** one is governed rather than a third exception. That ordering matters and is not circular: the clause does not retroactively license this change, it describes the window this change happened to be in and closes it behind itself. It is inside `<main>`, so it is part of the same version event and the same re-freeze. Mirrored on `/changelog/`, which restates the classification policy for a reader who never opens the rubric. |
+| 138 | `versions/v1.0.json`, `versions/v1.0/`, `versions/v1.0.published-index.html`, `tools/freeze-version.mjs` `PUBLISHED_SHA256` | rows 136 and 137 | **v1.0 re-frozen, the third time.** Anchor `da0ed36ecf24…` → `9573e343fbb2…`. `main.html` 42,420 → 44,748 bytes. | **The version event, executed by the documented override**: delete the manifest, the pinned directory AND the retained document, rebuild, re-freeze, then move the literal in a reviewed diff. Check 21's sixth test went red on the rubric edit and nothing else did — *"a current version says the same thing at both of its addresses"* — exactly as row 114 recorded for the previous one, and it is the only signal a version event produces. §3.4.6's trap was drilled rather than assumed: the build serves the fragment from stored bytes, so a regeneration can silently re-record the OLD text and report success. Measured after deleting all three, all eight new passages are present in the regenerated fragment. What moved: `main.html`, deliberately; `styles.css` **935d5f33 → ef0b25e2**, because a re-freeze copies the current `src/styles.css` and that sheet carries `47d216b`'s grid repair; fonts and favicon byte-identical. R2's hazard was measured **before** the re-freeze this time, by `tools/frozen-render-diff.mjs`: **0 computed-style differences across 103,872 values**, 541 elements inside the frozen `<main>`, at four widths. And cost 4 is closed for this very re-freeze rather than for the next one — the served URL moved with the bytes, `/oal/v1.0/styles.935d5f33.css` → `styles.ef0b25e2.css`, so nobody holding the old sheet is handed the new document to render against it. Page weight: `/oal/` **150,985 → 152,025 B against 153,600**, headroom 2,615 → **1,575 B**. It fits, and it is the tightest page on the site, so the next paragraph added to the rubric needs measuring before it is written. `npm run check` **133/123/0/10**. |
 
 ## Flagged and left — nothing was changed
 
@@ -218,3 +221,110 @@ From `BRIEF.md` §12 and `RATIONALE.md`. One item remains:
   > document that deletes the record of having been wrong is worth less than one that
   > carries it, and the span between the two dates — one day — is itself the evidence that
   > the flag-and-fix rule works.
+
+## The seven tightenings
+
+The published wording of each criterion, and what it says now. Recorded here in full
+because `src/_data/oal.json`'s own header requires it — *"Every string here is the settled
+copy, transcribed verbatim from the designer handover. Departures are logged in CHANGES.md
+— none are silent"* — and because check 12 will not let rendered prose exist that traces to
+neither a copy file nor this document. Row 136 is the reasoning; this is the diff.
+
+### 1 · dimension 2, level 2 — the tool inventory's enumeration method
+
+**Level descriptor.**
+
+> **Was.** Tool outcomes are typed and checked in code. No user-visible confirmation is issued unless the call returned a typed success. Error paths produce a coded response rather than a narrated one. Every tool has a defined failure behaviour, written down, and the list of tools is complete.
+
+> **Is.** Tool outcomes are typed and checked in code. No user-visible confirmation is issued unless the call returned a typed success. Error paths produce a coded response rather than a narrated one. Every tool has a defined failure behaviour, written down, and the list of tools is complete — against the statically registered tools together with a live listing of every dynamically discovered toolset. Where a toolset is mounted without a filter, the inventory is not enumerable from code and the list is not complete until that listing is obtained.
+
+**Evidence required.**
+
+> **Was.** The result type and the check on it; the tool inventory with per-tool failure behaviour; one observed failure path end to end.
+
+> **Is.** The result type and the check on it; the tool inventory with per-tool failure behaviour, and the live listing behind it wherever a toolset is mounted without a filter; one observed failure path end to end.
+
+### 2 · dimension 3, level 2 — the egress map's denominator
+
+**Level descriptor.**
+
+> **Was.** Access filtering is applied at query time inside the index or store, derived from a server-owned identity claim: a validated token claim or a session-bound value the model cannot influence. Egress is mapped: what leaves the boundary, to which vendor, and what is written to logs and traces.
+
+> **Is.** Access filtering is applied at query time inside the index or store, derived from a server-owned identity claim: a validated token claim or a session-bound value the model cannot influence. Egress is mapped: what leaves the boundary, to which vendor, and what is written to logs, traces and metrics. The map is complete when every outbound destination reachable from the path appears in it, checked against an enumeration derived from the code rather than from recollection.
+
+**Evidence required.**
+
+> **Was.** The query-time filter and the claim it derives from, traced back to token validation; the egress map naming vendors and log destinations.
+
+> **Is.** The query-time filter and the claim it derives from, traced back to token validation; the egress map naming vendors and log, trace and metric destinations, with the code-derived enumeration it was checked against.
+
+### 3 · dimension 4, level 2 — the privileged-action set
+
+**Level descriptor.**
+
+> **Was.** Refusal conditions are determined outside the model wherever they are determinable — schema, allowlist, deterministic classifier, tool-level gate. Content retrieved from documents or returned by tools is structurally marked as data, and any privileged action requires a condition that retrieved content cannot satisfy.
+
+> **Is.** Refusal conditions are determined outside the model wherever they are determinable — schema, allowlist, deterministic classifier, tool-level gate. Content retrieved from documents or returned by tools is structurally marked as data, and any privileged action — the tools that write, spend, or move data outside the authorisation boundary, enumerated from the tool inventory — requires a condition that retrieved content cannot satisfy.
+
+**Evidence required.**
+
+> **Was.** The code gate, schema or allowlist; the assembly path showing the data/instruction separation; the privileged-action condition and what supplies it.
+
+> **Is.** The code gate, schema or allowlist; the assembly path showing the data/instruction separation; the privileged-action inventory, and per action the condition and what supplies it.
+
+### 4 · dimension 6, level 2 — the model-call inventory
+
+**Level descriptor.**
+
+> **Was.** Versions are pinned exactly — primary, fallback and embedding models — and an upgrade is a deliberate, reviewable change in version control. Where the embedding model is pinned, the re-embedding consequence of changing it is documented.
+
+> **Is.** Versions are pinned exactly at every site that supplies or defaults a model identifier — primary, fallback, embedding, re-ranking and scorer models among them — and an upgrade is a deliberate, reviewable change in version control. Where the embedding model is pinned, the re-embedding consequence of changing it is documented.
+
+**Evidence required.**
+
+> **Was.** Exact versions across every model call including fallbacks and embeddings, in version control, with change history.
+
+> **Is.** Exact versions across every model call — including fallbacks, embeddings, re-rankers and scorers, and including environment defaults, deployment manifests and test fixtures — in version control, with change history.
+
+### 5 · dimension 3, level 3 — the scope of the no-mutation assertion
+
+**Level descriptor.**
+
+> **Was.** Deny-case scoring in the eval suite: cases asserting refusal for out-of-scope identities, run on every build, sourced from the real role definitions rather than invented. For any tool that writes, the deny case asserts no mutation occurred, not merely that the answer was a refusal.
+
+> **Is.** Deny-case scoring in the eval suite: cases asserting refusal for out-of-scope identities, run on every build, sourced from the real role definitions rather than invented. For any tool that writes, the deny case asserts that no mutation occurred — not merely that the answer was a refusal — by a check scoped to the records the case could have touched and able to detect an update in place. A count over a whole table does not establish this, because an in-place update leaves the count unchanged.
+
+**Evidence required.**
+
+> **Was.** The deny-case suite; its identity source mapped to the real role matrix; CI wiring; per-case assertions including the no-mutation check; run history.
+
+> **Is.** The deny-case suite; its identity source mapped to the real role matrix; CI wiring; per-case assertions including the no-mutation check and the records it is scoped to; run history.
+
+### 6 · dimension 5, level 2 — the per-case record of scorer type
+
+**Level descriptor.**
+
+> **Was.** A fixed set under version control; each case run repeatedly and scored on the distribution rather than the sample; deterministic scorers wherever the property is deterministically checkable; a stated pass rule — for example, k of n runs — rather than an implied one.
+
+> **Is.** A fixed set under version control; each case run repeatedly and scored on the distribution rather than the sample; each case's scorer type recorded, and deterministic scorers wherever the property is deterministically checkable — a model-graded scorer on a deterministically checkable property is a finding rather than a choice; a stated pass rule — for example, k of n runs — rather than an implied one.
+
+**Evidence required.**
+
+> **Was.** Harness code showing more than one run per case; the scorer implementations; the written pass rule; version-control history of the set.
+
+> **Is.** Harness code showing more than one run per case; the scorer implementations and the per-case record of which type scored which case; the written pass rule; version-control history of the set.
+
+### 7 · dimension 7, level 2 — tracing in place at run time
+
+**Level descriptor.**
+
+> **Was.** End-to-end tracing of the agent path — prompt, retrieval, tool calls, output — with sensitive content scrubbed. Alerting on quality signals such as refusal rate, empty-retrieval rate and tool-error rate, not only uptime and latency.
+
+> **Is.** End-to-end tracing of the agent path — prompt, retrieval, tool calls, output — with sensitive content scrubbed, and in place at run time: a pipeline that can stop silently has not been shown to be tracing, so its absence must raise. Alerting on quality signals such as refusal rate, empty-retrieval rate and tool-error rate, not only uptime and latency.
+
+**Evidence required.**
+
+> **Was.** Trace exemplars covering a complete turn; the scrubbing configuration; alert rules defined on quality signals with thresholds.
+
+> **Is.** Trace exemplars covering a complete turn; the scrubbing configuration; the exporter's failure mode and what raises when it stops; alert rules defined on quality signals with thresholds.
+

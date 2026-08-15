@@ -622,6 +622,7 @@ document starts lying about its own repository.
 |---|---|---|
 | 2026-08-11 | The frozen directory was re-copying the living `src/styles.css` on every build, which made the living sheet un-editable. `CHANGES.md` row 40. | The mechanism. No published word changed. |
 | 2026-08-13 | Draft 6 §5.3 cut the rubric intro's intention clause. `CHANGES.md` row 114. | One sentence of published `<main>`, deliberately. |
+| 2026-08-15 | Seven rubric criteria tightened so each supports a yes-or-no determination, plus §H's new pre-effective-amendment clause. `CHANGES.md` rows 136–137. | Seven level descriptors and evidence rows, and one paragraph of change policy. **The first re-freeze that changes what the instrument measures** — the two before it could not move a score. |
 
 **The rule, stated so the next one is a decision rather than a habit.** A re-freeze is
 available only while a version's own publication date has not passed, and it is the

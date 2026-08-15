@@ -111,12 +111,12 @@
       "levels": [
         "Nobody has defined what the user should see when a tool call fails. Whatever the model says is the behaviour.",
         "The tool returns something; the model reads it and decides what to say. Error handling is an instruction. No code distinguishes a successful call from an unsuccessful one before the user is told.",
-        "Tool outcomes are typed and checked in code. No user-visible confirmation is issued unless the call returned a typed success. Error paths produce a coded response rather than a narrated one. Every tool has a defined failure behaviour, written down, and the list of tools is complete.",
+        "Tool outcomes are typed and checked in code. No user-visible confirmation is issued unless the call returned a typed success. Error paths produce a coded response rather than a narrated one. Every tool has a defined failure behaviour, written down, and the list of tools is complete — against the statically registered tools together with a live listing of every dynamically discovered toolset. Where a toolset is mounted without a filter, the inventory is not enumerable from code and the list is not complete until that listing is obtained.",
         "Fault injection in CI: each tool forced to error, to time out, and to return malformed data, with the user-visible behaviour asserted for each case. A new tool cannot merge without its three cases."
       ],
       "evidence": [
         { "level": 1, "what": "The instruction; a tool wrapper that returns free text rather than a typed result." },
-        { "level": 2, "what": "The result type and the check on it; the tool inventory with per-tool failure behaviour; one observed failure path end to end." },
+        { "level": 2, "what": "The result type and the check on it; the tool inventory with per-tool failure behaviour, and the live listing behind it wherever a toolset is mounted without a filter; one observed failure path end to end." },
         { "level": 3, "what": "The injection suite enumerated against the complete tool inventory; the CI job; the merge gate; the suite observed executing, not only read." }
       ],
       "inspectedMax": 3,
@@ -133,13 +133,13 @@
       "levels": [
         "The retrieval layer has no concept of the caller. The index is built once and queried the same way for everyone.",
         "Caller identity exists at the application boundary and is described to the model — a role in the prompt, an instruction to answer only within it. The index itself is unfiltered. Also OAL 1: the filter exists but the identity it uses is supplied by the model, or by the client, rather than owned by the server. A forgeable input into a real mechanism is an asserted boundary, not an enforced one. What leaves the boundary — to which vendor, into which logs and traces — has not been written down.",
-        "Access filtering is applied at query time inside the index or store, derived from a server-owned identity claim: a validated token claim or a session-bound value the model cannot influence. Egress is mapped: what leaves the boundary, to which vendor, and what is written to logs and traces.",
-        "Deny-case scoring in the eval suite: cases asserting refusal for out-of-scope identities, run on every build, sourced from the real role definitions rather than invented. For any tool that writes, the deny case asserts no mutation occurred, not merely that the answer was a refusal."
+        "Access filtering is applied at query time inside the index or store, derived from a server-owned identity claim: a validated token claim or a session-bound value the model cannot influence. Egress is mapped: what leaves the boundary, to which vendor, and what is written to logs, traces and metrics. The map is complete when every outbound destination reachable from the path appears in it, checked against an enumeration derived from the code rather than from recollection.",
+        "Deny-case scoring in the eval suite: cases asserting refusal for out-of-scope identities, run on every build, sourced from the real role definitions rather than invented. For any tool that writes, the deny case asserts that no mutation occurred — not merely that the answer was a refusal — by a check scoped to the records the case could have touched and able to detect an update in place. A count over a whole table does not establish this, because an in-place update leaves the count unchanged."
       ],
       "evidence": [
         { "level": 1, "what": "The role in the prompt; the index build with no identity field; or a filter whose identity argument originates in a model or client payload." },
-        { "level": 2, "what": "The query-time filter and the claim it derives from, traced back to token validation; the egress map naming vendors and log destinations." },
-        { "level": 3, "what": "The deny-case suite; its identity source mapped to the real role matrix; CI wiring; per-case assertions including the no-mutation check; run history." }
+        { "level": 2, "what": "The query-time filter and the claim it derives from, traced back to token validation; the egress map naming vendors and log, trace and metric destinations, with the code-derived enumeration it was checked against." },
+        { "level": 3, "what": "The deny-case suite; its identity source mapped to the real role matrix; CI wiring; per-case assertions including the no-mutation check and the records it is scoped to; run history." }
       ],
       "inspectedMax": 2,
       "testedMax": 3,
@@ -155,12 +155,12 @@
       "levels": [
         "No stated limits. What the system refuses is whatever the model happens to refuse.",
         "Limits are requested in a prompt, including the instruction to ignore instructions found in documents. They hold for the cases someone tried. User input, retrieved content and tool output arrive in the context as one undifferentiated instruction stream.",
-        "Refusal conditions are determined outside the model wherever they are determinable — schema, allowlist, deterministic classifier, tool-level gate. Content retrieved from documents or returned by tools is structurally marked as data, and any privileged action requires a condition that retrieved content cannot satisfy.",
+        "Refusal conditions are determined outside the model wherever they are determinable — schema, allowlist, deterministic classifier, tool-level gate. Content retrieved from documents or returned by tools is structurally marked as data, and any privileged action — the tools that write, spend, or move data outside the authorisation boundary, enumerated from the tool inventory — requires a condition that retrieved content cannot satisfy.",
         "A maintained adversarial set covering three categories — paraphrase, indirect route, and instruction embedded in retrieved content — re-run on every change, with a bypass rate tracked over a stated denominator. Every bypass found in production appears in the set, dated."
       ],
       "evidence": [
         { "level": 1, "what": "The prompt lines; a context-assembly path that concatenates sources without marking them." },
-        { "level": 2, "what": "The code gate, schema or allowlist; the assembly path showing the data/instruction separation; the privileged-action condition and what supplies it." },
+        { "level": 2, "what": "The code gate, schema or allowlist; the assembly path showing the data/instruction separation; the privileged-action inventory, and per action the condition and what supplies it." },
         { "level": 3, "what": "The set with case counts per category; run history against changes; a bypass rate with numerator and denominator; the trail from production incidents into cases, with dates." }
       ],
       "inspectedMax": 2,
@@ -177,12 +177,12 @@
       "levels": [
         "No evaluation set. Testing is someone trying it before release.",
         "A set of cases exists — a notebook, a spreadsheet, a handful of prompts. Each case is run once and a pass is a single sample. Scoring is a person reading output, or a model asked whether the answer is good with no written criterion.",
-        "A fixed set under version control; each case run repeatedly and scored on the distribution rather than the sample; deterministic scorers wherever the property is deterministically checkable; a stated pass rule — for example, k of n runs — rather than an implied one.",
+        "A fixed set under version control; each case run repeatedly and scored on the distribution rather than the sample; each case's scorer type recorded, and deterministic scorers wherever the property is deterministically checkable — a model-graded scorer on a deterministically checkable property is a finding rather than a choice; a stated pass rule — for example, k of n runs — rather than an implied one.",
         "Evaluations in CI with thresholds that gate merge, and a set maintained from production traffic and real incidents rather than authored once, with dated additions and retirements."
       ],
       "evidence": [
         { "level": 1, "what": "The file; a harness with no repeat-run loop; no written scoring criterion." },
-        { "level": 2, "what": "Harness code showing more than one run per case; the scorer implementations; the written pass rule; version-control history of the set." },
+        { "level": 2, "what": "Harness code showing more than one run per case; the scorer implementations and the per-case record of which type scored which case; the written pass rule; version-control history of the set." },
         { "level": 3, "what": "CI configuration carrying the gate; the set's change history showing traffic and incident provenance with dates; at least one build actually blocked by it." }
       ],
       "inspectedMax": 3,
@@ -199,12 +199,12 @@
       "levels": [
         "The model in use is not recorded. Whatever the SDK defaults to is what answers your users.",
         "A model is named in configuration but on a floating alias or a \"latest\" pointer. The team intends to test upgrades. In practice the vendor's deprecation email is the change-control process, and fallback or embedding models are unpinned even where the primary is not.",
-        "Versions are pinned exactly — primary, fallback and embedding models — and an upgrade is a deliberate, reviewable change in version control. Where the embedding model is pinned, the re-embedding consequence of changing it is documented.",
+        "Versions are pinned exactly at every site that supplies or defaults a model identifier — primary, fallback, embedding, re-ranking and scorer models among them — and an upgrade is a deliberate, reviewable change in version control. Where the embedding model is pinned, the re-embedding consequence of changing it is documented.",
         "Candidate versions are run against the evaluation set before promotion, with a written go/no-go record per upgrade and a rollback path that has been exercised at least once in reality, not only documented."
       ],
       "evidence": [
         { "level": 1, "what": "Configuration showing an alias or a partial pin." },
-        { "level": 2, "what": "Exact versions across every model call including fallbacks and embeddings, in version control, with change history." },
+        { "level": 2, "what": "Exact versions across every model call — including fallbacks, embeddings, re-rankers and scorers, and including environment defaults, deployment manifests and test fixtures — in version control, with change history." },
         { "level": 3, "what": "Comparison output for at least one upgrade; the dated go/no-go; evidence of a rollback that was executed, with its date." }
       ],
       "inspectedMax": 3,
@@ -221,12 +221,12 @@
       "levels": [
         "No tracing. Logs are print statements. Nobody would know.",
         "Application logs and uptime monitoring. You would know if it returned a 500; you would not know if it started answering wrongly. Quality problems arrive by user report, and the first person to notice is a customer.",
-        "End-to-end tracing of the agent path — prompt, retrieval, tool calls, output — with sensitive content scrubbed. Alerting on quality signals such as refusal rate, empty-retrieval rate and tool-error rate, not only uptime and latency.",
+        "End-to-end tracing of the agent path — prompt, retrieval, tool calls, output — with sensitive content scrubbed, and in place at run time: a pipeline that can stop silently has not been shown to be tracing, so its absence must raise. Alerting on quality signals such as refusal rate, empty-retrieval rate and tool-error rate, not only uptime and latency.",
         "Every alert has a named owner — a person or a named rota, not a distribution alias whose membership is unverified — and a runbook that resolves. Thresholds carry a dated review. Time-to-detection is measured. At least one alert has fired, been delivered, and been actioned, with a record."
       ],
       "evidence": [
         { "level": 1, "what": "Log configuration; an uptime monitor; no trace spans across the agent path." },
-        { "level": 2, "what": "Trace exemplars covering a complete turn; the scrubbing configuration; alert rules defined on quality signals with thresholds." },
+        { "level": 2, "what": "Trace exemplars covering a complete turn; the scrubbing configuration; the exporter's failure mode and what raises when it stops; alert rules defined on quality signals with thresholds." },
         { "level": 3, "what": "The alert inventory mapped to named owners and resolving runbooks; a dated threshold review; a detection-lead figure with its denominator; and at least one alert with a recorded firing, delivery and action." }
       ],
       "inspectedMax": 3,

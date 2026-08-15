@@ -163,6 +163,8 @@ Every assessment names the version it was performed under. A level means nothing
 
 **Breaking changes** (v1.0 to v2.0) cover anything that could move a score for an unchanged system: a changed level descriptor, a changed evidence requirement, a changed depth cap, a change to what a dimension covers, or a change to a threshold.
 
+**Before a version takes effect**, there is a third case, and it is the one this version is in. A version is published at its permanent address ahead of its effective date so that it can be read and challenged before anyone is scored against it. Until that date, and until the first scorecard is issued under it, its text may be amended in place rather than superseded — because no score exists that an amendment could move. Every such amendment is dated in the changelog, its reason written before the edit rather than after, and it names any change that would have been breaking had the version been in effect. After the effective date, or after the first scorecard, whichever comes first, the only routes are v1.1 and v2.0.
+
 Every entry in the changelog is classified as one or the other, with a one-line reason. An assurance framework that revises silently is not an assurance framework. Superseded versions stay published, at permanent addresses, indefinitely.
 
 @@ changes.link
