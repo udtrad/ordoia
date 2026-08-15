@@ -172,13 +172,27 @@ row below is evidence rather than a leftover.
 audit passes forced): 138 tests, 128 pass, 0 fail, 10 skipped.** All four rows
 re-measured on every change, including the ones a change is not expected to move.
 
-Five tests added across the branch, in two waves, and each target moved by exactly the
-arithmetic that predicts it. The first three were two site-touching arms plus one pure
-control: build +3 passes, handover +1 pass and +2 skips, empty +1 pass and +2 failures
-(65 → 67). The last three are **pure** — a module-load check, a resolver control and a sweep-predicate
-control, none touching the site — so they pass on all four targets and **both CI failure
-counts held**, handover at 10 and empty at 67. A new test that moves no failure count is either pure or
-not being run; these are pure, and the +2 in every pass column is what says so.
+**Eight tests added across the branch, in five waves**, and each target moved by exactly the
+arithmetic that predicts it:
+
+| Wave | Tests | What they are | Empty-target failures |
+|---|---:|---|---|
+| check 34, first cut | +3 | two site-touching arms, one pure control | 65 → 67 |
+| module load + resolver control | +2 | both pure | 67 |
+| sweep predicate control | +1 | pure | 67 |
+| sweep loop | +1 | pure | 67 |
+| `capture()` scope partition | +1 | site-touching | 67 → **68** |
+
+A new test that moves no failure count is either pure or not being run. The five pure ones
+pass on all four targets and moved nothing but the pass columns; the two site-touching waves
+moved the empty count by exactly their arity, and `HANDOVER_EXPECTED_FAILURES` **held at 10
+throughout**, which is the assertion rather than the absence of one.
+
+This paragraph previously read "five tests, in two waves… empty at 67" while the table below
+it said 68, and claimed "+2 in every pass column" when the waves moved +3, +2, +1, +1, +1. The
+table was measured and correct; the prose beside it was not. Recorded rather than quietly
+corrected, because a summary that drifts from the table it summarises is the same defect as a
+comment that drifts from its code.
 
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|

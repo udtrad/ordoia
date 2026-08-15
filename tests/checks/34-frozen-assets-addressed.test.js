@@ -38,7 +38,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, serve, withSite } from '../lib/harness.js';

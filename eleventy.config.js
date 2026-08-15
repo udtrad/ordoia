@@ -811,14 +811,18 @@ export default function (eleventyConfig) {
         const source = from(asset);
         if (!existsSync(source)) continue;
 
-        // The stylesheet is served content-addressed — `css/<sha>.css` rather than
+        // The stylesheet is served content-addressed — `styles.<sha>.css` rather than
         // `styles.css` — so that `immutable` stays honest across a re-freeze. The STORED
         // name is unchanged; only the served one moves. See `stylesheetFile` in
-        // tools/freeze-version.mjs for why, and `src/_headers` for why it is a directory.
+        // tools/freeze-version.mjs for why, and `src/_headers` for why it stays in the
+        // version's own directory rather than a `css/` subdirectory of it.
         //
-        // Stale fingerprints are cleared first, for the reason the chrome sheet's are:
-        // Eleventy does not clean its output, so without this a local `_site` accumulates
-        // one frozen stylesheet per edit and every one of them is served `immutable`.
+        // This comment said `css/<sha>.css` until 2026-08-15 — the abandoned first design,
+        // rejected because a subdirectory re-bases the stylesheet's relative `@font-face`
+        // URLs and check 17 caught four fonts fetched from a path that exists nowhere
+        // (`CHANGES.md` row 134). The same stale sentence was fixed in `src/_headers` and
+        // survived here, so it also pointed the reader AT `src/_headers` as corroboration
+        // for a claim that file explicitly contradicts.
         if (asset === STORED_STYLESHEET) {
           const served = stylesheetFile(readFileSync(source));
 

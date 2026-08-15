@@ -44,9 +44,13 @@ import { VISUAL_PROPS, capture, diffCaptures } from '../tests/lib/computed-style
 import { stylesheetHref } from './freeze-version.mjs';
 
 /**
- * The widths the 2026-08-13 measurement used, and the ones the grid reflow turns on.
- * 320 is the narrowest supported viewport; 736px and 46rem are live breakpoints either
- * side of 768.
+ * The widths the 2026-08-13 measurement used.
+ *
+ * `src/styles.css` has exactly ONE width breakpoint — `@media (max-width: 46rem)` — and
+ * 46rem is 736px, so 320 and 375 sit below it and 768 and 1280 above. An earlier version
+ * of this comment named "736px and 46rem" as two breakpoints "either side of 768", which
+ * is the same one twice and on the wrong side of 768. A reader moving a width would have
+ * trusted it.
  */
 const WIDTHS = [320, 375, 768, 1280];
 

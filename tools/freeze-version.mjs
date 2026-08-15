@@ -204,9 +204,12 @@ export const STORED_STYLESHEET = 'styles.css';
  * other one, `*.css`, a splat with a literal suffix after it. `styles.*` also cannot overlap
  * `fonts/*` or `favicon.svg`, so the comma-join hazard of 2026-08-09 has no way in.
  *
- * This is the ONE place the served name is decided. The build writes it, `layout.njk` links
- * it, and checks 21, 27, 28 and 34 resolve it — through this function, so a build serving a
- * name no check looks for is not expressible.
+ * This is the ONE place the served name is decided, and every consumer resolves it through
+ * this function rather than spelling it, so a build serving a name no check looks for is not
+ * expressible. The list is deliberately not enumerated here: an earlier version named four
+ * checks when six resolve it (15, 21, 27, 28, 32, 34, plus `frozen-render-diff.mjs` and
+ * `oal-version.njk`), which is an em-dashed list reading as exhaustive while being a subset
+ * — the exact defect this branch's rubric tightening 4 adds a criterion against.
  */
 export const stylesheetFile = (css) => `styles.${sha256(css).slice(0, 8)}.css`;
 
