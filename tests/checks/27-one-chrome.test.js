@@ -53,6 +53,7 @@ import { survey } from '../lib/population.js';
 import { ledgerFor } from '../lib/allowances.js';
 import { deriveChromeSheet, isChromeSelector, parse } from '../../tools/chrome-sheet.mjs';
 import { stylesheetHref } from '../../tools/freeze-version.mjs';
+import { VISUAL_PROPS, capture } from '../lib/computed-style.js';
 
 const HANDOVER_SKIP =
   'the designer handover predates the one-layout build — its eleven pages carry hand-written ' +
@@ -424,56 +425,17 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
   const isVersionPage = (url) => /^\/oal\/v[\d.]+\/$/.test(url);
   const ledger = await ledgerFor(27);
 
-  /**
-   * The properties a chrome element can visibly differ by.
-   *
-   * Colour is load-bearing beyond its own row: `outline-color` and `border-color` follow
-   * `currentColor`, so a lost `a { color: … }` shows up here as several diffs rather than
-   * one. That is how the wordmark's focus ring turns UA-default blue without any rule
-   * mentioning outlines.
-   */
-  const PROPS = [
-    'color', 'background-color', 'opacity', 'visibility', 'display', 'position',
-    'font-family', 'font-size', 'font-weight', 'font-style', 'font-variation-settings',
-    'line-height', 'letter-spacing', 'word-spacing', 'text-transform', 'white-space',
-    'text-decoration-line', 'text-decoration-color', 'text-decoration-thickness',
-    'text-underline-offset', 'list-style-type', 'text-align',
-    'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-    'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-    'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
-    'border-top-color', 'border-bottom-color', 'border-top-style', 'border-bottom-style',
-    'outline-color', 'outline-width', 'outline-style', 'outline-offset',
-    'gap', 'grid-column-start', 'flex-wrap', 'flex-direction', 'align-items', 'z-index',
-  ];
-
-  /**
-   * Every element outside `<main>`, keyed by a path a reader can find in the markup.
-   *
-   * `!el.closest('main')` excludes `<main>` and its subtree in one predicate. `<html>` and
-   * `<body>` are excluded and reported separately below — they are ancestors of `<main>`
-   * rather than chrome, and which sheet owns the page background behind a frozen document
-   * is a genuine design question this test should not answer by implication.
-   */
-  const capture = (props) => {
-    const key = (el) => {
-      const parts = [];
-      for (let n = el; n && n.tagName && n.tagName !== 'BODY'; n = n.parentElement) {
-        const nth = n.parentElement ? [...n.parentElement.children].indexOf(n) : 0;
-        parts.unshift(`${n.tagName.toLowerCase()}${n.className ? `.${String(n.className).trim().split(/\s+/).join('.')}` : ''}[${nth}]`);
-      }
-      return parts.join(' > ');
-    };
-    const skip = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'TITLE', 'NOSCRIPT']);
-    const out = {};
-    for (const el of document.querySelectorAll('body *')) {
-      if (el.closest('main') || skip.has(el.tagName)) continue;
-      const cs = getComputedStyle(el);
-      const rec = {};
-      for (const p of props) rec[p] = cs.getPropertyValue(p);
-      out[key(el)] = rec;
-    }
-    return out;
-  };
+  // Properties and element-walk both come from the shared oracle in
+  // tests/lib/computed-style.js. They were a private copy here until 2026-08-15, and the
+  // commit that extracted the oracle CLAIMED they were shared while leaving this copy in
+  // place — so the file had one consumer and that consumer was never run. A duplicate
+  // with a docstring saying it is not a duplicate is worse than an honest duplicate.
+  //
+  // `scope: 'chrome'` is everything OUTSIDE `<main>`; tools/frozen-render-diff.mjs passes
+  // `'main'` for the complementary population. One predicate, so a blindness fixed for
+  // one is fixed for both — the rule 2026-08-13 established when checks 30 and 31 were
+  // found blind to the same `clip-path`.
+  const PROPS = VISUAL_PROPS;
 
   await withSite(async ({ origin, pages, browser }) => {
     const page = await browser.newPage();
@@ -483,7 +445,7 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
         s.count('pages');
 
         await page.goto(`${origin}${url}`, { waitUntil: 'load' });
-        const before = await page.evaluate(capture, PROPS);
+        const before = await page.evaluate(capture, { props: PROPS, scope: 'chrome' });
 
         // Disable this version's own stylesheet, and confirm one was actually disabled —
         // a selector that matched nothing would make the comparison trivially green,
@@ -513,7 +475,7 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
           continue;
         }
 
-        const after = await page.evaluate(capture, PROPS);
+        const after = await page.evaluate(capture, { props: PROPS, scope: 'chrome' });
 
         const keys = Object.keys(before);
         s.count('elements', keys.length);
@@ -555,7 +517,7 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
         s.fail('the sensitivity control needs /about/ in the build and it was not there');
       } else {
         await page.goto(`${origin}${live.url}`, { waitUntil: 'load' });
-        const a = await page.evaluate(capture, PROPS);
+        const a = await page.evaluate(capture, { props: PROPS, scope: 'chrome' });
         const n = await page.evaluate(() => {
           let k = 0;
           for (const sheet of document.styleSheets) {
@@ -566,7 +528,7 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
           }
           return k;
         });
-        const b = await page.evaluate(capture, PROPS);
+        const b = await page.evaluate(capture, { props: PROPS, scope: 'chrome' });
         const changed = Object.keys(a).filter((k) => b[k] && PROPS.some((p) => a[k][p] !== b[k][p]));
         if (n !== 1 || changed.length === 0) {
           s.fail(

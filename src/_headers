@@ -86,7 +86,7 @@
 # and takes the host default, `public, max-age=0, must-revalidate` — the same as
 # every other page — because its chrome now renders live and a stale copy would
 # show a visitor last year's site.
-# The stylesheet is CONTENT-ADDRESSED — /oal/v1.0/css/<sha>.css — since
+# The stylesheet is CONTENT-ADDRESSED — /oal/v1.0/styles.<sha>.css — since
 # 2026-08-15, and that is what makes `immutable` on it honest rather than merely
 # convenient. It was `/oal/v1.0/styles.css`, a stable URL, which is correct while
 # a published version never changes and wrong the moment one is re-frozen: a

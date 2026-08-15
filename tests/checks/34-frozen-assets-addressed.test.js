@@ -38,10 +38,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
-import { IS_HANDOVER, TARGET, serve } from '../lib/harness.js';
+import os from 'node:os';
+import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { IS_HANDOVER, REPO_ROOT, TARGET, serve } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
-import { stylesheetFile } from '../../tools/freeze-version.mjs';
+import { stylesheetFile, builtStylesheet } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is the point';
 
@@ -239,4 +240,117 @@ test('check 34 — the addressing predicate still tells a digest from a hex-shap
     false,
     'a 4-character run was accepted; the threshold is 8 and a shorter run collides by luck'
   );
+
+  // PREFIX, not substring — the predicate's whole stated claim, and it had no control.
+  // `deadbeef` above does not separate the two, because it is not a substring of the
+  // digest either. A run taken from the MIDDLE is the only input that tells `startsWith`
+  // from `includes`, and an adversarial pass proved the `includes()` mutant survived all
+  // four gated targets without it.
+  assert.equal(
+    isContentAddressed(`styles.${digest.slice(8, 24)}.css`, bytes),
+    false,
+    'a hex run drawn from the middle of the digest was accepted. The predicate must ' +
+      'require a PREFIX: a substring match would call any name containing digest-shaped ' +
+      'text content-addressed, and such a URL still never moves when the bytes do.'
+  );
+
+  // The stated 8-character boundary, pinned at 7 and 8 rather than at 4 and 8. Without
+  // the 7 case the threshold could drift down to any value below 8 undetected.
+  assert.equal(
+    isContentAddressed(`styles.${digest.slice(0, 7)}.css`, bytes),
+    false,
+    'a 7-character run was accepted; the documented threshold is 8'
+  );
+  assert.equal(
+    isContentAddressed(`styles.${digest.slice(0, 8)}.css`, bytes),
+    true,
+    'an 8-character run was rejected; the documented threshold is 8 and this is the ' +
+      'exact name the build produces'
+  );
+
+  // `runs.some()` must consider every hex run, not only the first. A name carrying an
+  // unrelated hex token before the digest is the case that distinguishes them.
+  assert.equal(
+    isContentAddressed(`v2-abcdef01-styles.${digest.slice(0, 8)}.css`, bytes),
+    true,
+    'a digest prefix in a later position was missed, so the check only ever inspects the ' +
+      'first hex run in a name'
+  );
+});
+
+test('check 34 — the re-freeze comparison tool still loads and exports what DEPLOY.md runs', async () => {
+  // `tools/frozen-render-diff.mjs` is the precondition DEPLOY.md names before any
+  // re-freeze, and nothing in this suite imported it. Proven by an adversarial pass:
+  // appending `this is not javascript at all !!!` to the tool AND to
+  // tests/lib/computed-style.js left `npm test` at 133/123/0/10. Both could rot to
+  // unparseable and the only person who would find out is the operator mid-re-freeze,
+  // at the one moment the tool is supposed to be answering a question about a published
+  // document.
+  //
+  // This is a load check, not a run: executing the tool costs a browser and four
+  // viewports, which is the operator's cost to pay at re-freeze time, not every commit's.
+  // It catches rot, which is the failure mode that actually happens to code nothing runs.
+  const tool = await import('../../tools/frozen-render-diff.mjs');
+  const oracle = await import('../lib/computed-style.js');
+
+  assert.equal(typeof oracle.capture, 'function', 'the shared capture oracle is gone');
+  assert.equal(typeof oracle.diffCaptures, 'function', 'the shared diff oracle is gone');
+  assert.ok(
+    Array.isArray(oracle.VISUAL_PROPS) && oracle.VISUAL_PROPS.length > 20,
+    'VISUAL_PROPS is not a populated list — a comparison over a short property list ' +
+      'reports 0 differences for the same reason an empty one does'
+  );
+
+  // The oracle must have a real consumer, or "shared" is a claim rather than a fact. It
+  // was exactly that for one commit: check 27 kept its own private copy while the
+  // extracting commit's changelog row said the two were sharing.
+  const check27 = await readFile(
+    path.join(REPO_ROOT, 'tests/checks/27-one-chrome.test.js'),
+    'utf8'
+  );
+  assert.match(
+    check27,
+    /from '\.\.\/lib\/computed-style\.js'/,
+    'check 27 no longer imports the shared computed-style oracle, so the oracle has one ' +
+      'consumer that is never run and the duplicate it was extracted to remove is back'
+  );
+  assert.doesNotMatch(
+    check27,
+    /const\s+capture\s*=\s*\(props\)\s*=>/,
+    'check 27 has re-grown its own private capture(). Two copies of one predicate is the ' +
+      'shape that made checks 30 and 31 blind to the same clip-path on 2026-08-13.'
+  );
+
+  assert.ok(tool, 'tools/frozen-render-diff.mjs failed to load');
+});
+
+test('check 34 — the served-stylesheet resolver refuses none and refuses two (controls)', async () => {
+  // Both throws in `builtStylesheet` were uncovered: an adversarial pass replaced the
+  // whole function body with `return found[0]` and every gated target stayed at its
+  // committed number — build 133/123/0/10, handover 10, empty 67. The 0-case is *reached*
+  // by check 32's half-stored control, but `storePublishedAssets` wraps the call in a
+  // try/catch that converts the resulting TypeError into the identical "missing" verdict,
+  // so that control passes with or without the throw. Neither branch was load-bearing
+  // anywhere. These two assertions are what make them so.
+  const box = await mkdtemp(path.join(os.tmpdir(), 'ordoia-sheets-'));
+  try {
+    assert.throws(
+      () => builtStylesheet(box),
+      /no stylesheet in/,
+      'a version directory with no stylesheet was accepted. The page would render unstyled ' +
+        'and the freeze would store nothing for it.'
+    );
+
+    await writeFile(path.join(box, 'styles.aaaaaaaa.css'), 'a{}');
+    await writeFile(path.join(box, 'styles.bbbbbbbb.css'), 'b{}');
+    assert.throws(
+      () => builtStylesheet(box),
+      /stylesheets in/,
+      'two stylesheets in one version directory were accepted, and one of them was picked. ' +
+        'Both are served `immutable` for a year, so the stale one is unrecallable — this is ' +
+        'the exact state the build sweep exists to prevent, and picking either is a guess.'
+    );
+  } finally {
+    await rm(box, { recursive: true, force: true });
+  }
 });

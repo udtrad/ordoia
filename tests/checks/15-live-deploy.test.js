@@ -287,6 +287,19 @@ test('check 15 — the cache split survives the host', async (t) => {
 
   const current = await live('/styles.css');
   assert.ok(current.ok, `/styles.css is unreachable — ${current.error}`);
+  // The status assertion is what makes the NEGATIVE assertion below mean anything, and
+  // this arm is the third instance of the same defect found on this branch — the other
+  // two were seven lines above and in check 28. `live()` reports transport failures only,
+  // so a 404 arrives as `ok: true`; `|| ''` then makes a missing header, a 404 and a 500
+  // indistinguishable from "correctly not immutable". Drilled: repointed at a nonexistent
+  // path, this test passed 7/7 under test:live-local. A negative assertion over a response
+  // that never happened is the most confident kind of nothing.
+  assert.equal(
+    current.res.status,
+    200,
+    `/styles.css returned ${current.res.status}. The assertion below is negative, so an ` +
+      `absent page satisfies it — the status is what proves a real response was measured.`
+  );
   assert.doesNotMatch(
     current.res.headers.get('cache-control') || '',
     /immutable/,
