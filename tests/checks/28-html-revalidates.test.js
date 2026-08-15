@@ -43,6 +43,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { TARGET, IS_HANDOVER, htmlFiles, urlFor, serve } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { builtStylesheet } from '../../tools/freeze-version.mjs';
 
 const LIVE = process.env.ORDOIA_LIVE?.replace(/\/+$/, '');
 const TIMEOUT_MS = Number(process.env.ORDOIA_LIVE_TIMEOUT_MS || 10_000);
@@ -192,8 +193,26 @@ test('check 28 — the frozen version keeps immutable on its assets, and only on
           'assets to hold to the immutable rule; this population fills from publication onward'
       );
     } else {
-      for (const rel of ['styles.css', 'favicon.svg', 'fonts/archivo-subset.woff2']) {
-        if (!existsSync(path.join(frozen, rel))) continue;
+      // The stylesheet is resolved, not spelled. Spelled `styles.css` this list silently
+      // lost it the moment the sheet was fingerprinted: `existsSync` went false, the
+      // `continue` below treated that as "nothing to check", and the `assets` population
+      // dropped from 3 to 2 with the check still green. The one asset this arm exists to
+      // defend — the published rendering of a cited document — was the one it stopped
+      // covering, and a count of findings cannot notice a population that shrank.
+      const served = [builtStylesheet(frozen), 'favicon.svg', 'fonts/archivo-subset.woff2'];
+      for (const rel of served) {
+        // A declared frozen asset missing from the build is a FINDING, not a skip. The
+        // skip is what let this arm go quiet; an absent member of the frozen unit means
+        // the published rendering is incomplete, which is exactly what R2 forbids.
+        if (!existsSync(path.join(frozen, rel))) {
+          s.count('assets');
+          s.fail(
+            `/oal/v1.0/${rel} is declared part of the frozen unit and is absent from the ` +
+              `build, so its caching cannot be verified and the published rendering is ` +
+              `incomplete.`
+          );
+          continue;
+        }
         const url = `/oal/v1.0/${rel}`;
         const res = await fetch(new URL(url, site.origin));
         s.count('assets');
