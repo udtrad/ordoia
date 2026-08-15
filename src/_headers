@@ -102,12 +102,17 @@
 # 1. A Cloudflare splat matches `/` as well, so `*.css` would ALSO match
 #    `/oal/v1.0/fonts/anything.css` — two Cache-Control declarations on one
 #    request, which comma-join on this host. `styles.*` cannot reach anything
-#    under `fonts/`, so no request can match two rules. That matters because the
-#    overlap detector in tests/lib/posture.js could not see the `*.css` shape
-#    either: `sampleFor` renders each splat as a single `x`, so it tests
-#    `/oal/v1.0/x.css` against `/oal/v1.0/fonts/x` and finds no intersection. The
-#    guard written for the 2026-08-09 comma-join defect is blind to exactly that
-#    shape, so this fix is structural rather than detected.
+#    under `fonts/`, so no request can match two rules.
+#
+#    This paragraph used to add that the overlap detector in tests/lib/posture.js
+#    was blind to the `*.css` shape — that `sampleFor` rendered each splat as a
+#    single `x` and so compared `/oal/v1.0/x.css` against `/oal/v1.0/fonts/x` and
+#    found no intersection. **That is no longer true and the function it names no
+#    longer exists.** Measured 2026-08-15: substitute `/oal/v1.0/*.css` back in
+#    and the detector reports the overlap against `fonts/*` by name. The
+#    structural choice below is still the right one, but it is now belt AND
+#    braces rather than the only thing standing between this file and a
+#    comma-joined Cache-Control on a frozen directory.
 # 2. Cloudflare documents splats for the TRAILING position. If the host did not
 #    honour a mid-pattern one the rule would match nothing and the frozen
 #    stylesheet would silently drop to the zone default — the same 4-hour TTL the
