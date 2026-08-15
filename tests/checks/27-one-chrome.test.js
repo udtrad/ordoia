@@ -52,6 +52,7 @@ import { IS_HANDOVER, REPO_ROOT, TARGET, withSite, withSource } from '../lib/har
 import { survey } from '../lib/population.js';
 import { ledgerFor } from '../lib/allowances.js';
 import { deriveChromeSheet, isChromeSelector, parse } from '../../tools/chrome-sheet.mjs';
+import { stylesheetHref } from '../../tools/freeze-version.mjs';
 
 const HANDOVER_SKIP =
   'the designer handover predates the one-layout build — its eleven pages carry hand-written ' +
@@ -487,7 +488,11 @@ test('check 27 — the chrome does not depend on a frozen version stylesheet', a
         // Disable this version's own stylesheet, and confirm one was actually disabled —
         // a selector that matched nothing would make the comparison trivially green,
         // which is the vacuity this suite refuses.
-        const frozenHref = `${url}styles.css`;
+        // Resolved, not spelled: the frozen sheet is served `styles.<sha>.css` since
+        // 2026-08-15. Spelling it `${url}styles.css` matched nothing after that, and
+        // because this arm counts what it disabled it went RED rather than green — which
+        // is the only reason the disable-and-compare below still means anything.
+        const frozenHref = stylesheetHref(url.match(/^\/oal\/v([^/]+)\//)[1]);
         const off = await page.evaluate((href) => {
           let n = 0;
           for (const sheet of document.styleSheets) {
@@ -824,7 +829,12 @@ test('check 27 — every rendered page links the derived chrome stylesheet', asy
        * `/oal/v1.0/` and most of R1 reverts silently — the markup is identical, so every
        * other test here still passes.
        */
-      const ownAt = html.search(/<link rel="stylesheet" href="[^"]*styles\.css">/);
+      // `styles.css` on a live page, `styles.<sha>.css` on a frozen version page since
+      // 2026-08-15. Both spellings, because this regex pinned the bare name and went red
+      // the moment the frozen sheet was fingerprinted — which is the correct behaviour and
+      // is why it is widened here rather than loosened to `[^"]*\.css`, which would also
+      // match the chrome sheet and let the order assertion pass against itself.
+      const ownAt = html.search(/<link rel="stylesheet" href="[^"]*styles(?:\.[0-9a-f]+)?\.css">/);
       if (ownAt < 0 || chromeAt < ownAt) {
         s.fail(
           `${url}: the chrome stylesheet is linked before the page's own stylesheet. On a ` +

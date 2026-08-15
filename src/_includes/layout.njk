@@ -43,7 +43,7 @@
   seconds. Same origin, so check 6 is untouched.
 #}
 <link rel="preload" href="{{ assetBase | default('') }}/fonts/archivo-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="{{ assetBase | default('') }}/styles.css">
+<link rel="stylesheet" href="{{ stylesheetHref | default('/styles.css') }}">
 <link rel="stylesheet" href="{{ chromeHref }}">
 </head>
 <body>

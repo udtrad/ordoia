@@ -58,7 +58,7 @@ jobs:
     # it. Both numbers below were measured on all four targets, not derived from the last.
     env:
       HANDOVER_EXPECTED_FAILURES: '10'
-      EMPTY_EXPECTED_FAILURES: '65'
+      EMPTY_EXPECTED_FAILURES: '67'
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

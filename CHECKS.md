@@ -168,12 +168,24 @@ measurements. All four rows are re-measured on every change to it rather than ca
 forward — including the rows a change is not expected to move, which is how the handover
 row below is evidence rather than a leftover.
 
+**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint): 133 tests, 123 pass,
+0 fail, 10 skipped.** All four rows re-measured, including the two a new check was not
+expected to move. Three tests added and each target moved by exactly the arithmetic that
+predicts it: two site-touching arms plus one pure control, so the build gains three passes,
+the handover gains the control as a pass and the two arms as skips, and the empty target
+gains the control as a pass and the two arms as failures.
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 130 | 120 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 130 | 128 | 0 | 2 |
-| the handover | `npm run test:handover` | 130 | 79 | **10** | 41 |
-| an empty directory | `npm run test:empty` | 130 | 55 | **65** | 10 |
+| the build | `npm test` | 133 | 123 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 133 | 131 | 0 | 2 |
+| the handover | `npm run test:handover` | 133 | 80 | **10** | 43 |
+| an empty directory | `npm run test:empty` | 133 | 56 | **67** | 10 |
+
+**The handover's failure count held at 10, and that is the assertion rather than the
+absence of one.** Check 34 reads a frozen version directory, which the handover does not
+have, so it skips — a move there would have meant the skip was not taking and the check was
+measuring hand-authored files against a freeze that postdates them by a week.
 
 `test:live-local`'s two skips are checks 22 and 24 — the Cloudflare zone and the external
 monitor, both of which want a credential and neither of which existed when this row last
@@ -1170,6 +1182,39 @@ what the host serves, the headers actually sent, a real 404 rather than a soft o
 every printed permanent address resolving. It replaces the four `curl` commands
 `DEPLOY.md` used to carry: one claim, verified in one place, rather than two copies to
 keep in step. It runs after every deploy and weekly thereafter.
+
+**Check 34 — an immutable URL under a frozen version names its own bytes.** Denominators:
+the frozen version assets whose delivered `Cache-Control` was read, and how many of those
+were *actually* served `immutable`. The second is the one that can go quiet: if the
+`_headers` rule stopped matching, every asset would come back with the host default, and a
+check spelled "immutable implies addressed" would pass over an empty set while the caching
+guarantee it is written around had disappeared.
+
+Added 2026-08-15 with the fingerprint it guards. `DEPLOY.md`'s cost 4 of a re-freeze was
+that `/oal/v1.0/styles.css` carried a year of `immutable` at a **stable** URL — correct
+while a published version never changes, wrong the moment one is re-frozen, and measured
+clean in 2026-08-13's re-freeze only because that session's CSS happened to miss the rubric
+page. The sheet is now `/oal/v1.0/styles.<sha>.css`, so a re-freeze that changes it changes
+its URL and the stale copy is never requested again.
+
+**Drilled by removing the fingerprint, and the first drill found a self-referential arm.**
+Stubbing `stylesheetFile` to return the bare name turned the first arm red and left the
+second one green — because that arm compared the served name against `stylesheetFile(bytes)`,
+so both sides of the comparison moved together. A guard whose expectation is computed by the
+thing it guards cannot fail for the reason it exists. It now asserts `isContentAddressed`
+first, which knows nothing about the naming helper, and both arms drill red and restore
+green.
+
+**Two guards elsewhere were silently defanged by the same change, and only one of them said
+so.** Check 27's chrome-order regex pinned `styles.css` and went **red** — correct. Check
+21's asset arm resolves the built path with `existsSync(output) || continue`, so a name it
+could not find became a **skip**: the byte-identity assertion proving the build serves the
+snapshot rather than `src/` stopped covering the stylesheet and stayed green. Check 32's
+half-stored control did the same thing one step further on — it deletes the built stylesheet
+to prove a partial snapshot is refused, `rm --force` on an absent path is silent, so it was
+asserting over an intact snapshot. All three now resolve the name through `builtStylesheet`
+rather than spelling it, which is why that function exists rather than being three
+one-liners.
 
 ## The budget miss, closed — and made executable
 

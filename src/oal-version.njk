@@ -8,6 +8,7 @@ pagination:
 eleventyComputed:
   permalink: "/oal/v{{ v.version | requirePublishableVersion }}/"
   assetBase: "/oal/v{{ v.version }}"
+  stylesheetHref: "{{ v.version | stylesheetHref }}"
   versionOf: "{{ v.version }}"
   title: "{{ oal.name }} — v{{ v.version }} | Ordoia"
   description: "The Ordoia Assurance Levels rubric, v{{ v.version }}, at its permanent address. Eight dimensions, four levels, published in full under CC BY 4.0."

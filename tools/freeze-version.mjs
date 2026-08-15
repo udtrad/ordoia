@@ -53,7 +53,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { readdir, readFile, writeFile, mkdir, copyFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -170,6 +170,89 @@ export const FROZEN_UNIT = [MAIN_FRAGMENT, 'styles.css', 'fonts', 'favicon.svg']
  */
 export const PINNED_ASSETS = FROZEN_UNIT.filter((a) => a !== MAIN_FRAGMENT);
 
+/** The stored name of a version's stylesheet, inside `versions/v<n>/`. */
+export const STORED_STYLESHEET = 'styles.css';
+
+/**
+ * The *served* path of a version's stylesheet — content-addressed, relative to `/oal/v<n>/`.
+ *
+ * The stored name never changes; the served one changes whenever the bytes do. That
+ * asymmetry is the whole point, and it closes `DEPLOY.md`'s cost 4 of a re-freeze:
+ *
+ *   `/oal/v<n>/styles.css` was served `immutable` for a year at a STABLE URL, which is
+ *   correct while a published version never changes and wrong the moment one is re-frozen.
+ *   A visitor holding the old sheet would render the new document against it, and a cache
+ *   purge cannot reach them. Measured clean on 2026-08-13, but safe by luck rather than by
+ *   construction — the session's CSS happened to miss the rubric page.
+ *
+ * Content-addressing removes the luck. A re-freeze that changes the stylesheet changes its
+ * URL, so the returning visitor's cached copy is simply never requested again. The document
+ * is `max-age=0` and never cached by the zone, so they always fetch the HTML that names the
+ * new URL.
+ *
+ * It stays in the version's OWN directory rather than moving into a `css/` subdirectory,
+ * and that is not a style preference. The stylesheet's `@font-face` rules address the fonts
+ * relatively — `fonts/archivo-subset.woff2` — so a subdirectory re-bases every one of them
+ * to `/oal/v<n>/css/fonts/…`, which exists nowhere. The first version of this did exactly
+ * that and check 17 caught it: four font files fetched, none of them under the build, on the
+ * one page whose rendering is supposed to be frozen for a decade.
+ *
+ * `_headers` matches it with `/oal/v<n>/styles.*` — a splat in the TRAILING position with a
+ * literal prefix, which is the documented form. The shape `src/_headers` rejects is the
+ * other one, `*.css`, a splat with a literal suffix after it. `styles.*` also cannot overlap
+ * `fonts/*` or `favicon.svg`, so the comma-join hazard of 2026-08-09 has no way in.
+ *
+ * This is the ONE place the served name is decided. The build writes it, `layout.njk` links
+ * it, and checks 21, 27, 28 and 34 resolve it — through this function, so a build serving a
+ * name no check looks for is not expressible.
+ */
+export const stylesheetFile = (css) => `styles.${sha256(css).slice(0, 8)}.css`;
+
+/**
+ * The bytes the build will serve as v<n>'s stylesheet: the stored copy once frozen, `src/`
+ * before that. Mirrors the `from()` branch in `eleventy.config.js`'s copy hook, which is
+ * what decides the same question for every other pinned asset.
+ */
+export function stylesheetSource(version) {
+  const pinned = path.join(pinnedDir(version), STORED_STYLESHEET);
+  return existsSync(pinned) ? pinned : path.join(REPO_ROOT, 'src', STORED_STYLESHEET);
+}
+
+/** The served path of v<n>'s stylesheet, read from whichever source the build will use. */
+export function stylesheetHref(version) {
+  return `/${versionDir(version)}/${stylesheetFile(readFileSync(stylesheetSource(version)))}`;
+}
+
+/** A built stylesheet name, fingerprinted or not. */
+const SERVED_STYLESHEET = /^styles\.(?:[0-9a-f]+\.)?css$/;
+
+/**
+ * The stylesheet inside a built version directory, by its served name.
+ *
+ * The build writes `styles.<sha>.css` and the repository stores `styles.css`, so every
+ * consumer that reaches into `_site/oal/v<n>/` has to translate. Doing it here rather than
+ * at each call site is not tidiness: check 21's asset arm resolves the built path with
+ * `existsSync(output) || continue`, so a name it cannot find is not a failure — it is a
+ * SKIP, and the byte-identity assertion that proves the build serves the snapshot rather
+ * than `src/` goes quietly vacuous. That is exactly what happened on the first run of this
+ * change, and it is the population pathology this repository keeps rediscovering.
+ *
+ * Throws on none and on more than one. Two fingerprints in a version directory means a
+ * stale sheet is being served `immutable` alongside the current one, and picking either
+ * would be a guess.
+ */
+export function builtStylesheet(built) {
+  const found = readdirSync(built).filter((f) => SERVED_STYLESHEET.test(f));
+  if (found.length === 1) return found[0];
+  throw new Error(
+    found.length === 0
+      ? `no stylesheet in ${built}: expected one styles.<sha>.css. Run \`npm run build\`.`
+      : `${found.length} stylesheets in ${built} (${found.join(', ')}). A stale fingerprint ` +
+        `is being served alongside the current one, and both carry a year of immutable ` +
+        `caching. The build's own sweep should have removed it.`
+  );
+}
+
 /**
  * The inner HTML of a document's single `<main>` element.
  *
@@ -221,8 +304,20 @@ export async function storePublishedAssets(version, built) {
   // half-stored: the stored half immune to `src/`, the absent half silently re-derived
   // from it on every later build. That is the defect this function exists to end, and it
   // would ship reporting success — so it throws instead of returning a short list.
+  // The stylesheet is served fingerprinted and stored bare, so the build is asked for the
+  // served name and the repository is given the stored one. Everything else is named the
+  // same on both sides.
+  const servedAs = (asset) =>
+    asset === STORED_STYLESHEET ? builtStylesheet(built) : asset;
+
   const needed = ['index.html', ...PINNED_ASSETS];
-  const missing = needed.filter((a) => !existsSync(path.join(built, a)));
+  const missing = needed.filter((a) => {
+    try {
+      return !existsSync(path.join(built, servedAs(a)));
+    } catch {
+      return true; // builtStylesheet throws on none or on several; both are "missing"
+    }
+  });
   if (missing.length) {
     throw new Error(
       `cannot publish v${version}: ${missing.join(', ')} missing from ${built}. Every ` +
@@ -261,7 +356,7 @@ export async function storePublishedAssets(version, built) {
 
   const stored = [MAIN_FRAGMENT];
   for (const asset of PINNED_ASSETS) {
-    const from = path.join(built, asset);
+    const from = path.join(built, servedAs(asset));
     const to = path.join(target, asset);
     if (statSync(from).isDirectory()) await cp(from, to, { recursive: true });
     else await copyFile(from, to);
