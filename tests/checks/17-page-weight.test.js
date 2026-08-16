@@ -131,8 +131,40 @@ test('check 17 — no page is over the 150 KiB budget §4 sets', async (t) => {
       if (!sawStylesheet) s.fail(`${url}: fetched no stylesheet, so its weight is not the page's weight`);
       if (!sawFont) s.fail(`${url}: fetched no font, and fonts are most of this budget`);
 
+      // The favicon a headless browser never asks for, folded in rather than left as a
+      // documented floor.
+      //
+      // Chromium in automation does not request the declared icon; a real browser does, on
+      // a cold load, on every page. Leaving it out made the number this gate prints 285 B
+      // more generous than the wire — measured 2026-08-15, when `/oal/` was reported at
+      // 1,575 B of headroom and actually had ~1,290. A budget that reports more room than
+      // exists is the same defect as a check that measures a smaller population than it
+      // claims: it is wrong in the direction nobody investigates.
+      const iconPath = path.join(TARGET, 'favicon.svg');
+      if (existsSync(iconPath) && !requested.has(`${origin}/favicon.svg`)) {
+        const icon = transferSize('favicon.svg', await readFile(iconPath));
+        total += icon;
+        s.count('assets');
+        breakdown.push(`${icon} B  /favicon.svg (declared, not requested headless)`);
+      }
+
       const kib = (total / 1024).toFixed(1);
       report.push(`${total.toString().padStart(7)} B  ${kib.padStart(6)} KiB  ${url}`);
+
+      // A warning band, so the run BEFORE the breaking one says so.
+      //
+      // This gate has no gradient: a page is under budget until it is over, and the first
+      // signal is a red build. That is the moment a one-line entry in the allowance ledger
+      // is most tempting. This branch spent roughly 45% of the remaining headroom on `/oal/`
+      // in a single editorial pass — seven tightened criteria and one paragraph — so the
+      // page that will break is identifiable now rather than after the fact.
+      const WARN_BAND = 5 * 1024;
+      if (total <= BUDGET_BYTES && total > BUDGET_BYTES - WARN_BAND) {
+        console.warn(
+          `    WARNING  ${url} is ${BUDGET_BYTES - total} B from the 150 KiB budget. The ` +
+            `next paragraph added to this page needs measuring before it is written.`
+        );
+      }
 
       if (total > BUDGET_BYTES) {
         const over = total - BUDGET_BYTES;
