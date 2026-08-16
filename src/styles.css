@@ -300,6 +300,11 @@ section { scroll-margin-top: 2rem; }
 .vstatus .sep { margin: 0 0.5rem; }
 .vstatus .s { color: var(--ink); }
 .vstatus a { color: var(--ink); text-underline-offset: 0.18em; }
+/* The effective date takes its own line rather than wrapping into one. The strip is
+   measure-constrained at 426px and the version name already spends 337 of it, so a third
+   clause cannot fit beside the other two at any width — inline it wrapped mid-clause and
+   left a trailing separator. Its own line is the same two lines, deliberately. */
+.vstatus .eff { display: block; }
 
 /* ---------- hero ---------- */
 

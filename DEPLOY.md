@@ -706,6 +706,14 @@ sequence, for the record:
 # 1. Answer cost 2 FIRST, while backing out is still free. A re-freeze copies the current
 #    src/styles.css into the snapshot, so this asks whether that sheet renders the frozen
 #    <main> any differently. Zero, or stop.
+#
+#    ORDER MATTERS and the tool now enforces it. Run this BEFORE step 2, while the frozen
+#    sheet and src/styles.css still differ. Afterwards they are byte-identical, the run
+#    becomes a comparison of the frozen sheet with itself, and the tool refuses it rather
+#    than returning a 0 that means nothing. To check a re-freeze after the fact, compare
+#    against the PREVIOUS frozen bytes instead:
+#      git show <pre-freeze-commit>:versions/v1.0/styles.css > /tmp/before.css
+#      node tools/frozen-render-diff.mjs 1.0 --against /tmp/before.css
 node tools/frozen-render-diff.mjs 1.0 --self-test          # both arms must fire
 node tools/frozen-render-diff.mjs 1.0 --against src/styles.css
 

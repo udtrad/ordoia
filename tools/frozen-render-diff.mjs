@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { serve, TARGET, REPO_ROOT } from '../tests/lib/harness.js';
 import { VISUAL_PROPS, capture, diffCaptures } from '../tests/lib/computed-style.js';
-import { stylesheetHref } from './freeze-version.mjs';
+import { stylesheetHref, STORED_STYLESHEET } from './freeze-version.mjs';
 
 /**
  * The widths the 2026-08-13 measurement used.
@@ -109,6 +109,35 @@ async function run(version, candidatePath) {
   }
 
   const candidateCss = readFileSync(abs, 'utf8');
+
+  // Refuse a candidate identical to the frozen sheet.
+  //
+  // Sibling of the never-fired-route guard below. `DEPLOY.md` tells the next operator to
+  // run `--against src/styles.css`, and that command is informative only BEFORE the
+  // re-freeze: afterwards the freeze has copied `src/styles.css` into the snapshot, so the
+  // two are byte-identical and the run becomes this tool's own identity arm wearing the
+  // clothes of a measurement. It returns 0 differences over 104,256 values and a reviewer
+  // reasonably reads it as proof. It proves the comparison works, which `--self-test`
+  // already says, and nothing about the re-freeze.
+  //
+  // Found by the design pass, which noticed the documented command had stopped carrying
+  // information the moment the branch it documents was committed.
+  const frozenPath = path.join(REPO_ROOT, 'versions', `v${version}`, STORED_STYLESHEET);
+  if (existsSync(frozenPath) && readFileSync(frozenPath, 'utf8') === candidateCss) {
+    console.error(
+      `The candidate is byte-identical to versions/v${version}/${STORED_STYLESHEET}, so this ` +
+        `run would compare the frozen sheet with itself and report 0 differences whatever ` +
+        `the state of the world.\n\n` +
+        `That is the identity arm of --self-test, not a measurement. It is what this command ` +
+        `becomes AFTER a re-freeze has copied src/styles.css into the snapshot — run it ` +
+        `BEFORE, while the two still differ and backing out is free (DEPLOY.md step 1). To ` +
+        `check a re-freeze after the fact, compare against the PREVIOUS frozen bytes:\n` +
+        `  git show <pre-freeze-commit>:versions/v${version}/${STORED_STYLESHEET} > /tmp/before.css\n` +
+        `  node tools/frozen-render-diff.mjs ${version} --against /tmp/before.css`
+    );
+    return 1;
+  }
+
   const site = await serve();
   const browser = await chromium.launch();
   let perWidth;
