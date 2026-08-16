@@ -52,7 +52,7 @@ import { stylesheetHref, STORED_STYLESHEET } from './freeze-version.mjs';
  * is the same one twice and on the wrong side of 768. A reader moving a width would have
  * trusted it.
  */
-const WIDTHS = [320, 375, 768, 1280];
+export const WIDTHS = [320, 375, 768, 1280];
 
 /** Every value at every width, so a single width cannot carry the whole answer. */
 async function renderPair(browser, origin, version, candidateCss) {
@@ -152,10 +152,24 @@ async function run(version, candidatePath) {
   const findings = perWidth.flatMap((w) => w.findings.map((f) => ({ ...f, width: w.width })));
   const elements = perWidth[0]?.elements ?? 0;
 
+  // Every declared width must have been measured. `perWidth[0]` alone is what the summary
+  // used to report, so a run that silently covered fewer viewports than it claimed printed
+  // a confident total anyway.
+  if (perWidth.length !== WIDTHS.length) {
+    console.error(
+      `\nMEASURED ${perWidth.length} of ${WIDTHS.length} declared widths. A comparison that ` +
+        `covers fewer viewports than it says cannot certify the ones it skipped.`
+    );
+    return 1;
+  }
+
   console.log(`frozen-render-diff — /oal/v${version}/ against ${candidatePath}`);
   console.log(`  widths     ${WIDTHS.join(', ')}`);
   console.log(`  elements   ${elements} inside <main>`);
   console.log(`  values     ${compared.toLocaleString()} compared`);
+  for (const w of perWidth) {
+    console.log(`    @${String(w.width).padStart(4)}  ${w.compared.toLocaleString().padStart(7)} values  ${w.elements} elements`);
+  }
 
   if (elements === 0 || compared === 0) {
     console.error(

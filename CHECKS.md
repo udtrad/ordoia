@@ -169,7 +169,7 @@ forward — including the rows a change is not expected to move, which is how th
 row below is evidence rather than a leftover.
 
 **Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the controls four
-audit passes forced): 138 tests, 128 pass, 0 fail, 10 skipped.** All four rows
+audit passes forced): 139 tests, 129 pass, 0 fail, 10 skipped.** All four rows
 re-measured on every change, including the ones a change is not expected to move.
 
 **Eight tests added across the branch, in five waves**, and each target moved by exactly the
@@ -182,6 +182,7 @@ arithmetic that predicts it:
 | sweep predicate control | +1 | pure | 67 |
 | sweep loop | +1 | pure | 67 |
 | `capture()` scope partition | +1 | site-touching | 67 → **68** |
+| retained-document refusal control | +1 | pure (sandboxed) | 68 |
 
 A new test that moves no failure count is either pure or not being run. The five pure ones
 pass on all four targets and moved nothing but the pass columns; the two site-touching waves

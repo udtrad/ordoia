@@ -219,8 +219,15 @@ export const stylesheetFile = (css) => `styles.${sha256(css).slice(0, 8)}.css`;
  * what decides the same question for every other pinned asset.
  */
 export function stylesheetSource(version) {
-  const pinned = path.join(pinnedDir(version), STORED_STYLESHEET);
-  return existsSync(pinned) ? pinned : path.join(REPO_ROOT, 'src', STORED_STYLESHEET);
+  // Keyed on the DIRECTORY, exactly as the copy hook's `from()` is. It keyed on the FILE
+  // until 2026-08-16 while claiming in this docstring to mirror `from()` — so the two
+  // disagreed precisely when a version directory existed but was empty, which is the state
+  // a refused re-freeze used to leave behind. The claim was what made the divergence
+  // invisible; a comment asserting two things agree is worth less than the line that makes
+  // them agree.
+  return existsSync(pinnedDir(version))
+    ? path.join(pinnedDir(version), STORED_STYLESHEET)
+    : path.join(REPO_ROOT, 'src', STORED_STYLESHEET);
 }
 
 /** The served path of v<n>'s stylesheet, read from whichever source the build will use. */
@@ -349,8 +356,6 @@ export async function storePublishedAssets(version, built) {
     );
   }
 
-  await mkdir(target, { recursive: true });
-
   // The document, whole, beside the manifest — the provenance the substring claim needs.
   //
   // Refuses to overwrite, for the same reason main() refuses an existing manifest: this
@@ -369,6 +374,15 @@ export async function storePublishedAssets(version, built) {
         `PUBLISHED_SHA256 in a reviewed diff.`
     );
   }
+  // Only NOW is the version directory created. It used to be made before the refusal
+  // above, so a refused re-freeze left an empty `versions/v<n>/` behind — and that stray
+  // directory is not inert: `eleventy.config.js`'s copy hook decides a version is
+  // `published` by `existsSync(pinnedDir)`, the DIRECTORY, so the next build served
+  // `/oal/v<n>/` linking a stylesheet it never wrote and carrying no fonts at all, exiting
+  // 0. The suite catches that state loudly, but the operator who hits it is one following
+  // the documented sequence after a refusal. A refusal must touch nothing.
+  await mkdir(target, { recursive: true });
+
   const document = await readFile(path.join(built, 'index.html'));
   await writeFile(retained, document);
 

@@ -104,6 +104,25 @@ async function freeze(box, version) {
 const anchorPath = (root, v) => path.join(root, 'versions', `v${v}.published-index.html`);
 const manifestOf = (root, v) => path.join(root, 'versions', `v${v}.json`);
 
+/** Every path under versions/ with its content hash — the population a no-op must not move. */
+async function hashVersionsTree(root) {
+  const dir = path.join(root, 'versions');
+  const out = {};
+  const walk = async (d) => {
+    for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) {
+        out[path.relative(dir, full) + '/'] = 'dir';
+        await walk(full);
+      } else {
+        out[path.relative(dir, full)] = createHash('sha256').update(await readFile(full)).digest('hex');
+      }
+    }
+  };
+  await walk(dir);
+  return out;
+}
+
 test('check 32 — the CLI refuses to re-freeze a published version, and nothing moves', async () => {
   const s = survey({
     artifacts: 'provenance artifacts compared before and after the refused command',
@@ -169,6 +188,45 @@ test('check 32 — the refusal is about the manifest, not about failing at every
     );
     assert.ok(existsSync(manifestOf(box.root, FROZEN_VERSION)), 'no manifest was written');
     assert.ok(existsSync(anchorPath(box.root, FROZEN_VERSION)), 'no published document was retained');
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test('check 32 — the retained-document refusal touches nothing under versions/', async () => {
+  // The refusal DEPLOY.md now rests on, with no control until 2026-08-16.
+  //
+  // Arm 1 above exercises the MANIFEST refusal — `main()` rejects before
+  // `storePublishedAssets` is ever reached — so the retained-document refusal, the one that
+  // fires when the manifest and pinned directory are gone but the anchor remains, had
+  // nothing asserting it at all. It is also the refusal the rewritten DEPLOY.md paragraph
+  // cites when it says deleting the manifest alone "stops with a named error".
+  //
+  // And it did not touch nothing: `mkdir(target)` ran before the throw, so a refused
+  // re-freeze left an empty `versions/v<n>/` behind. That stray directory is not inert —
+  // `eleventy.config.js` decides a version is published by `existsSync(pinnedDir)`, so the
+  // next build served the version page linking a stylesheet it never wrote, with no fonts,
+  // and exited 0.
+  const box = await sandbox({ buildVersion: FROZEN_VERSION });
+  try {
+    await rm(manifestOf(box.root, FROZEN_VERSION), { force: true });
+    await rm(path.join(box.root, 'versions', `v${FROZEN_VERSION}`), { recursive: true, force: true });
+
+    const before = await hashVersionsTree(box.root);
+    const result = await freeze(box, FROZEN_VERSION);
+
+    assert.notEqual(result.code, 0, 'the retained document was overwritten rather than refused');
+    assert.match(
+      result.stderr,
+      /refusing to overwrite/i,
+      `refused for an undocumented reason:\n${result.stderr}`
+    );
+    assert.deepEqual(
+      await hashVersionsTree(box.root),
+      before,
+      'the refusal changed something under versions/. A refused publication must be a ' +
+        'no-op: anything it leaves behind is state the next build reads as a decision.'
+    );
   } finally {
     await box.cleanup();
   }

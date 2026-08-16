@@ -43,6 +43,7 @@ import os from 'node:os';
 import { readdir, readFile, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { IS_HANDOVER, REPO_ROOT, TARGET, serve, withSite } from '../lib/harness.js';
 import { survey } from '../lib/population.js';
+import { parseHeadersFile, patternToRegExp } from '../lib/posture.js';
 import { VISUAL_PROPS, capture } from '../lib/computed-style.js';
 import { stylesheetFile, builtStylesheet, isStaleStylesheet } from '../../tools/freeze-version.mjs';
 
@@ -55,15 +56,16 @@ const HANDOVER_SKIP = 'the handover has no /oal/ snapshot directory — that is 
  * also excuse a stylesheet someone moved into `fonts/`.
  */
 const KNOWN_STABLE = new Set([
-  'favicon.svg',
-  'fonts/archivo-subset.woff2',
-  'fonts/source-serif-4-subset.woff2',
-  'fonts/source-serif-4-italic-subset.woff2',
-  'fonts/ibm-plex-mono-400-subset.woff2',
-  'fonts/OFL-Archivo.txt',
-  'fonts/OFL-IBMPlexMono.txt',
-  'fonts/OFL-SourceSerif4.md',
+  '/oal/v1.0/favicon.svg',
+  '/oal/v1.0/fonts/archivo-subset.woff2',
+  '/oal/v1.0/fonts/source-serif-4-subset.woff2',
+  '/oal/v1.0/fonts/source-serif-4-italic-subset.woff2',
+  '/oal/v1.0/fonts/ibm-plex-mono-400-subset.woff2',
+  '/oal/v1.0/fonts/OFL-Archivo.txt',
+  '/oal/v1.0/fonts/OFL-IBMPlexMono.txt',
+  '/oal/v1.0/fonts/OFL-SourceSerif4.md',
 ]);
+
 
 /**
  * Is this name addressed by its own content?
@@ -89,7 +91,7 @@ async function walk(dir, base = dir) {
   return out;
 }
 
-test('check 34 — every immutable URL under a frozen version is content-addressed', async (t) => {
+test('check 34 — every URL _headers declares immutable is content-addressed', async (t) => {
   if (IS_HANDOVER) return t.skip(HANDOVER_SKIP);
 
   /**
@@ -107,66 +109,88 @@ test('check 34 — every immutable URL under a frozen version is content-address
     documents: 'frozen version DOCUMENTS whose Cache-Control was read',
   });
 
-  const versionsDir = path.join(TARGET, 'oal');
+  // The population is every path `_headers` grants `immutable`, not every file under a
+  // frozen version. Those are different sets, and the difference was the whole gap.
+  //
+  // `_headers` declares four immutable prefixes: `/oal/v1.0/styles.*`, `/oal/v1.0/fonts/*`,
+  // `/oal/v1.0/favicon.svg` and **`/chrome/*`**. This check walked only the first three —
+  // the ones whose bytes never change — and excluded the derived chrome sheet, which is
+  // rebuilt from `src/styles.css` on every design edit and is linked by every page on the
+  // site, including the frozen rubric. So the rule this check exists to enforce, *if the
+  // bytes can change the name must change with them*, went unenforced on the only asset
+  // that actually changes.
+  //
+  // Drilled: hard-code the chrome fingerprint to `deadbeef` and all four gated targets hold
+  // at their committed numbers while `/chrome/deadbeef.css` is served `immutable` for a
+  // year; edit `src/styles.css` and different bytes ship at that same frozen URL on every
+  // page. That is `styles.deadbeef.css` — this file's own canonical negative control — one
+  // directory over, and it is R3's failure site-wide rather than on one page. `_headers`
+  // asserts the opposite as settled fact: *"there is no stale version to serve, because the
+  // redesigned page links a different file."* Nothing measured it.
+  //
+  // Deriving the population from `_headers` also makes the check self-extending: publishing
+  // v2.0 adds its block and this arm covers it without an edit.
+  const headerBlocks = parseHeadersFile(await readFile(path.join(TARGET, '_headers'), 'utf8'));
+  const immutablePatterns = headerBlocks
+    .filter((b) => /\bimmutable\b/i.test(b.headers.get('cache-control') ?? ''))
+    .map((b) => b.pattern);
+
+  assert.ok(
+    immutablePatterns.length > 0,
+    'no _headers block declares `immutable`, so this check would walk an empty population ' +
+      'and report green having measured nothing — and the caching guarantee it is written ' +
+      'around would have silently disappeared'
+  );
+
   const site = await serve(TARGET, { applyHeaders: true });
   const findings = [];
 
   try {
-    for (const entry of await readdir(versionsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || !/^v\d/.test(entry.name)) continue;
-      const root = path.join(versionsDir, entry.name);
-
-      for (const rel of await walk(root)) {
-        const url = `/oal/${entry.name}/${rel.split(path.sep).join('/')}`;
-
-        // The DOCUMENT is exempt from the addressing rule and subject to the OPPOSITE
-        // one, so it is measured rather than skipped.
-        //
-        // This read `continue` until an adversarial pass drilled it. `_headers` line 85
-        // says "The DOCUMENT at /oal/v1.0/ is deliberately not listed" — a constraint
-        // nothing enforced. Adding three lines to `_headers` served
-        // `/oal/v1.0/index.html` as `200 public, max-age=31536000, immutable` with all
-        // four targets on their committed numbers: build 136/126/0/10, handover
-        // 136/83/10/43, empty 136/59/67/10. Check 28's HTML arm fetches the clean URL
-        // `/oal/v1.0/` through `urlFor` and never requests the `.html` form; check 14's
-        // overlap detector renders splats as a single `x`, so `styles.x` never intersects
-        // `index.html`. A visitor or crawler landing on the file URL would cache the
-        // published rubric for a year, and no purge could recall it. That is R3's exact
-        // failure, in the branch whose subject is R3.
-        if (/\.html$/.test(rel)) {
-          const doc = await fetch(new URL(url, site.origin));
-          const docCC = doc.headers.get('cache-control') ?? '';
-          s.count('documents');
-          if (/\bimmutable\b/.test(docCC)) {
-            findings.push(
-              `${url} is a DOCUMENT served \`${docCC}\`. A published version's bytes are ` +
-                `immutable; the page that delivers them is not, because its chrome renders ` +
-                `live and a reader holding a year-old copy sees last year's site with no ` +
-                `way to be told otherwise. R3: no cache header may stop a visitor seeing ` +
-                `the site as it is currently designed.`
-            );
-          }
-          continue;
-        }
-
-        const res = await fetch(new URL(url, site.origin));
-        const cc = res.headers.get('cache-control') ?? '';
-        s.count('assets');
-        if (!/\bimmutable\b/.test(cc)) continue;
-        s.count('immutable');
-
-        const bytes = Buffer.from(await res.arrayBuffer());
-        const name = path.basename(rel);
-        if (isContentAddressed(name, bytes)) continue;
-        if (KNOWN_STABLE.has(rel.split(path.sep).join('/'))) continue;
-
+    // Pass 1 — the frozen DOCUMENTS, which are subject to the OPPOSITE rule.
+    //
+    // Separate from the immutable sweep below, and that separation is the point. When the
+    // population was first widened to "every path _headers declares immutable", this arm
+    // stopped running entirely — `index.html` is not immutable, so the filter skipped it —
+    // and the `documents` population went empty. The survey caught it, which is the only
+    // reason it is not a silent regression: exactly the shape this file exists to police,
+    // committed while widening a population to close a different instance of it.
+    for (const rel of await walk(path.join(TARGET, 'oal'))) {
+      if (!/\.html$/.test(rel)) continue;
+      const url = `/oal/${rel.split(path.sep).join('/')}`;
+      const doc = await fetch(new URL(url, site.origin));
+      const docCC = doc.headers.get('cache-control') ?? '';
+      s.count('documents');
+      if (/\bimmutable\b/.test(docCC)) {
         findings.push(
-          `${url} is served \`${cc}\` at a URL that does not name its own bytes. A ` +
-            `re-freeze that changes this file leaves every visitor who already has it ` +
-            `rendering the new document against the old one, for up to a year, with no ` +
-            `purge able to reach them.`
+          `${url} is a DOCUMENT served \`${docCC}\`. A published version's bytes are ` +
+            `immutable; the page that delivers them is not, because its chrome renders ` +
+            `live and a reader holding a year-old copy sees last year's site with no way ` +
+            `to be told otherwise. R3: no cache header may stop a visitor seeing the site ` +
+            `as it is currently designed.`
         );
       }
+    }
+
+    // Pass 2 — every path `_headers` grants `immutable`, wherever it lives.
+    for (const rel of await walk(TARGET)) {
+      const url = `/${rel.split(path.sep).join('/')}`;
+      if (!immutablePatterns.some((pat) => patternToRegExp(pat).test(url))) continue;
+
+      const res = await fetch(new URL(url, site.origin));
+      const cc = res.headers.get('cache-control') ?? '';
+      s.count('assets');
+      if (!/\bimmutable\b/.test(cc)) continue;
+      s.count('immutable');
+
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (isContentAddressed(path.basename(rel), bytes)) continue;
+      if (KNOWN_STABLE.has(url)) continue;
+
+      findings.push(
+        `${url} is served \`${cc}\` at a URL that does not name its own bytes. A change ` +
+          `to this file leaves every visitor who already has it holding the old one, for ` +
+          `up to a year, with no purge able to reach them.`
+      );
     }
   } finally {
     await site.close();
@@ -178,8 +202,7 @@ test('check 34 — every immutable URL under a frozen version is content-address
   // by one line per re-freeze and never shrink. An allowlist nobody has to justify keeping
   // is how a residual stops being a residual and becomes the design.
   const present = new Set(
-    (await readdir(path.join(versionsDir, 'v1.0'), { recursive: true }).catch(() => []))
-      .map((f) => String(f).split(path.sep).join('/'))
+    (await walk(TARGET)).map((f) => `/${String(f).split(path.sep).join('/')}`)
   );
   const dead = [...KNOWN_STABLE].filter((entry) => !present.has(entry));
   assert.deepEqual(
@@ -513,6 +536,46 @@ test('check 34 — the re-freeze comparison tool still loads and exports what DE
   );
 
   assert.ok(tool, 'tools/frozen-render-diff.mjs failed to load');
+
+  // WIDTHS is the OTHER axis of the same certification, and it was undefended while
+  // VISUAL_PROPS was hardened by name. That asymmetry is the finding: check 34 said "a
+  // count cannot defend a population; only the members can" about properties, and left the
+  // viewport list module-private, unexported and unasserted.
+  //
+  // Drilled at HEAD 0dfcfd0: `WIDTHS = [1280]` holds all four gated targets at their
+  // committed numbers AND `--self-test` still prints "2/2 arms fired" — because both arms
+  // are computed over the same WIDTHS, so collapsing it collapses the control with it.
+  // `--against` then certifies **0 computed-style differences over 26,064 values** for a
+  // candidate whose only change sits inside `@media (max-width: 46rem)`. The committed list
+  // reports **904** on the identical candidate. That is strictly worse than the
+  // `scope: 'main'` defect this file already closed, because that one at least failed
+  // `--self-test`; this one does not.
+  //
+  // The breakpoints are PARSED from the stylesheet rather than restated here. Writing 736
+  // as a literal would make this guard agree with a comment instead of with the cascade,
+  // and it would stop straddling the moment someone moves the breakpoint.
+  const sheet = await readFile(path.join(REPO_ROOT, 'src/styles.css'), 'utf8');
+  const breakpoints = [...sheet.matchAll(/@media\s*\([^)]*?max-width:\s*([\d.]+)(rem|px)\)/g)]
+    .map(([, n, unit]) => (unit === 'rem' ? Number(n) * 16 : Number(n)));
+
+  assert.ok(
+    breakpoints.length > 0,
+    'no max-width breakpoint was parsed from src/styles.css, so this guard is asserting ' +
+      'that a list straddles nothing — the vacuity the whole file refuses'
+  );
+  assert.ok(Array.isArray(tool.WIDTHS) && tool.WIDTHS.length >= 2, 'WIDTHS is not a list of viewports');
+
+  for (const bp of new Set(breakpoints)) {
+    const below = tool.WIDTHS.filter((w) => w <= bp);
+    const above = tool.WIDTHS.filter((w) => w > bp);
+    assert.ok(
+      below.length && above.length,
+      `WIDTHS [${tool.WIDTHS.join(', ')}] does not straddle the ${bp}px breakpoint in ` +
+        `src/styles.css — ${below.length} at or below, ${above.length} above. A re-freeze ` +
+        `comparison that never renders both sides of a breakpoint certifies "0 differences" ` +
+        `for a stylesheet change living entirely inside that media query.`
+    );
+  }
 
   // The comparison's ACTUAL logic, exercised. `diffCaptures` is the pure half of the tool
   // — the half that decides whether a re-freeze is safe — and running the browser half per
