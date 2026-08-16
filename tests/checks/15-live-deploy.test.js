@@ -34,6 +34,7 @@ import path from 'node:path';
 import { TARGET, htmlFiles, urlFor, SITE } from '../lib/harness.js';
 import { evaluateHeaders, parseHeadersFile } from '../lib/posture.js';
 import { survey } from '../lib/population.js';
+import { builtStylesheet, versionDir } from '../../tools/freeze-version.mjs';
 
 const LIVE = process.env.ORDOIA_LIVE?.replace(/\/+$/, '');
 const SKIP = 'set ORDOIA_LIVE=https://<host> to check what a host actually returns';
@@ -257,8 +258,26 @@ test('check 15 — the cache split survives the host', async (t) => {
   const versioned = blocks.find((b) => /^\/oal\/v\d+\.\d+\//.test(b.pattern));
   assert.ok(versioned, 'no version-path block in _headers to verify against');
 
-  const frozen = await live('/oal/v1.0/styles.css');
-  assert.ok(frozen.ok, `/oal/v1.0/styles.css is unreachable — ${frozen.error}`);
+  // Resolved from the build, not spelled — the frozen stylesheet is content-addressed.
+  //
+  // This line read `/oal/v1.0/styles.css` until 2026-08-15, and when the sheet was
+  // fingerprinted it kept PASSING against a 404. Two things conspired: `live()` returns
+  // `ok: true` for any HTTP response, because it only reports transport failures; and
+  // `_headers`' `/oal/v1.0/styles.*` rule matches the URL whether or not a file is there,
+  // so the 404 came back carrying `Cache-Control: public, max-age=31536000, immutable`.
+  // Measured: `status=404  cache-control=public, max-age=31536000, immutable`. The one
+  // check that proves the frozen asset is immutable AT THE EDGE was asserting it about a
+  // file that does not exist, and would have gone on doing so against production.
+  const frozenPath = `/${versionDir('1.0')}/${builtStylesheet(path.join(TARGET, versionDir('1.0')))}`;
+  const frozen = await live(frozenPath);
+  assert.ok(frozen.ok, `${frozenPath} is unreachable — ${frozen.error}`);
+  assert.equal(
+    frozen.res.status,
+    200,
+    `${frozenPath} returned ${frozen.res.status}. A missing frozen asset still matches the ` +
+      `\`styles.*\` rule in _headers, so its Cache-Control looks correct on a 404 — the ` +
+      `status is the only thing that distinguishes "served immutable" from "absent".`
+  );
   assert.match(
     frozen.res.headers.get('cache-control') || '',
     /immutable/,
@@ -268,6 +287,19 @@ test('check 15 — the cache split survives the host', async (t) => {
 
   const current = await live('/styles.css');
   assert.ok(current.ok, `/styles.css is unreachable — ${current.error}`);
+  // The status assertion is what makes the NEGATIVE assertion below mean anything, and
+  // this arm is the third instance of the same defect found on this branch — the other
+  // two were seven lines above and in check 28. `live()` reports transport failures only,
+  // so a 404 arrives as `ok: true`; `|| ''` then makes a missing header, a 404 and a 500
+  // indistinguishable from "correctly not immutable". Drilled: repointed at a nonexistent
+  // path, this test passed 7/7 under test:live-local. A negative assertion over a response
+  // that never happened is the most confident kind of nothing.
+  assert.equal(
+    current.res.status,
+    200,
+    `/styles.css returned ${current.res.status}. The assertion below is negative, so an ` +
+      `absent page satisfies it — the status is what proves a real response was measured.`
+  );
   assert.doesNotMatch(
     current.res.headers.get('cache-control') || '',
     /immutable/,

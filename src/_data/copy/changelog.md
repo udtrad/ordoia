@@ -12,6 +12,8 @@ Every assessment names the version it was performed under. A level means nothing
 
 **Clarifying** changes cover wording, examples, added evidence guidance, and corrections that could not move any system's score. The test is strict: if an unchanged system could be scored differently before and after the change, it is not clarifying. **Breaking** changes cover anything that could move a score for an unchanged system — a changed level descriptor, a changed evidence requirement, a changed depth cap, a change to what a dimension covers, or a change to a threshold.
 
+**Before a version takes effect**, its text may be amended in place rather than superseded, because no score exists that an amendment could move. That window closes on the effective date or on the first scorecard issued under the version, whichever comes first. An amendment made inside it is dated below, its reason written before the edit, and it names any change that would have been breaking had the version been in effect.
+
 A score awarded under an earlier version stays awarded under that version. We do not restate historical scores against a new version. Where a breaking change would move a score, the entry says so, and the only way to hold a level under the new version is a new engagement.
 
 @@ entries.heading

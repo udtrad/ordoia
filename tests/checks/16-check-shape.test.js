@@ -76,6 +76,42 @@ const CHECKS_DIR = path.join(REPO_ROOT, 'tests', 'checks');
 const REACHES_SITE = ['withSite(', 'withSource(', 'htmlFiles(', 'serve('];
 
 /**
+ * The sixth route, which no single token can express.
+ *
+ * Checks 27, 28 and 34 walk the build directory themselves — `readdir()` over a path built
+ * from `TARGET` — rather than going through a harness helper. That is the same reach, and
+ * the scanner could not see it.
+ *
+ * **A literal `'readdir(TARGET'` token was tried first and matched ZERO tests**, because
+ * nobody writes it that way: check 34 has `const versionsDir = path.join(TARGET, 'oal')`
+ * and then `readdir(versionsDir, …)`. It read as coverage and enforced nothing — worse
+ * than the gap it was added to close, because the next reader would trust it. Found by a
+ * specialist pass that drilled it: strip `.report()` from check 34's second arm and the
+ * scanner stayed green.
+ *
+ * So the route is expressed as a CONJUNCTION over the test body rather than a spelling:
+ * a `readdir(` call and a reference to `TARGET`. Bare `TARGET` alone is wrong in the other
+ * direction — it flags check 14's controls arm, whose only mention of `TARGET` is a comment
+ * saying it deliberately uses `REPO_ROOT` instead, and two arms whose arity is three
+ * literal `existsSync` calls. Measured over the suite: the conjunction matches five arms,
+ * all of them genuinely walking the build, and no false positives.
+ */
+const WALKS_BUILD = (code) => code.includes('readdir(') && code.includes('TARGET');
+
+/**
+ * Comments stripped before matching, so prose about a route is never mistaken for the
+ * route. This is not hypothetical: check 14's controls arm says "REPO_ROOT, not TARGET",
+ * and a scanner reading comments would have concluded the opposite of what the sentence
+ * states.
+ */
+const codeOf = (body) => body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+
+const reachesSite = (body) => {
+  const code = codeOf(body);
+  return REACHES_SITE.some((call) => code.includes(call)) || WALKS_BUILD(code);
+};
+
+/**
  * Shapes this scanner does not understand. Their presence is a failure, not a skip.
  *
  * Anchored at statement position — start of line, indentation allowed — rather than
@@ -177,7 +213,7 @@ test('check 16 — every check that reaches the site reports what it measured', 
     s.count('tests', tests.length);
 
     for (const { title, body } of tests) {
-      if (!REACHES_SITE.some((call) => body.includes(call))) continue;
+      if (!reachesSite(body)) continue;
       s.count('reaching');
       if (body.includes('.report(')) continue;
       if (ledger.allows(`tests/checks/${name}`, title)) continue;
@@ -201,7 +237,7 @@ test('check 16 — every check that reaches the site reports what it measured', 
 test('check 16 — the scanner still tells a guarded test from an unguarded one (controls)', () => {
   const scan = (src) =>
     parseTests(src, 'control').filter(
-      ({ body }) => REACHES_SITE.some((c) => body.includes(c)) && !body.includes('.report(')
+      ({ body }) => reachesSite(body) && !body.includes('.report(')
     );
 
   assert.equal(scan(UNGUARDED).length, 1, 'an unguarded site-touching test must be caught');

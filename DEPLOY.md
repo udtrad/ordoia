@@ -622,6 +622,7 @@ document starts lying about its own repository.
 |---|---|---|
 | 2026-08-11 | The frozen directory was re-copying the living `src/styles.css` on every build, which made the living sheet un-editable. `CHANGES.md` row 40. | The mechanism. No published word changed. |
 | 2026-08-13 | Draft 6 §5.3 cut the rubric intro's intention clause. `CHANGES.md` row 114. | One sentence of published `<main>`, deliberately. |
+| 2026-08-15 | Seven rubric criteria tightened so each supports a yes-or-no determination, plus §H's new pre-effective-amendment clause. `CHANGES.md` rows 136–137. | Seven level descriptors and evidence rows, and one paragraph of change policy. **The first re-freeze that changes what the instrument measures** — the two before it could not move a score. |
 
 **The rule, stated so the next one is a decision rather than a habit.** A re-freeze is
 available only while a version's own publication date has not passed, and it is the
@@ -641,17 +642,23 @@ deliverables rather than side effects:
 3. **This page has to be corrected.** It called the first re-freeze "not a precedent"; the
    second made that false, and a document claiming a constraint the repository does not
    observe is worse than one that is merely out of date.
-4. **Returning visitors keep the old frozen stylesheet, and nothing can tell them not
-   to.** `/oal/v1.0/styles.css` is served `immutable` for a year at a **stable,
-   unfingerprinted URL** — correct while a published version never changes, which is the
-   assumption a re-freeze breaks. A visitor who loaded the page before the re-freeze
-   renders the new document against the old sheet, and a cache purge cannot reach them.
-   Measured on 2026-08-13: **0 computed-style differences across 45,444 values** at four
-   widths, so that deploy was safe — but it was safe because the session's CSS happened
-   to touch only the footer and the grid, not because anything prevented otherwise.
-   **Before the next re-freeze, either fingerprint the frozen stylesheet or run that same
-   comparison.** The `immutable`-at-a-stable-URL shape is what row 71 already caught once
-   on `/styles.css`.
+4. ~~**Returning visitors keep the old frozen stylesheet, and nothing can tell them not
+   to.**~~ **Closed 2026-08-15, structurally.** This cost was that
+   `/oal/v1.0/styles.css` was served `immutable` for a year at a **stable, unfingerprinted
+   URL** — correct while a published version never changes, which is the assumption a
+   re-freeze breaks. A visitor who loaded the page beforehand rendered the new document
+   against the old sheet and a cache purge could not reach them. Measured on 2026-08-13 at
+   **0 computed-style differences across 45,444 values**, so that deploy was safe — but it
+   was safe because the session's CSS happened to touch only the footer and the grid, not
+   because anything prevented otherwise.
+
+   The sheet is now content-addressed: **`/oal/v1.0/styles.<sha>.css`**. A re-freeze that
+   changes it changes its URL, the document is `max-age=0` and always names the current
+   one, and the stale copy is simply never requested again. **Check 34 holds it**, with the
+   fonts and the favicon recorded there as a named residual — they are still immutable at
+   stable URLs, and closing that would mean fingerprinting names that appear inside the
+   stored stylesheet's own `@font-face` rules. The `immutable`-at-a-stable-URL shape is
+   what row 71 caught once on `/styles.css`; this is the second and last place it lived.
 
 After the publication date passes, the answer is a new version, not a re-freeze.
 
@@ -696,18 +703,40 @@ bytes — and after the first scorecard is issued the answer is yes, permanently
 sequence, for the record:
 
 ```bash
-rm -r versions/v1.0.json versions/v1.0/   # BOTH — see below
+# 1. Answer cost 2 FIRST, while backing out is still free. A re-freeze copies the current
+#    src/styles.css into the snapshot, so this asks whether that sheet renders the frozen
+#    <main> any differently. Zero, or stop.
+#
+#    ORDER MATTERS and the tool now enforces it. Run this BEFORE step 2, while the frozen
+#    sheet and src/styles.css still differ. Afterwards they are byte-identical, the run
+#    becomes a comparison of the frozen sheet with itself, and the tool refuses it rather
+#    than returning a 0 that means nothing. To check a re-freeze after the fact, compare
+#    against the PREVIOUS frozen bytes instead:
+#      git show <pre-freeze-commit>:versions/v1.0/styles.css > /tmp/before.css
+#      node tools/frozen-render-diff.mjs 1.0 --against /tmp/before.css
+node tools/frozen-render-diff.mjs 1.0 --self-test          # both arms must fire
+node tools/frozen-render-diff.mjs 1.0 --against src/styles.css
+
+# 2. All THREE artifacts — the manifest, the pinned directory and the retained document.
+rm -r versions/v1.0.json versions/v1.0/ versions/v1.0.published-index.html
 npm run build
 node tools/freeze-version.mjs 1.0
+
+# 3. Update PUBLISHED_SHA256 in a reviewed diff, then:
 node tools/zone-setup.mjs purge-cache --apply   # /oal/v1.0/* is immutable for a year
 ```
 
-**Removing the manifest alone is not enough, and the failure is silent.** While
-`versions/v1.0/` exists the build serves the snapshot from *those* bytes and `src/` cannot
-reach it — that is the whole point of the decoupling. So a re-freeze that deletes only the
-manifest rebuilds the *stored* stylesheet, hashes it, and records the identical bytes: the
-command reports success and changes nothing. The stored directory has to go too, which
-drops the build back to the `src/` fallback for one build.
+**Removing the manifest alone is not enough — and since 2026-08-12 the failure is loud
+rather than silent.** While `versions/v1.0/` exists the build serves the snapshot from
+*those* bytes and `src/` cannot reach it, which is the whole point of the decoupling. So a
+re-freeze that deleted only the manifest would rebuild the *stored* stylesheet, hash it,
+and record the identical bytes — reporting success having changed nothing. That is what
+this paragraph described, and it is no longer reachable: `storePublishedAssets` refuses to
+overwrite the retained document, so deleting the manifest alone, or the manifest and the
+pinned directory, both stop with a named error. All three artifacts have to go, which drops
+the build back to the `src/` fallback for one build. **The silent-no-op description above
+was true when written and is corrected here rather than deleted**, because the reason the
+second refusal exists is that the first one was not enough.
 
 Check 21 then fails on any later build that changes, adds or removes a single file under
 `/oal/v1.0/`, and fails separately if a *superseded* version has no manifest at all.

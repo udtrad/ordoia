@@ -43,7 +43,7 @@
   seconds. Same origin, so check 6 is untouched.
 #}
 <link rel="preload" href="{{ assetBase | default('') }}/fonts/archivo-subset.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="{{ assetBase | default('') }}/styles.css">
+<link rel="stylesheet" href="{{ stylesheetHref | default('/styles.css') }}">
 <link rel="stylesheet" href="{{ chromeHref }}">
 </head>
 <body>
@@ -83,8 +83,30 @@
   not a DOM text node, so check 7 cannot measure its contrast — which is how a separator
   shipped at 1.37:1 on this project (CHANGES.md row 49).
 #}
+{#
+  The effective date is named HERE, in the chrome, and that placement is the whole point.
+
+  §H — inside the frozen `<main>` — says a version's text may be amended in place "until
+  that date, and until the first scorecard is issued under it". Until 2026-08-16 the page
+  named no such date. The only date on it is the rail's `Published 2026-09-19`, and §H
+  assigns "published" to the EARLIER event, so a reader was told the document is amendable
+  until a date the page never printed. The paragraph created the gap; it did not exist
+  while the date was inert.
+
+  It is not fixed by relabelling the rail. That text is inside `main.html` and moving it is
+  a version event — a fourth re-freeze, a fourth anchor, and some of the 1,219 B this page
+  has left under the weight gate. The status strip is outside `<main>` precisely so that
+  facts ABOUT a version can change without one, which is what the 2026-08-12 freeze split
+  bought. `CHANGES.md` row E's decision — that 2026-09-19 stands and reads as an effective
+  date — is untouched: this prints the referent, it does not relabel anything.
+
+  `vrec.published` wins over `site.publicationDate` for the same reason the changelog uses
+  that precedence: a superseded version keeps its own date. Superseded versions render the
+  `supersededBy` branch instead and get no effective line, because by then the date is not
+  the fact a reader needs — the successor is.
+#}
 <p class="vstatus" data-version="{{ vrec.version }}" data-status="{{ vrec.status }}">
-  <span class="v">{{ oal.name }} v{{ vrec.version }}</span><span class="sep" aria-hidden="true">·</span>{% if vrec.supersededBy %}<span class="s">Superseded by <a href="/oal/v{{ vrec.supersededBy }}/">v{{ vrec.supersededBy }}</a></span>{% else %}<span class="s">{{ vrec.status }}</span>{% endif %}
+  <span class="v">{{ oal.name }} v{{ vrec.version }}</span><span class="sep" aria-hidden="true">·</span>{% if vrec.supersededBy %}<span class="s">Superseded by <a href="/oal/v{{ vrec.supersededBy }}/">v{{ vrec.supersededBy }}</a></span>{% else %}<span class="s">{{ vrec.status }}</span> <span class="eff">effective {{ vrec.published | default(site.publicationDate) }}</span>{% endif %}
 </p>
 {%- endif %}
 

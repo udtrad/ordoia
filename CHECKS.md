@@ -168,12 +168,44 @@ measurements. All four rows are re-measured on every change to it rather than ca
 forward — including the rows a change is not expected to move, which is how the handover
 row below is evidence rather than a leftover.
 
+**Updated 2026-08-15 (check 34, the frozen stylesheet's fingerprint, plus the controls four
+audit passes forced): 139 tests, 129 pass, 0 fail, 10 skipped.** All four rows
+re-measured on every change, including the ones a change is not expected to move.
+
+**Eight tests added across the branch, in five waves**, and each target moved by exactly the
+arithmetic that predicts it:
+
+| Wave | Tests | What they are | Empty-target failures |
+|---|---:|---|---|
+| check 34, first cut | +3 | two site-touching arms, one pure control | 65 → 67 |
+| module load + resolver control | +2 | both pure | 67 |
+| sweep predicate control | +1 | pure | 67 |
+| sweep loop | +1 | pure | 67 |
+| `capture()` scope partition | +1 | site-touching | 67 → **68** |
+| retained-document refusal control | +1 | pure (sandboxed) | 68 |
+
+A new test that moves no failure count is either pure or not being run. The five pure ones
+pass on all four targets and moved nothing but the pass columns; the two site-touching waves
+moved the empty count by exactly their arity, and `HANDOVER_EXPECTED_FAILURES` **held at 10
+throughout**, which is the assertion rather than the absence of one.
+
+This paragraph previously read "five tests, in two waves… empty at 67" while the table below
+it said 68, and claimed "+2 in every pass column" when the waves moved +3, +2, +1, +1, +1. The
+table was measured and correct; the prose beside it was not. Recorded rather than quietly
+corrected, because a summary that drifts from the table it summarises is the same defect as a
+comment that drifts from its code.
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 130 | 120 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 130 | 128 | 0 | 2 |
-| the handover | `npm run test:handover` | 130 | 79 | **10** | 41 |
-| an empty directory | `npm run test:empty` | 130 | 55 | **65** | 10 |
+| the build | `npm test` | 138 | 128 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 138 | 136 | 0 | 2 |
+| the handover | `npm run test:handover` | 138 | 84 | **10** | 44 |
+| an empty directory | `npm run test:empty` | 138 | 60 | **68** | 10 |
+
+**The handover's failure count held at 10, and that is the assertion rather than the
+absence of one.** Check 34 reads a frozen version directory, which the handover does not
+have, so it skips — a move there would have meant the skip was not taking and the check was
+measuring hand-authored files against a freeze that postdates them by a week.
 
 `test:live-local`'s two skips are checks 22 and 24 — the Cloudflare zone and the external
 monitor, both of which want a credential and neither of which existed when this row last
@@ -723,6 +755,13 @@ Proven end to end on 2026-08-09 rather than argued:
 | freezing a second time | refused, naming the existing manifest |
 | manifest deleted, `npm run build` | green again |
 
+> **The path in row three has moved, and the row is left as it was.** Since 2026-08-15 the
+> frozen stylesheet is served content-addressed, so the file to append a byte to is
+> `_site/oal/v1.0/styles.<sha>.css` — resolve it with `builtStylesheet()` rather than
+> spelling it, which is the rule three checks had to learn on that date. The table records
+> what was observed on 2026-08-09 and stays accurate about that; editing the path would
+> make it a claim about a drill nobody ran.
+
 The manifest was then removed, because v1.0 is not published. The mechanism ships; the act
 does not, and `DEPLOY.md` holds it as a publication step.
 
@@ -1170,6 +1209,39 @@ what the host serves, the headers actually sent, a real 404 rather than a soft o
 every printed permanent address resolving. It replaces the four `curl` commands
 `DEPLOY.md` used to carry: one claim, verified in one place, rather than two copies to
 keep in step. It runs after every deploy and weekly thereafter.
+
+**Check 34 — an immutable URL under a frozen version names its own bytes.** Denominators:
+the frozen version assets whose delivered `Cache-Control` was read, and how many of those
+were *actually* served `immutable`. The second is the one that can go quiet: if the
+`_headers` rule stopped matching, every asset would come back with the host default, and a
+check spelled "immutable implies addressed" would pass over an empty set while the caching
+guarantee it is written around had disappeared.
+
+Added 2026-08-15 with the fingerprint it guards. `DEPLOY.md`'s cost 4 of a re-freeze was
+that `/oal/v1.0/styles.css` carried a year of `immutable` at a **stable** URL — correct
+while a published version never changes, wrong the moment one is re-frozen, and measured
+clean in 2026-08-13's re-freeze only because that session's CSS happened to miss the rubric
+page. The sheet is now `/oal/v1.0/styles.<sha>.css`, so a re-freeze that changes it changes
+its URL and the stale copy is never requested again.
+
+**Drilled by removing the fingerprint, and the first drill found a self-referential arm.**
+Stubbing `stylesheetFile` to return the bare name turned the first arm red and left the
+second one green — because that arm compared the served name against `stylesheetFile(bytes)`,
+so both sides of the comparison moved together. A guard whose expectation is computed by the
+thing it guards cannot fail for the reason it exists. It now asserts `isContentAddressed`
+first, which knows nothing about the naming helper, and both arms drill red and restore
+green.
+
+**Two guards elsewhere were silently defanged by the same change, and only one of them said
+so.** Check 27's chrome-order regex pinned `styles.css` and went **red** — correct. Check
+21's asset arm resolves the built path with `existsSync(output) || continue`, so a name it
+could not find became a **skip**: the byte-identity assertion proving the build serves the
+snapshot rather than `src/` stopped covering the stylesheet and stayed green. Check 32's
+half-stored control did the same thing one step further on — it deletes the built stylesheet
+to prove a partial snapshot is refused, `rm --force` on an absent path is silent, so it was
+asserting over an intact snapshot. All three now resolve the name through `builtStylesheet`
+rather than spelling it, which is why that function exists rather than being three
+one-liners.
 
 ## The budget miss, closed — and made executable
 

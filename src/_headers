@@ -86,21 +86,44 @@
 # and takes the host default, `public, max-age=0, must-revalidate` — the same as
 # every other page — because its chrome now renders live and a stale copy would
 # show a visitor last year's site.
-# Stated as exact paths rather than `/oal/v1.0/*.css`, for two measured reasons.
+# The stylesheet is CONTENT-ADDRESSED — /oal/v1.0/styles.<sha>.css — since
+# 2026-08-15, and that is what makes `immutable` on it honest rather than merely
+# convenient. It was `/oal/v1.0/styles.css`, a stable URL, which is correct while
+# a published version never changes and wrong the moment one is re-frozen: a
+# visitor holding the old sheet renders the new document against it and no cache
+# purge can reach them. That is DEPLOY.md's cost 4, and it is now closed by
+# construction rather than measured after the fact each time.
 #
-# 1. A Cloudflare splat matches `/` as well, so `/oal/v1.0/*.css` and
-#    `/oal/v1.0/fonts/*` BOTH match `/oal/v1.0/fonts/anything.css` — two
-#    Cache-Control declarations on one request, which comma-join on this host.
-#    No such file exists today, but the overlap detector in tests/lib/posture.js
-#    cannot see it either: `sampleFor` renders each splat as a single `x`, so it
-#    tests `/oal/v1.0/x.css` against `/oal/v1.0/fonts/x` and finds no
-#    intersection. The structural guard written for the 2026-08-09 comma-join
-#    defect is blind to exactly this shape.
-# 2. Cloudflare documents splats for the TRAILING position. A splat with a
-#    literal suffix after it is undocumented, and if the host does not honour it
-#    this rule matches nothing and the frozen stylesheet silently drops to the
-#    zone default — the same 4-hour TTL the `/styles.css` note below records.
-/oal/v1.0/styles.css
+# The splat is TRAILING with a literal prefix — `styles.*` — which is the
+# documented form. The shape this file previously rejected is the other one,
+# `/oal/v1.0/*.css`, a splat with a literal suffix after it, and both reasons for
+# rejecting it are answered here rather than abandoned.
+#
+# 1. A Cloudflare splat matches `/` as well, so `*.css` would ALSO match
+#    `/oal/v1.0/fonts/anything.css` — two Cache-Control declarations on one
+#    request, which comma-join on this host. `styles.*` cannot reach anything
+#    under `fonts/`, so no request can match two rules.
+#
+#    This paragraph used to add that the overlap detector in tests/lib/posture.js
+#    was blind to the `*.css` shape — that `sampleFor` rendered each splat as a
+#    single `x` and so compared `/oal/v1.0/x.css` against `/oal/v1.0/fonts/x` and
+#    found no intersection. **That is no longer true and the function it names no
+#    longer exists.** Measured 2026-08-15: substitute `/oal/v1.0/*.css` back in
+#    and the detector reports the overlap against `fonts/*` by name. The
+#    structural choice below is still the right one, but it is now belt AND
+#    braces rather than the only thing standing between this file and a
+#    comma-joined Cache-Control on a frozen directory.
+# 2. Cloudflare documents splats for the TRAILING position. If the host did not
+#    honour a mid-pattern one the rule would match nothing and the frozen
+#    stylesheet would silently drop to the zone default — the same 4-hour TTL the
+#    `/styles.css` note below records, and the same reason the derived chrome
+#    sheet moved from `/chrome.<sha>.css` into `/chrome/`.
+#
+# The sheet stays in the version's own directory rather than moving into one of
+# its own, because its `@font-face` rules address the fonts relatively. A
+# subdirectory re-bases all four to `/oal/v1.0/css/fonts/…`, which exists
+# nowhere. That was the first attempt, and check 17 caught it.
+/oal/v1.0/styles.*
   Cache-Control: public, max-age=31536000, immutable
 
 /oal/v1.0/fonts/*

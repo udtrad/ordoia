@@ -93,6 +93,8 @@ import {
   MAIN_FRAGMENT,
   PINNED_ASSETS,
   PUBLISHED_SHA256,
+  STORED_STYLESHEET,
+  builtStylesheet,
   sha256,
 } from '../../tools/freeze-version.mjs';
 
@@ -384,7 +386,13 @@ test('check 21 — a published version is served from its stored bytes, not from
 
     for (const asset of PINNED_ASSETS) {
       const stored = path.join(pinned, asset);
-      const output = path.join(built, asset);
+      // The stylesheet is stored bare and served fingerprinted, so the built path has to
+      // be resolved rather than assumed. Assuming it is not a small bug here: the
+      // `existsSync(output) || continue` below treats a name it cannot find as a SKIP, so
+      // when the sheet was first fingerprinted this arm stopped comparing it and stayed
+      // green — the byte-identity assertion that proves the build serves the snapshot
+      // rather than src/ had quietly stopped covering the one asset most likely to drift.
+      const output = path.join(built, asset === STORED_STYLESHEET ? builtStylesheet(built) : asset);
 
       // A PINNED_ASSET missing from versions/v<n>/ is precisely the state this test
       // claims to detect, and skipping it made the test pass green while the snapshot

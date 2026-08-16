@@ -40,7 +40,16 @@ import { contrastRatio, AA_NON_TEXT } from './tests/lib/contrast.js';
 // The snapshot's location and its asset list are owned by the freeze tool. Re-deriving
 // them here is how a member of the frozen unit would get stored at publication and never
 // served — the exact store-vs-serve divergence the freeze exists to close.
-import { pinnedDir, PINNED_ASSETS, isFrozen, frozenMain } from './tools/freeze-version.mjs';
+import {
+  pinnedDir,
+  PINNED_ASSETS,
+  STORED_STYLESHEET,
+  isFrozen,
+  frozenMain,
+  stylesheetFile,
+  stylesheetHref,
+  isStaleStylesheet,
+} from './tools/freeze-version.mjs';
 import { deriveChromeSheet } from './tools/chrome-sheet.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -524,6 +533,10 @@ export default function (eleventyConfig) {
   /** True when a version has stored bytes and must be served from them. */
   eleventyConfig.addFilter('isFrozen', (version) => isFrozen(version));
 
+  // The content-addressed stylesheet a version page links. One function decides this name
+  // for the build, the template and every check that resolves it — see `stylesheetFile`.
+  eleventyConfig.addFilter('stylesheetHref', (version) => stylesheetHref(version));
+
   /**
    * The versions that are no longer current, in declaration order.
    *
@@ -797,6 +810,34 @@ export default function (eleventyConfig) {
       for (const asset of PINNED_ASSETS) {
         const source = from(asset);
         if (!existsSync(source)) continue;
+
+        // The stylesheet is served content-addressed — `styles.<sha>.css` rather than
+        // `styles.css` — so that `immutable` stays honest across a re-freeze. The STORED
+        // name is unchanged; only the served one moves. See `stylesheetFile` in
+        // tools/freeze-version.mjs for why, and `src/_headers` for why it stays in the
+        // version's own directory rather than a `css/` subdirectory of it.
+        //
+        // This comment said `css/<sha>.css` until 2026-08-15 — the abandoned first design,
+        // rejected because a subdirectory re-bases the stylesheet's relative `@font-face`
+        // URLs and check 17 caught four fonts fetched from a path that exists nowhere
+        // (`CHANGES.md` row 134). The same stale sentence was fixed in `src/_headers` and
+        // survived here, so it also pointed the reader AT `src/_headers` as corroboration
+        // for a claim that file explicitly contradicts.
+        if (asset === STORED_STYLESHEET) {
+          const served = stylesheetFile(readFileSync(source));
+
+          // Stale fingerprints go first, for the reason the chrome sheet's do: Eleventy
+          // does not clean its output, so without this a local `_site` accumulates one
+          // frozen stylesheet per edit and every one of them is served `immutable`. The
+          // bare `styles.css` is swept by the same pass — it is the pre-fingerprint name,
+          // and it is the exact URL that used to carry a year of immutable caching.
+          for (const stale of await readdir(target)) {
+            if (isStaleStylesheet(stale, served)) await rm(path.join(target, stale), { force: true });
+          }
+          await copyFile(source, path.join(target, served));
+          continue;
+        }
+
         const to = path.join(target, asset);
         if (statSync(source).isDirectory()) await cp(source, to, { recursive: true });
         else await copyFile(source, to);
