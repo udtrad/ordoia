@@ -111,7 +111,7 @@ category*.
 
 ## Where the enforcement lives
 
-Not all of it is in this directory. Six invariants are enforced by the build
+Not all of it is in this directory. Ten invariants are enforced by the build
 itself, in `eleventy.config.js`, because a rule that fails at the moment somebody
 edits the wrong value is better than one that fails two minutes later:
 
@@ -123,6 +123,9 @@ edits the wrong value is better than one that fails two minutes later:
 | a copy fragment referenced by a key that does not exist | §8 — a typo becomes an empty div otherwise |
 | a design token the build needs but `styles.css` does not define | §7 — the favicon is generated from them |
 | `--track` below 3:1 on either surface it is drawn on | §7 — the same assertion check 7 makes on the page |
+| `audit.amount + top-up.amount` not equal to `baseline.amount` | the published path-independence sentence — check 35 drills it |
+| a rendered price carrying a line break inside it | the retainer's `/month`, which is all that tells it from the top-up — check 36 drills it |
+| a card header's duration disagreeing with its product's `duration` | the grid and the header on one page saying two things — check 37 drills it |
 | a `/oal/vX.Y/` snapshot generated from a rubric it was not published with | §5, §13.1 — restating a historical methodology |
 
 The build defends the pages it renders; the suite defends the ones it does not. A
@@ -195,12 +198,43 @@ table was measured and correct; the prose beside it was not. Recorded rather tha
 corrected, because a summary that drifts from the table it summarises is the same defect as a
 comment that drifts from its code.
 
+**Updated 2026-09-05 (check 35, the published price identity): 143 tests, 133 pass, 0 fail,
+10 skipped.** All four rows re-measured, and the four-row table below was **one test short on
+every row** before this session — it read 138 where the paragraph above it read 139, and the
+139 was the correct figure. The same defect as the one recorded two paragraphs down, with the
+halves the other way round: there the prose had drifted from the table, here the table had
+drifted from the prose. Corrected by measurement rather than by arithmetic on the old row.
+
+**Four tests added, one wave**, and every target moved by the same arithmetic:
+
+| Wave | Tests | What they are | Empty-target failures |
+|---|---:|---|---|
+| check 35, the price identity | +4 | all four pure — they read `src/` and `eleventy.config.js`, never the target | 68 |
+
+Check 35 reads source rather than the built site, in the manner of check 26, so it passes on
+all four targets and moved nothing but the pass columns. `HANDOVER_EXPECTED_FAILURES` held at
+10 and the empty-target failure count held at 68 — a new test that moves no failure count is
+either pure or not being run, and this wave is the first kind.
+
+**Updated 2026-09-05 (checks 36 and 37, the two guards the reprice exposed): 152 tests,
+142 pass, 0 fail, 10 skipped.** All four rows above were re-measured against the tree before
+this wave and all four **agreed exactly** with the numbers this session had recorded — the
+first time the four-row table has been confirmed rather than corrected.
+
+**Nine tests added, one wave.** Predicted +9 tests and +9 pass on every target with fails
+and skips unmoved, then measured: four for four, exact.
+
+| Wave | Tests | What they are | Empty-target failures |
+|---|---:|---|---|
+| check 36, price break opportunities | +3 | pure — they call `renderPrice` and read `products.json` | 68 |
+| check 37, duration coherence | +6 | pure — they read `products.json`, `copy/services.md` and `eleventy.config.js` | 68 |
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 138 | 128 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 138 | 136 | 0 | 2 |
-| the handover | `npm run test:handover` | 138 | 84 | **10** | 44 |
-| an empty directory | `npm run test:empty` | 138 | 60 | **68** | 10 |
+| the build | `npm test` | 152 | 142 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 152 | 150 | 0 | 2 |
+| the handover | `npm run test:handover` | 152 | 98 | **10** | 44 |
+| an empty directory | `npm run test:empty` | 152 | 74 | **68** | 10 |
 
 **The handover's failure count held at 10, and that is the assertion rather than the
 absence of one.** Check 34 reads a frozen version directory, which the handover does not
@@ -1024,6 +1058,254 @@ not been paused at the provider, or that it is running right now. It runs when t
 runs. It moves the claim from *"a monitor was set up once"* to *"a monitor matching this
 file existed the last time anyone looked"*, which is an improvement and not a closure. The
 residual in `canary.yml`'s header stands.
+
+## The sentence a reader can check with a pencil — check 35
+
+`copy/services.md` `@@ grid.paths` publishes an arithmetic identity: *the audit
+(`{audit.price}`) plus a later top-up (`{topup.price}`) reaches exactly the same place as a
+baseline taken directly (`{baseline.price}`)*. Three interpolated amounts, and the only
+claim on the page a procurement reader can verify without trusting anybody.
+
+Until 2026-09-05 it held because three people had agreed three numbers. The reprice that
+week moved all three — 2,500 + 2,500 = 5,000 became 3,500 + 3,000 = 6,500 — and a reprice
+that moves two of the three publishes a false sentence **with every other check in this
+suite green**: the amounts are data, the grid and the sentence render from the same record,
+and nothing compared them to each other.
+
+The invariant lives in `eleventy.config.js`, per the house rule that a rule which can fail
+at the moment somebody edits a value belongs in the build. Proven red first, in the state
+this session actually passed through — the audit moved and the other two not yet:
+
+```
+products.json: the published identity does not close: audit 3500 + top-up 2500 = 6000,
+but baseline is 5000 — out by 1000.
+copy/services.md @@ grid.paths tells every reader that the audit plus a later top-up
+reaches exactly the same place as a baseline taken directly, with all three amounts
+interpolated. Exactly one of these three repairs is the one you meant:
+  baseline should be 6000, if audit and top-up are the intended values
+  top-up should be 1500, if audit and baseline are
+  audit should be 2500, if top-up and baseline are
+```
+
+`npm run build` exits 1 on that state. **Three repairs and not a culprit**, because one
+equation over three unknowns cannot elect one, and a message that says only "path
+independence violated" sends the next author to read three files.
+
+Check 35 is the drill, in four arms, and each was shown able to fail:
+
+| Arm | What it defends | Drilled by |
+|---|---|---|
+| the arithmetic | the identity itself | moving the audit alone — red, message above |
+| the sentence's token set | that the guard covers the prices the page actually shows | deleting `{baseline.price}` from the fragment — red, *"the sentence interpolates ["audit","top-up"] and the arithmetic guard compares ["audit","baseline","top-up"]"* |
+| the drift controls | that the predicate is not vacuous | three synthetic ladders, one per moved value, plus a display string and a fractional amount in an `amount` field |
+| **the wiring** | that the build still *calls* the guard | deleting the call — the other three arms stayed **green** and this one went red |
+
+That last row is the point of having it. A validator nothing calls is the defect shape this
+repository has recorded most often, and it is invisible to every arm that exercises the
+function directly.
+
+**What it cannot see, stated because the rubric would ask:** the `from` flags. `from £3,500`
+plus `from £3,000` reaching `from £6,500` satisfies the arithmetic while the sentence stops
+being an identity a reader can close. The guard compares amounts; the claim it defends is
+wider than the guard. It was also blind to the durations on the same records — nothing tied
+card 2's header word *Four weeks* to the review's `"4 weeks"`. That gap is check 37, below.
+
+## A guarantee made of characters nobody can see — check 36
+
+`renderPrice()` holds a price together with non-breaking spaces rather than with markup,
+and the essay above it in `eleventy.config.js` explains why: a price reaches the page by two
+routes, markdown-it with `html: false` and an auto-escaped Nunjucks header, and a `<span>`
+or a `&nbsp;` entity dies on both. A literal U+00A0 survives both.
+
+The rate suffix was never joined at all. `${figure}${period}` produced `£3,000/month`, and
+whether that is one run or two is the browser's decision. Measured on 2026-09-05 in all
+three engines Playwright ships, walking the characters in a 20px box:
+
+| Engine | `£3,000/month` | `£3,000/⁠month` |
+|---|---|---|
+| Chromium | 1 line | 1 line |
+| WebKit | 1 line | 1 line |
+| **Firefox** | **2 lines — `£3,000/` + `month`** | 1 line |
+
+Firefox takes the break UAX #14 allows after SOLIDUS — class SY, where rule LB13 forbids a
+break *before* it and nothing forbids one after. The other two decline it.
+
+**On the built page this was not latent, and it is live now.** Firefox at 1280px, the
+retainer cell on Services: `from £3,000/` above `month + VAT · 6-`. Two line boxes at 1280
+and at 768, on both pages. An earlier pass recorded the run as whole at every measured
+width; it had been measured in Chromium alone. `£3,000/` at a line end, beside a top-up that
+genuinely is £3,000, with `/month` the only thing telling the two apart, is the misread the
+design direction called the most expensive available on this page.
+
+**The repair is U+2060 WORD JOINER, not the non-breaking space the brief asked for.** A
+NBSP is a *space*: joining there would publish `£3,000 /month`. U+2060 is the zero-width
+member of the same family — LB11 forbids a break on either side of it and it prints nothing
+— and it survives both rendering routes for exactly the reason U+00A0 does.
+
+**What moved, measured before and after in both engines:**
+
+| Reading | Before | After |
+|---|---|---|
+| price run, line boxes, Firefox @1280/768 | **2** | 1 |
+| price run, line boxes, Chromium, all widths | 1 | 1 |
+| orphan separators, Chromium, 1280/768/375/320 | 3/5/3/5 home, 4/6/5/4 services | **identical** |
+| orphan separators, **Firefox**, same widths | 2/2/3/5 home, 3/3/5/4 services | **3/5/3/5 and 4/6/5/4** |
+| accessible name of the retainer cell | `from £3,000/month + VAT` | same, plus the invisible joiner |
+| check 12 `pages`/`blocks`/`sentences` | 9 / 689 / 671 | unmoved |
+| price strings in the built output | 20 | 20 |
+
+The orphan-separator row is the one worth reading twice. Firefox had **fewer** separators at
+a line end than Chromium *because it was breaking the price instead* — the break was being
+absorbed inside `£3,000/month` rather than landing on the `·` that §11.5 designates for it.
+After the joiner the two engines' counts are identical at every width. Nothing was added;
+a break was moved back to where the design puts it.
+
+**The guard is inside `renderPrice`, not beside it.** Check 35's fourth arm exists because
+`priceIdentityError` is a separate validator the build has to remember to call. This
+invariant is asserted on the only path a price can reach the page by, so there is no second
+place for the call to go missing from — deleting it turns check 36 red on its own. Drilled:
+deleting the joiner failed the build with exit 1 naming the repair; deleting the throw while
+keeping the joiner reddened exactly one arm and no others.
+
+### The first version of check 36 was enumerated, and an audit walked past it three ways
+
+The predicate shipped as *"no ordinary space, and the solidus must be joined"*. A
+fresh-context coverage audit ran a 21-mutant battery against checks 36 and 37 and found
+**13 survivors**, three of them holes in this very predicate:
+
+| Input | What it published, build green |
+|---|---|
+| `period: "per/annum"` | `£3,000/⁠per/annum + VAT` — `indexOf` sees only the FIRST solidus |
+| `period: "per\tmonth"` | a tab, UAX #14 class BA, breaks |
+| `period: "half-month"` | a hyphen, class HY, breaks after exactly as SOLIDUS does |
+
+So the rule was inverted. `RATE_ALPHABET` closes the alphabet — a published rate may
+contain only the characters a published rate is made of — and every solidus is checked,
+not the first. A character outside the set is a build failure naming it and its codepoint
+and asking the author to decide, which is what the docblock had *claimed* while the code
+enumerated. All three are permanent controls.
+
+**Nine of the thirteen survivors are now caught**, each re-drilled: the second solidus, the
+open alphabet, the `/i` flag on the duration pattern, a two-fault join reporting only the
+first, `Object.hasOwn` versus `in`, the missing-`duration` guard, the swallowed throw, and
+and a commented-out call site in checks 37 **and 35**. The four left standing are defensive
+(`.trim()` and whitespace collapse the caller already does, two `??` guards, `.+` versus
+`.*` in a fragment-name pattern) and are named here rather than left as an unstated pass.
+
+### And the closed alphabet admitted the character that let pence through
+
+A second reader, adversarial rather than coverage-shaped, found what the first did not:
+
+```
+renderPrice({ key: 'review', amount: 12000.50, from: true })  →  "from £12,000.5 + VAT"
+```
+
+`toLocaleString` emits **one** decimal place, not two, and the new alphabet admits `.` with
+no decimal rule — so `priceBreakFault` returned `null`. `priceIdentityError` does refuse a
+fractional amount, but only over the three products in the published identity, so the
+**review and the retainer had no such guard at all**: `"amount": 12000.50` would have
+shipped `£12,000.5 + VAT` to both pages with all four baselines unmoved. Latent today
+because every amount is round.
+
+Closed in `renderPrice` rather than in the identity guard — one guard on the path all five
+products take, instead of a second copy beside the three the identity already covers.
+Whole, positive, integral pounds; a control drills pence, a fraction of a penny, zero and a
+negative amount.
+
+**What it cannot see:** whether a *permitted* character is safe. The predicate closes the
+alphabet rather than reimplementing UAX #14, so a character inside the set is one somebody
+already decided about. It is blind to CSS: `word-break: break-all` near a price would break
+inside the digits and no character can stop that.
+
+**And one residue, stated rather than left to be discovered.** U+2060 travels into the
+clipboard. A reader who selects `£3,000/month` and pastes it into an email or a procurement
+form carries an invisible character with it, and a later find-in-page for `£3,000/month`
+against that pasted text will not match. The string already carries three U+00A0 for the
+same reason, so this is one more of a class the site had already accepted — but it was
+undocumented until now. `tools/font-subsets.json` does not declare U+2060 either; it is
+Default_Ignorable and renders no glyph in all three engines, so nothing is wrong, but that
+is the character being harmless rather than check 18 catching it.
+
+## One integer, however many surfaces spell it — check 37
+
+The grid cell, the path row and both CTA strips render `p.duration` straight out of
+`products.json`. The three card headers on Services are prose a person types — *One week*,
+*Four weeks*, *six-month minimum* — and until 2026-09-05 nothing compared them to the record
+they describe. The reprice moved the review from three weeks to four and had to edit both
+halves by hand to stay true, which is a coupling held by an author's memory.
+
+The numeral/word split is a design ruling and it stays: the grid is scanned and compared, a
+header is read once. So the guard reconciles the two spellings rather than harmonising them.
+
+**Proven red first in all three directions**, each failing `npm run build` with exit 1:
+
+| Drill | Message |
+|---|---|
+| record moved to `"5 weeks"` | *"review" is "5 weeks" in products.json and "Four weeks" in copy/services.md* |
+| header moved to *Three weeks* | *…"4 weeks"… and "Three weeks"… normalised, "4 weeks" against "3 weeks"* |
+| header's duration field deleted | *has 0 fields naming a unit of time … zero means the header stopped stating a duration* |
+
+It names the disagreeing surface and both spellings, and it does **not** elect a culprit —
+which of the two is wrong is not decidable from a disagreement.
+
+**The population is derived, not listed.** Every `@@ <key>.terms` fragment, whatever the set
+turns out to be. A `.terms` prefix naming no product, and a header with no duration field,
+are both errors rather than quiet exclusions from the denominator — a check fitted to its
+three known instances is blind to the fourth by construction. Writing that arm found a real
+ordering bug in the guard's own reporting: the empty-population message was returned *ahead*
+of the findings, so a header that stopped naming a duration reported "measured nothing"
+instead of naming the header. Findings now come first.
+
+### Two arms of wiring, because one was not enough
+
+The audit rewrote `validateDurationCoherence` to swallow its error and **the whole suite
+stayed green**. The wiring arm counts occurrences of the function's *name*, and a call that
+no longer throws still supplies one. Worse, it counted them in raw source, so
+`// validateDurationCoherence();` beside the declaration reads as two — the exact deletion
+the arm exists to catch. Check 16's own scanner strips comments for precisely this reason.
+
+Both are closed: the validator now takes defaulted parameters so an arm can plant a
+disagreeing record and assert it **throws**, and the counting arm strips comments first.
+Check 35's fourth arm had inherited the same comment-blind instrument and is fixed with it —
+a guard one file over that nobody had reported.
+
+### The population was taken from the wrong side, and a rename walked out of it
+
+Deriving the denominator from `copy/services.md` — every key ending `.terms` — was measured
+wrong. Renaming `@@ review.terms` to `@@ review.card` returned **green** with the renamed
+strip openly disagreeing, because a fragment no longer spelled `.terms` simply left the
+population. That is check 34's recorded defect one guard over, and this repository's own
+rule: *derive a population from the policy it enforces*, never from a suffix somebody chose
+while writing the guard.
+
+The population is now `SERVICES_TERMS()` — the `frag("<product>.terms")` calls in
+`src/services.njk`, which is the surface a reader actually sees. A rename has to move the
+template too, and the guard follows it; a name the template renders that the copy file does
+not hold is a named fault from two directions at once, because `frag()` throws on it as
+well. Drilled: reverting the population to the copy file turns check 37 red.
+
+**Two more false reds the same reader found, both closed.** `NUMBER_WORDS` stops at twelve,
+so *Thirteen weeks* against `13 weeks` read as a disagreement when it is not one — the
+message now names the table to extend, the way `priceBreakFault` names `RATE_ALPHABET`,
+rather than leaving *break the numeral/word ruling* as the only visible way out. And a
+`frag()` call this guard cannot read a product out of is now its own message instead of
+falling through to *measured nothing*.
+
+**What it cannot see:** a product with only one duration surface. The top-up and the
+baseline have no card header, so there is nothing to disagree and their `duration` is as
+unverified as any single-source string. **And prose.** A terms strip is the only hand-typed
+duration this guard can reach — `@@ audit.outofscope` says *"can't be established honestly
+in a week"* on the same page, with nothing holding it to the audit's record. An earlier
+draft of the empty-population message called the card headers *"the only hand-typed
+durations on the site"*, which that sentence refutes.
+
+**And a claim it made that was false.** Both docblocks said the wording around the duration
+was unconstrained, so the deferred elapsed-time rewrite could *"land on top of this rather
+than against it."* Measured: `duration: "4 weeks"` against a header reading *within four
+weeks* is a **fault**, because the whole `·` field is normalised and compared. The guard is
+working — a rewrite that moves one surface and not the other is the drift it exists to
+catch — but it makes that rewrite a two-file edit, and the sentence claiming otherwise was
+written without running it.
 
 ## Not yet built
 
