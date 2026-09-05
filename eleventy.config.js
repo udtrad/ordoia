@@ -226,6 +226,99 @@ function validateRubric() {
 }
 
 /* -------------------------------------------------------------------------- *
+ * products.json invariants — the published path-independence identity
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The three products the site adds up in prose, by `products.json` key.
+ *
+ * copy/services.md `@@ grid.paths` states it: *"The audit ({audit.price}) plus a later
+ * top-up of the remaining four dimensions ({topup.price}) reaches exactly the same place
+ * as a baseline taken directly ({baseline.price})."* That is the only claim on this page
+ * a reader can check with a pencil, and three interpolated values is what makes it
+ * checkable rather than rhetorical.
+ *
+ * Until 2026-09-05 it held because three people had agreed three numbers. The 2026-09
+ * reprice moved all three at once — 2,500 + 2,500 = 5,000 became 3,500 + 3,000 = 6,500 —
+ * and a reprice that moves two of the three publishes a false sentence with every check
+ * green. So it holds here instead.
+ */
+export const IDENTITY = { addends: ['audit', 'top-up'], total: 'baseline' };
+
+/**
+ * Why this is a build failure and not only a check.
+ *
+ * CHECKS.md's house rule: an invariant belongs in this file when it can fail *at the
+ * moment somebody edits the wrong value*. Editing an amount is exactly that moment —
+ * the same argument the --track contrast assertion in readTokens() is made under, and
+ * for the same reason: two minutes later is a different author with a green suite.
+ * Check 35 drills this function, so the guard is exercised rather than trusted.
+ *
+ * ── What it cannot see ──────────────────────────────────────────────────────────────
+ *
+ * It compares AMOUNTS and is blind to the `from` flags. `from £3,500` plus `from £3,000`
+ * reaching `from £6,500` satisfies the arithmetic while the published sentence stops
+ * being an identity a procurement reader can close — the claim weakens and this guard
+ * stays green. Whether a floor belongs on any of the three is a commercial ruling; that
+ * it would silently narrow this guard is the part worth writing down.
+ *
+ * It is also blind to durations, which are their own strings on the same records.
+ */
+export function priceIdentityError(record) {
+  const named = [...IDENTITY.addends, IDENTITY.total];
+  const byKey = new Map((record?.products ?? []).map((p) => [p.key, p]));
+  const amounts = {};
+
+  for (const key of named) {
+    const product = byKey.get(key);
+    if (!product) {
+      return (
+        `products.json has no product keyed "${key}", so the published identity ` +
+        `(${IDENTITY.addends.join(' + ')} = ${IDENTITY.total}) cannot be checked at all. ` +
+        `A renamed key silently retires this guard, which is why a missing one is an ` +
+        `error rather than a skip.`
+      );
+    }
+    if (!Number.isInteger(product.amount)) {
+      return (
+        `"${key}" has amount ${JSON.stringify(product.amount)}, which is not a whole ` +
+        `number of pounds. Amounts in products.json are pure numbers — no symbol, no ` +
+        `comma, no "from" — and the identity is arithmetic over them.`
+      );
+    }
+    amounts[key] = product.amount;
+  }
+
+  const sum = IDENTITY.addends.reduce((n, key) => n + amounts[key], 0);
+  if (sum === amounts[IDENTITY.total]) return null;
+
+  // Which of the three is wrong is not decidable from one equation, so the message
+  // names all three repairs rather than electing a culprit. A check that says only
+  // "path independence violated" sends the next author to read three files.
+  const [a, b] = IDENTITY.addends;
+  const t = IDENTITY.total;
+  const repairs = [
+    `  ${t} should be ${sum}, if ${a} and ${b} are the intended values`,
+    `  ${b} should be ${amounts[t] - amounts[a]}, if ${a} and ${t} are`,
+    `  ${a} should be ${amounts[t] - amounts[b]}, if ${b} and ${t} are`,
+  ];
+
+  return (
+    `the published identity does not close: ${a} ${amounts[a]} + ${b} ${amounts[b]} = ` +
+    `${sum}, but ${t} is ${amounts[t]} — out by ${Math.abs(sum - amounts[t])}.\n` +
+    `copy/services.md @@ grid.paths tells every reader that the audit plus a later ` +
+    `top-up reaches exactly the same place as a baseline taken directly, with all three ` +
+    `amounts interpolated. Exactly one of these three repairs is the one you meant:\n` +
+    `${repairs.join('\n')}`
+  );
+}
+
+function validatePriceIdentity() {
+  const error = priceIdentityError(products);
+  if (error) throw new Error(`products.json: ${error}`);
+}
+
+/* -------------------------------------------------------------------------- *
  * Copy fragments
  *
  * §8: the copy is held in content files, not in templates. Each file in
@@ -462,6 +555,7 @@ let CHROME = buildChromeSheet();
 export default function (eleventyConfig) {
   const tokens = readTokens();
   validateRubric();
+  validatePriceIdentity();
 
   eleventyConfig.addGlobalData('tokens', tokens);
   eleventyConfig.addGlobalData('buildTokens', TOKENS);

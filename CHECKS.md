@@ -111,7 +111,7 @@ category*.
 
 ## Where the enforcement lives
 
-Not all of it is in this directory. Six invariants are enforced by the build
+Not all of it is in this directory. Seven invariants are enforced by the build
 itself, in `eleventy.config.js`, because a rule that fails at the moment somebody
 edits the wrong value is better than one that fails two minutes later:
 
@@ -123,6 +123,7 @@ edits the wrong value is better than one that fails two minutes later:
 | a copy fragment referenced by a key that does not exist | §8 — a typo becomes an empty div otherwise |
 | a design token the build needs but `styles.css` does not define | §7 — the favicon is generated from them |
 | `--track` below 3:1 on either surface it is drawn on | §7 — the same assertion check 7 makes on the page |
+| `audit.amount + top-up.amount` not equal to `baseline.amount` | the published path-independence sentence — check 35 drills it |
 | a `/oal/vX.Y/` snapshot generated from a rubric it was not published with | §5, §13.1 — restating a historical methodology |
 
 The build defends the pages it renders; the suite defends the ones it does not. A
@@ -195,12 +196,30 @@ table was measured and correct; the prose beside it was not. Recorded rather tha
 corrected, because a summary that drifts from the table it summarises is the same defect as a
 comment that drifts from its code.
 
+**Updated 2026-09-05 (check 35, the published price identity): 143 tests, 133 pass, 0 fail,
+10 skipped.** All four rows re-measured, and the four-row table below was **one test short on
+every row** before this session — it read 138 where the paragraph above it read 139, and the
+139 was the correct figure. The same defect as the one recorded two paragraphs down, with the
+halves the other way round: there the prose had drifted from the table, here the table had
+drifted from the prose. Corrected by measurement rather than by arithmetic on the old row.
+
+**Four tests added, one wave**, and every target moved by the same arithmetic:
+
+| Wave | Tests | What they are | Empty-target failures |
+|---|---:|---|---|
+| check 35, the price identity | +4 | all four pure — they read `src/` and `eleventy.config.js`, never the target | 68 |
+
+Check 35 reads source rather than the built site, in the manner of check 26, so it passes on
+all four targets and moved nothing but the pass columns. `HANDOVER_EXPECTED_FAILURES` held at
+10 and the empty-target failure count held at 68 — a new test that moves no failure count is
+either pure or not being run, and this wave is the first kind.
+
 | Target | Command | Tests | Pass | Fail | Skip |
 |---|---|---:|---:|---:|---:|
-| the build | `npm test` | 138 | 128 | 0 | 10 |
-| a local origin | `npm run test:live-local` | 138 | 136 | 0 | 2 |
-| the handover | `npm run test:handover` | 138 | 84 | **10** | 44 |
-| an empty directory | `npm run test:empty` | 138 | 60 | **68** | 10 |
+| the build | `npm test` | 143 | 133 | 0 | 10 |
+| a local origin | `npm run test:live-local` | 143 | 141 | 0 | 2 |
+| the handover | `npm run test:handover` | 143 | 89 | **10** | 44 |
+| an empty directory | `npm run test:empty` | 143 | 65 | **68** | 10 |
 
 **The handover's failure count held at 10, and that is the assertion rather than the
 absence of one.** Check 34 reads a frozen version directory, which the handover does not
@@ -1024,6 +1043,58 @@ not been paused at the provider, or that it is running right now. It runs when t
 runs. It moves the claim from *"a monitor was set up once"* to *"a monitor matching this
 file existed the last time anyone looked"*, which is an improvement and not a closure. The
 residual in `canary.yml`'s header stands.
+
+## The sentence a reader can check with a pencil — check 35
+
+`copy/services.md` `@@ grid.paths` publishes an arithmetic identity: *the audit
+(`{audit.price}`) plus a later top-up (`{topup.price}`) reaches exactly the same place as a
+baseline taken directly (`{baseline.price}`)*. Three interpolated amounts, and the only
+claim on the page a procurement reader can verify without trusting anybody.
+
+Until 2026-09-05 it held because three people had agreed three numbers. The reprice that
+week moved all three — 2,500 + 2,500 = 5,000 became 3,500 + 3,000 = 6,500 — and a reprice
+that moves two of the three publishes a false sentence **with every other check in this
+suite green**: the amounts are data, the grid and the sentence render from the same record,
+and nothing compared them to each other.
+
+The invariant lives in `eleventy.config.js`, per the house rule that a rule which can fail
+at the moment somebody edits a value belongs in the build. Proven red first, in the state
+this session actually passed through — the audit moved and the other two not yet:
+
+```
+products.json: the published identity does not close: audit 3500 + top-up 2500 = 6000,
+but baseline is 5000 — out by 1000.
+copy/services.md @@ grid.paths tells every reader that the audit plus a later top-up
+reaches exactly the same place as a baseline taken directly, with all three amounts
+interpolated. Exactly one of these three repairs is the one you meant:
+  baseline should be 6000, if audit and top-up are the intended values
+  top-up should be 1500, if audit and baseline are
+  audit should be 2500, if top-up and baseline are
+```
+
+`npm run build` exits 1 on that state. **Three repairs and not a culprit**, because one
+equation over three unknowns cannot elect one, and a message that says only "path
+independence violated" sends the next author to read three files.
+
+Check 35 is the drill, in four arms, and each was shown able to fail:
+
+| Arm | What it defends | Drilled by |
+|---|---|---|
+| the arithmetic | the identity itself | moving the audit alone — red, message above |
+| the sentence's token set | that the guard covers the prices the page actually shows | deleting `{baseline.price}` from the fragment — red, *"the sentence interpolates ["audit","top-up"] and the arithmetic guard compares ["audit","baseline","top-up"]"* |
+| the drift controls | that the predicate is not vacuous | three synthetic ladders, one per moved value, plus a display string and a fractional amount in an `amount` field |
+| **the wiring** | that the build still *calls* the guard | deleting the call — the other three arms stayed **green** and this one went red |
+
+That last row is the point of having it. A validator nothing calls is the defect shape this
+repository has recorded most often, and it is invisible to every arm that exercises the
+function directly.
+
+**What it cannot see, stated because the rubric would ask:** the `from` flags. `from £3,500`
+plus `from £3,000` reaching `from £6,500` satisfies the arithmetic while the sentence stops
+being an identity a reader can close. The guard compares amounts; the claim it defends is
+wider than the guard. It is also blind to the durations on the same records — nothing ties
+card 2's header word *Four weeks* to the review's `"4 weeks"`, and that is the same class of
+gap, one guard short.
 
 ## Not yet built
 

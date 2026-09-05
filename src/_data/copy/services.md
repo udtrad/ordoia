@@ -62,7 +62,7 @@ See the blank audit scorecard
 2 · Agent production readiness review
 
 @@ review.terms
-Three weeks · {review.price}, fixed before we start · eight dimensions · tested depth
+Four weeks · {review.price}, fixed before we start · eight dimensions · tested depth
 
 @@ review.lede
 All eight dimensions, established adversarially rather than by inspection.

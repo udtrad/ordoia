@@ -31,7 +31,7 @@
       "name": "Audit",
       "dimensions": 4,
       "depth": "inspected",
-      "amount": 2500,
+      "amount": 3500,
       "duration": "1 week"
     },
     {
@@ -39,7 +39,7 @@
       "name": "baseline top-up",
       "dimensions": 4,
       "depth": "inspected",
-      "amount": 2500,
+      "amount": 3000,
       "duration": "~1 week"
     },
     {
@@ -47,7 +47,7 @@
       "name": "Baseline",
       "dimensions": 8,
       "depth": "inspected",
-      "amount": 5000,
+      "amount": 6500,
       "duration": "2 weeks"
     },
     {
@@ -55,9 +55,9 @@
       "name": "Review",
       "dimensions": 8,
       "depth": "tested",
-      "amount": 9000,
+      "amount": 12000,
       "from": true,
-      "duration": "3 weeks"
+      "duration": "4 weeks"
     },
     {
       "key": "retainer",
