@@ -92,6 +92,80 @@ const readJSON = (p) => JSON.parse(readFileSync(path.join(ROOT, p), 'utf8'));
  * -------------------------------------------------------------------------- */
 
 const NBSP = ' ';
+const WJ = '⁠';
+
+/**
+ * A line break that can get inside a published rate, or null.
+ *
+ * `renderPrice` joins with characters rather than markup, for the reason the essay above
+ * gives, and characters are silent when they go missing: nothing renders differently until
+ * a container is narrow enough, in a browser that takes the break. So the composed string
+ * is inspected before it is returned.
+ *
+ * ── A closed alphabet, not a list of known-bad characters ───────────────────────────
+ *
+ * The first version of this enumerated the two break opportunities the site's rates
+ * actually contained — U+0020 and a solidus — and a coverage audit found three ways past
+ * it in one pass: a second solidus (`period: "per/annum"` renders `£3,000/⁠per/annum`, the
+ * second one bare, because `indexOf` sees only the first), a tab, and a hyphen, which is
+ * UAX #14 class HY and breaks after just as SOLIDUS does. Each published a breakable price
+ * with the build green.
+ *
+ * So the rule is inverted. A rendered price may contain only the characters a rendered
+ * price is made of, and every SOLIDUS — not the first — must be joined. Anything else is
+ * a build failure naming the character, which forces whoever introduces it to decide
+ * whether it needs a joiner instead of finding out from a screenshot.
+ *
+ * ── Why U+2060 and not another U+00A0 ───────────────────────────────────────────────
+ *
+ * SOLIDUS is class SY in UAX #14: rule LB13 forbids a break *before* it and nothing
+ * forbids one after, so the decision is the browser's. Measured in a 20px container on
+ * 2026-09-05, walking the characters: `£3,000/month` renders as one line in Chromium and
+ * WebKit and as `£3,000/` + `month` in Firefox. `£3,000/⁠month` renders as one line in all
+ * three. A non-breaking space cannot be the fix here because it is a *space*: it would
+ * publish `£3,000 /month`. U+2060 is the zero-width member of the same family (LB11
+ * forbids a break on either side of it) and prints nothing.
+ */
+
+/** Everything a published rate is made of. Deliberately short; see the essay above. */
+const RATE_ALPHABET = /^[0-9A-Za-z£,.+/ ⁠]*$/;
+
+export function priceBreakFault(rendered) {
+  if (rendered.includes(' ')) {
+    return (
+      `contains an ordinary space (U+0020). Every space in a published rate is a ` +
+      `non-breaking space (U+00A0), because a rate that comes apart at a space puts ` +
+      `"+ VAT" or "from" on a line without the figure it belongs to.`
+    );
+  }
+
+  if (!RATE_ALPHABET.test(rendered)) {
+    const stray = [...rendered].find((ch) => !RATE_ALPHABET.test(ch));
+    const code = `U+${stray.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+    return (
+      `contains ${JSON.stringify(stray)} (${code}), which is not one of the characters a ` +
+      `published rate is made of. This is a rule rather than a rejection: decide whether ` +
+      `it can start a line — a hyphen and a tab both can — and either join it with U+2060 ` +
+      `or add it to RATE_ALPHABET in eleventy.config.js with a note saying why it is safe.`
+    );
+  }
+
+  // Every solidus, not the first: `indexOf` let `per/annum` through with one bare.
+  for (let i = rendered.indexOf('/'); i !== -1; i = rendered.indexOf('/', i + 1)) {
+    if (rendered[i + 1] !== WJ) {
+      return (
+        `carries a bare solidus at index ${i}. Firefox takes the break UAX #14 allows ` +
+        `after it, so "£3,000/month" renders as "£3,000/" above an orphaned "month" — ` +
+        `beside a top-up that genuinely is £3,000, and /month is the only thing telling ` +
+        `the two apart. Join it with a word joiner (U+2060), which is the zero-width ` +
+        `member of the same family as the U+00A0 already holding "+ VAT" on; a ` +
+        `non-breaking space would publish a visible "£3,000 /month".`
+      );
+    }
+  }
+
+  return null;
+}
 
 /**
  * A published rate, as a reader sees it.
@@ -104,11 +178,18 @@ export function renderPrice(product) {
   const label = product?.key ? `product "${product.key}"` : 'a product';
   const amount = product?.amount;
 
-  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+  // A whole number of pounds, and a positive one. `priceIdentityError` already refuses a
+  // fractional amount, but only over the three products in the identity — so `12000.50` on
+  // the review rendered `from £12,000.5 + VAT` (toLocaleString emits ONE decimal place) and
+  // shipped to both pages with every check green. Two of five products had no such guard,
+  // which is why this one is here, on the path all five take.
+  if (!Number.isInteger(amount) || amount <= 0) {
     throw new Error(
       `${label} has no usable \`amount\` (got ${JSON.stringify(amount)}). Amounts in ` +
-        `products.json are plain numbers — no currency symbol, no comma, no "from", ` +
-        `no "/month". Those are rendering decisions and they live in renderPrice().`
+        `products.json are whole positive numbers of pounds — no currency symbol, no ` +
+        `comma, no "from", no "/month", and no pence. Those are rendering decisions and ` +
+        `they live in renderPrice(); pence would render as "£12,000.5", because ` +
+        `toLocaleString emits one decimal place, not two.`
     );
   }
   if (product.period !== undefined && typeof product.period !== 'string') {
@@ -121,14 +202,32 @@ export function renderPrice(product) {
   // cell went from `from £9,000` / `· 3 weeks` to `from` / `£9,000 + VAT · 3` / `weeks`,
   // orphaning "from" on its own line above the figure it modifies, where it means nothing.
   const floor = product.from ? `from${NBSP}` : '';
-  const period = product.period ? `/${product.period}` : '';
+  // The rate suffix is joined with a WORD JOINER for the same reason the floor and the
+  // VAT suffix carry non-breaking spaces, and with a different character because there is
+  // no space here to make non-breaking: U+2060 forbids a break on either side of itself
+  // (UAX #14 LB11) and prints nothing. Firefox breaks after a bare solidus and the other
+  // two engines do not, which is why this went unnoticed. See priceBreakFault above.
+  const period = product.period ? `/${WJ}${product.period}` : '';
 
   // VAT is unconditional and has no opt-out parameter. Every published rate on this
   // site excludes VAT, so a call site able to render one without the suffix is a call
   // site able to be wrong — and an option defaulting the right way is still an option
   // somebody can pass. The suffix goes last, after the period: `£3,000/month + VAT`,
   // never `£3,000 + VAT/month`. That ordering is the whole reason this is a function.
-  return `${floor}${figure}${period}${NBSP}+${NBSP}VAT`;
+  const rendered = `${floor}${figure}${period}${NBSP}+${NBSP}VAT`;
+
+  // The joins are the whole guarantee and they are invisible, so the composed string is
+  // checked rather than trusted. See priceBreakFault above; check 36 drills it.
+  const fault = priceBreakFault(rendered);
+  if (fault) {
+    throw new Error(
+      `${label} renders ${JSON.stringify(rendered)}, which ${fault}\n` +
+        `This is a line-break opportunity inside a price, and it is a build failure for ` +
+        `the same reason a missing amount is: the page would publish it silently.`
+    );
+  }
+
+  return rendered;
 }
 
 const site = readJSON('src/_data/site.json');
@@ -316,6 +415,228 @@ export function priceIdentityError(record) {
 function validatePriceIdentity() {
   const error = priceIdentityError(products);
   if (error) throw new Error(`products.json: ${error}`);
+}
+
+/* -------------------------------------------------------------------------- *
+ * Durations — one integer per product, however many surfaces spell it
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The English number words a duration is allowed to be written in.
+ *
+ * Deliberately small and closed: this is a normaliser for three card headers, not a
+ * language. A word outside it does not normalise, so `Thirteen weeks` against `13 weeks`
+ * reads as a disagreement when it is not one — the site's ladder stops at twelve today, and
+ * the failure message names this table so the author extends it rather than breaking the
+ * numeral/word ruling to satisfy a guard.
+ */
+const NUMBER_WORDS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+
+/** A unit of elapsed time, which is what makes a `·`-separated field a duration field. */
+const TIME_UNIT = /\b(day|week|month|year)s?\b/i;
+
+/**
+ * One duration, in the one spelling both surfaces can be compared in.
+ *
+ * `One week` and `1 week` are the same duration; `six-month minimum` and `6-month minimum`
+ * are the same duration. The numeral/word split between the grid and the card headers is
+ * deliberate — the grid is scanned and compared, a header is read once — so the halves are
+ * reconciled here rather than harmonised on the page.
+ */
+function normaliseDuration(text) {
+  return String(text)
+    .toLowerCase()
+    .replace(/~/g, '')
+    .replace(/\b([a-z]+)\b/g, (word) => (Object.hasOwn(NUMBER_WORDS, word) ? String(NUMBER_WORDS[word]) : word))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Every hand-typed duration disagreeing with the product record it describes.
+ *
+ * ── Why this is a build failure and not only a check ────────────────────────────────
+ *
+ * The same house rule `validatePriceIdentity` is written under: an invariant belongs here
+ * when it can fail at the moment somebody edits the wrong value, and a duration is edited
+ * in two files. `priceIdentityError`'s own docblock names this as the gap one field over —
+ * *"it is also blind to durations, which are their own strings on the same records"* — and
+ * this closes it.
+ *
+ * Every other duration surface renders `p.duration` straight from the record: the grid
+ * cells and path row in `grid.njk`, and the field strip in `cta.njk`. They cannot drift.
+ * The three card headers in `copy/services.md` are prose a person types, and until this
+ * function existed nothing anywhere compared them to the data.
+ *
+ * ── The population comes from the TEMPLATE, not from the copy file ──────────────────
+ *
+ * `rendered` is the list of `frag("<key>.terms")` calls in `src/services.njk` — the
+ * surface, not the store. Deriving it from `copy/services.md` instead was measured wrong:
+ * renaming `@@ review.terms` to `@@ review.card` returned green with the renamed strip
+ * openly disagreeing, because a fragment that is no longer spelled `.terms` simply left the
+ * denominator. That is check 34's recorded defect one guard over — derive a population from
+ * the policy it enforces, never from a directory or a suffix somebody chose while writing
+ * it. A rename now has to move the template too, and the guard follows it.
+ *
+ * An unknown prefix, a header with no duration field, and a fragment the template asks for
+ * that the copy file does not hold are all errors here rather than quiet exclusions.
+ *
+ * ── What it cannot see ──────────────────────────────────────────────────────────────
+ *
+ * A product with no card header — the top-up and the baseline — has one duration surface,
+ * so there is nothing to disagree and nothing to check. The price in the same strip is
+ * check 26 and check 35's business.
+ *
+ * The *wording* around the duration is NOT free, and an earlier draft of this docblock
+ * claimed it was. The whole `·` field is normalised and compared, so the deferred
+ * elapsed-time rewrite (`Four weeks` → `within four weeks`) turns this red until
+ * `products.json` says `within 4 weeks` too. Measured rather than assumed. That is the
+ * guard working: a rewrite that moves one surface and not the other is the drift it
+ * exists to catch — but it means the rewrite is a two-file edit, not a copy edit.
+ *
+ * `fragments` are RAW, before `{token}` substitution, and that is load-bearing: substituted,
+ * `@@ retainer.terms` opens with `From £3,000/⁠month + VAT` and would present a second field
+ * naming a unit of time, which this refuses to guess between.
+ */
+export function durationCoherenceError(record, fragments, rendered) {
+  const byKey = new Map();
+  for (const product of record?.products ?? []) {
+    byKey.set(product.key, product);
+    // `{top-up.duration}` is not a token shape, so a hyphenated key is spelled without it
+    // wherever it has to be an identifier. Same reconciliation check 35 makes by hand.
+    byKey.set(product.key.replace(/-/g, ''), product);
+  }
+
+  const faults = [];
+  const compared = [];
+
+  for (const name of rendered ?? []) {
+    const [, prefix] = name.match(/^(.+)\.terms$/) ?? [];
+    if (!prefix) {
+      faults.push(
+        `src/services.njk renders frag("${name}"), which this guard was handed as a terms ` +
+          `strip but cannot read a product out of. The name has to be "<product>.terms".`
+      );
+      continue;
+    }
+
+    const body = (fragments ?? {})[name];
+    if (typeof body !== 'string') {
+      faults.push(
+        `src/services.njk renders frag("${name}") and copy/services.md has no such ` +
+          `fragment. The build's own \`frag\` filter throws on this too; it is a fault here ` +
+          `as well so that the guard names the surface it just lost rather than measuring ` +
+          `one fewer card in silence.`
+      );
+      continue;
+    }
+
+    const product = byKey.get(prefix);
+    if (!product) {
+      faults.push(
+        `copy fragment "@@ ${name}" names no product in products.json (known: ` +
+          `${[...new Set([...byKey.values()].map((p) => p.key))].join(', ')}). A terms strip ` +
+          `describes a product, and one that does not is a duration surface with no source ` +
+          `to be checked against — which is the state this guard exists to end.`
+      );
+      continue;
+    }
+
+    const fields = body.split('·').map((f) => f.trim()).filter(Boolean);
+    const timed = fields.filter((f) => TIME_UNIT.test(f));
+    if (timed.length !== 1) {
+      faults.push(
+        `copy fragment "@@ ${name}" has ${timed.length} fields naming a unit of time ` +
+          `(${JSON.stringify(timed)}), and this guard can only compare exactly one against ` +
+          `"${product.key}" duration "${product.duration}". Zero means the header stopped ` +
+          `stating a duration; more than one means it is no longer obvious which field the ` +
+          `record describes, and guessing is how a guard starts measuring the wrong string.`
+      );
+      continue;
+    }
+
+    if (typeof product.duration !== 'string' || !product.duration.trim()) {
+      faults.push(
+        `"${product.key}" has no usable \`duration\` in products.json (got ` +
+          `${JSON.stringify(product.duration)}), so "@@ ${name}" has nothing to be checked ` +
+          `against. Guarded the way renderPrice guards an amount: a record the grid would ` +
+          `render as an empty cell is an error here rather than a comparison against the ` +
+          `word "undefined".`
+      );
+      continue;
+    }
+
+    compared.push(name);
+    const header = normaliseDuration(timed[0]);
+    const data = normaliseDuration(product.duration);
+    if (header !== data) {
+      faults.push(
+        `"${product.key}" is ${JSON.stringify(product.duration)} in products.json and ` +
+          `${JSON.stringify(timed[0])} in copy/services.md "@@ ${name}" — normalised, ` +
+          `"${data}" against "${header}". If those are the same duration spelled two ways, ` +
+          `the word is missing from NUMBER_WORDS in eleventy.config.js, which stops at ` +
+          `twelve — extend it rather than putting a numeral in a header. The grid, the ` +
+          `path row and both CTAs render the ` +
+          `record, so a reader compares ${JSON.stringify(product.duration)} in the grid ` +
+          `against ${JSON.stringify(timed[0])} in the card header on the same page. The ` +
+          `numeral/word split is deliberate; the disagreement is not. Change whichever of ` +
+          `the two is wrong — this guard cannot tell which, and does not pretend to.`
+      );
+    }
+  }
+
+  // Findings first, and the empty population only when there are none. A fault is already
+  // proof this guard was not silent, and it names the surface — reporting "measured
+  // nothing" over the top of it would replace the answer with the alarm.
+  if (faults.length) return faults.join('\n\n');
+
+  if (compared.length === 0) {
+    return (
+      `src/services.njk renders no frag("<product>.terms") call that yielded a duration to ` +
+      `compare, so this guard measured nothing and would have passed. A terms strip is the ` +
+      `only hand-typed duration this guard can reach — prose elsewhere is out of its scope ` +
+      `by construction, and copy/services.md @@ audit.outofscope says "in a week" today ` +
+      `with nothing holding it to the audit's record. If the card headers have moved or ` +
+      `been renamed, this guard has to move with them rather than go quiet.`
+    );
+  }
+
+  return null;
+}
+
+/** The copy file the card headers live in. Read here rather than through Eleventy's data
+ *  layer, because that resolves lazily at render and this has to fail before a page. */
+export const SERVICES_FRAGMENTS = () =>
+  parseFragments(readFileSync(path.join(ROOT, 'src/_data/copy/services.md'), 'utf8'));
+
+/**
+ * Which terms strips the Services template actually renders.
+ *
+ * The population, taken from the surface rather than from the store — see the essay on
+ * `durationCoherenceError`. `frag()` already throws on a name that is not in the copy file,
+ * so this list and that filter fail on the same edit, from two directions.
+ */
+export const SERVICES_TERMS = () => [
+  ...readFileSync(path.join(ROOT, 'src/services.njk'), 'utf8')
+    .matchAll(/frag\(\s*["']([^"']+\.terms)["']\s*\)/g),
+].map((m) => m[1]);
+
+/**
+ * Exported with defaulted parameters so the THROW can be certified rather than the name.
+ * A coverage audit rewrote the body to swallow its error and the whole suite stayed green:
+ * check 37's wiring arm counts occurrences of this function's name, which a call that no
+ * longer throws still satisfies. The call site passes nothing and is unchanged.
+ */
+export function validateDurationCoherence(
+  record = products,
+  fragments = SERVICES_FRAGMENTS(),
+  rendered = SERVICES_TERMS()
+) {
+  const error = durationCoherenceError(record, fragments, rendered);
+  if (error) throw new Error(`durations disagree across surfaces:\n\n${error}`);
 }
 
 /* -------------------------------------------------------------------------- *
@@ -556,6 +877,7 @@ export default function (eleventyConfig) {
   const tokens = readTokens();
   validateRubric();
   validatePriceIdentity();
+  validateDurationCoherence();
 
   eleventyConfig.addGlobalData('tokens', tokens);
   eleventyConfig.addGlobalData('buildTokens', TOKENS);

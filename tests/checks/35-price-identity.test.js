@@ -193,7 +193,11 @@ test('check 35 — the identity guard still fails when a value drifts (controls)
 });
 
 test('check 35 — the build still calls the guard', () => {
-  const source = readFileSync(CONFIG, 'utf8');
+  // Comments stripped first: `// validatePriceIdentity();` beside the declaration also
+  // reads as two occurrences of the name, so a commented-out call — the exact deletion this
+  // arm exists to catch — would pass. Found by a coverage audit on check 37, which had
+  // inherited the same instrument; check 16's own scanner strips for the same reason.
+  const source = readFileSync(CONFIG, 'utf8').replace(/\/\/[^\n]*/g, '');
   const s = survey({ calls: 'call sites of the identity guard inside the build config' });
 
   // Two occurrences when wired: the declaration and the call. Counting the name rather
