@@ -36,7 +36,7 @@
  * writes it to a file, and no command takes it as an argument.
  */
 
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cfCall, tryCall, accountId } from './cf-api.mjs';
@@ -48,6 +48,33 @@ const DNS_PLAN = path.join(REPO_ROOT, 'tools', 'dns-plan.json');
 
 /** Certificate authorities that must be able to issue for the apex, per DEPLOY.md. */
 export const REQUIRED_CAA = ['letsencrypt.org', 'pki.goog', 'ssl.com'];
+
+/**
+ * The DNS plan, read once. `records()` applies it; `evaluateZone()` asserts the zone still
+ * holds it. One table, two consumers — the same arrangement `ZONE_SETTINGS` has, and for
+ * the same reason: a zone written from one list and checked against another is two lists
+ * that drift.
+ *
+ * Until 2026-09-10 there was no second consumer. `evaluateZone` made only *negative*
+ * statements about DNS — no address record at the apex, the CNAME points here, CAA does not
+ * block issuance — so the six records this plan applies, five of them the mail records that
+ * let ordoia.com send and receive, were applied and never read back. Deleting all of them
+ * from the Cloudflare dashboard left every check in this repository green.
+ *
+ * Including the weekly canary — and the reach of that sentence has a limit worth stating
+ * where the claim is made. `canary.yml` is the only scheduled reader of this assertion, and
+ * its own header records that GitHub disables scheduled workflows after 60 days of
+ * repository quiet, on a site that is *finished by design*. The external monitor that covers
+ * that hole for the web pages watches HTTP bodies for `mailto:` and `/cdn-cgi/`; it cannot
+ * see an MX, SPF, DKIM or DMARC record. So these records are asserted only while the canary
+ * is running, and the 60-day hole covers them too. That is a real gap, recorded rather than
+ * papered over — a justification that overstates its own reach is the shape this file exists
+ * to refuse.
+ */
+const PLAN = JSON.parse(readFileSync(DNS_PLAN, 'utf8'));
+
+/** Records the zone must hold, as the plan declares them (`@` still unexpanded). */
+export const DNS_ENSURE = PLAN.ensure ?? [];
 
 /**
  * The zone posture. Every entry is a thing the Cloudflare edge would otherwise do to
@@ -254,11 +281,20 @@ export function evaluateZone({ settings, records, botManagement, apex, pagesHost
 
   // ── DNS ────────────────────────────────────────────────────────────────────────
   //
-  // Negative invariants, so the same table holds before and after the custom domain is
-  // attached. The positive statement — "the apex serves the Pages project" — is check 15's
-  // job, and it makes it against the live host rather than against a record.
+  // Rules about records that ARE present: no address record at the apex, and if a CNAME is
+  // there it points at this Pages project, proxied. They were the whole of the DNS section
+  // until 2026-09-10, when the plan loop below started asserting *presence* as well — the
+  // apex CNAME is the plan's first entry, so a deleted CNAME is caught down there rather
+  // than here, and this table no longer holds unchanged before the custom domain is
+  // attached. Check 15 still makes the stronger positive statement, "the apex serves the
+  // Pages project", against the live host rather than against a record.
 
-  const apexRecords = records.filter((r) => r?.name === apex);
+  // Normalised, for the reason `dnsName` exists: an API that returned `ORDOIA.COM` would
+  // empty this array rather than fill it, and an empty `apexRecords` does not report a
+  // problem — it silently disarms the address-record rule, the CNAME rule and the SPF
+  // count all at once. A filter that can quietly select nothing is the most dangerous
+  // shape in this file.
+  const apexRecords = records.filter((r) => dnsName(r?.name) === dnsName(apex));
 
   for (const r of apexRecords.filter((r) => r.type === 'A' || r.type === 'AAAA')) {
     findings.push(
@@ -297,6 +333,115 @@ export function evaluateZone({ settings, records, botManagement, apex, pagesHost
     }
   }
 
+  // ── The records the plan requires ──────────────────────────────────────────────
+  //
+  // Every entry in `dns-plan.json`'s `ensure` list, not only the mail ones — the apex CNAME
+  // is in there too, and so is whatever is added next. Mail is what motivated it: a missing
+  // MX record does not make anything 404, it makes mail to hello@ordoia.com bounce at
+  // somebody else's server, and the first evidence of it is an enquiry that never arrived.
+  // There is no live probe that could stand in for these the way check 15 stands in for the
+  // apex CNAME.
+  //
+  // Sourced from the plan rather than a list written out here, so a record added to
+  // `dns-plan.json` is asserted the moment it is applied, without a second edit that
+  // someone has to remember to make.
+  //
+  // What this loop does NOT assert is exclusivity: a record the plan never declared is
+  // invisible to it. The SPF rule below is the one place exclusivity is asserted today.
+
+  let requiredMet = 0;
+
+  for (const entry of DNS_ENSURE) {
+    const want = { ...entry, name: entry.name === '@' ? apex : entry.name };
+
+    // Four of the six entries use `@`; two spell the domain out (`_dmarc.ordoia.com`,
+    // `privateemail._domainkey.ordoia.com`), so `apex` is not the only source of the name
+    // and a domain change would leave those two pointing at the old zone forever. Caught
+    // here rather than reported as six missing records: `harness.js` already records a
+    // check that hardcoded `ordoia.co.uk` and passed silently when the domain moved, and
+    // this is the same defect with the failure pointed the other way.
+    if (dnsName(want.name) !== dnsName(apex) && !dnsName(want.name).endsWith(`.${dnsName(apex)}`)) {
+      findings.push(
+        `tools/dns-plan.json requires a ${want.type} record named "${entry.name}", which is ` +
+          `not a name inside ${apex}. Either the plan still spells a domain this zone no ` +
+          `longer uses, or the entry belongs to a different zone. Nothing below can match it.`
+      );
+      continue;
+    }
+
+    if (records.some((have) => sameRecord(have, want))) {
+      requiredMet += 1;
+      continue;
+    }
+
+    findings.push(
+      `the zone has no ${want.type} record at ${want.name} with content ` +
+        `"${want.content}"${want.priority === undefined ? '' : ` (priority ${want.priority})`}, ` +
+        `which tools/dns-plan.json requires. Restore it with: ` +
+        `node tools/zone-setup.mjs records --apply`
+    );
+  }
+
+  // Exactly one SPF record, which dns-plan.json states in prose and nothing enforced. RFC
+  // 7208 §4.5 makes a domain publishing two of them permerror on *both* rather than merging
+  // them — so the intuitive way to authorise a second sender silently unauthorises the
+  // first, and the mail that breaks is the mail that was working.
+  const spf = apexRecords.filter(
+    (r) => r.type === 'TXT' && txtValue(r.content).toLowerCase().startsWith('v=spf1')
+  );
+
+  if (spf.length > 1) {
+    findings.push(
+      `${apex} has ${spf.length} SPF records and RFC 7208 permits exactly one — a domain ` +
+        `publishing two gets a permanent error on both rather than the union of them, so ` +
+        `mail this domain sends starts failing authentication. Merge them into a single ` +
+        `record with every needed include. Found: ${spf.map((r) => `"${txtValue(r.content)}"`).join(', ')}`
+    );
+  }
+
+  // ── Exclusivity ────────────────────────────────────────────────────────────────
+  //
+  // The loop above asks whether the plan's records are *present*. That is the whole of the
+  // threat model it was written against — someone deletes them — and deletion is the
+  // gentler half. **Addition is the attack.**
+  //
+  // An MX record at preference 5 outranks both planned exchangers at 10 and receives every
+  // message sent to this domain, silently, at somebody else's server. A second DKIM
+  // selector lets whoever holds its private half sign mail that passes DMARC alignment for
+  // ordoia.com. Neither touches a planned record, so `required` still reads 6/6, the SPF
+  // count is still 1, and every check in this repository stays green.
+  //
+  // Only these two types. Cardinality is the wrong question for TXT generally — domain
+  // verification strings are added legitimately all the time — and the SPF rule above
+  // already covers the one TXT where a second record is a fault by construction.
+
+  const declared = (r) =>
+    DNS_ENSURE.some((entry) =>
+      sameRecord(r, { ...entry, name: entry.name === '@' ? apex : entry.name })
+    );
+
+  for (const r of apexRecords.filter((r) => r.type === 'MX' && !declared(r))) {
+    findings.push(
+      `there is an MX record at ${apex} that tools/dns-plan.json does not declare: ` +
+        `"${r.content}" at priority ${r.priority}. Mail for this domain goes to the lowest ` +
+        `preference number, so an undeclared exchanger below ${Math.min(
+          ...DNS_ENSURE.filter((e) => e.type === 'MX').map((e) => Number(e.priority))
+        )} receives everything sent here. If this is a deliberate change, add it to the plan; ` +
+        `if it is not, it is inbound mail interception. \`records --apply\` will NOT remove it.`
+    );
+  }
+
+  for (const r of records.filter(
+    (r) => r?.type === 'TXT' && dnsName(r?.name).includes('._domainkey') && !declared(r)
+  )) {
+    findings.push(
+      `there is a DKIM selector at ${r.name} that tools/dns-plan.json does not declare. ` +
+        `Whoever holds the private half of that key can sign mail as ${apex} and pass DMARC ` +
+        `alignment. Add it to the plan if it is a deliberate second sender; otherwise remove ` +
+        `it from the zone. \`records --apply\` will NOT remove it.`
+    );
+  }
+
   if (botManagement?.available !== true) {
     findings.push(
       `Bot Fight Mode could not be read (${botManagement?.why ?? 'no reason given'}). It ` +
@@ -309,7 +454,10 @@ export function evaluateZone({ settings, records, botManagement, apex, pagesHost
     );
   }
 
-  return { findings, observed: { settings: matched, records: records.length } };
+  return {
+    findings,
+    observed: { settings: matched, records: records.length, required: requiredMet },
+  };
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────────────
@@ -353,16 +501,52 @@ export async function readSettings(zoneId) {
   return [...(listed ?? []), ...extra.filter(Boolean)];
 }
 
+/**
+ * Every DNS record on the zone, or a thrown sentence saying why this is not that.
+ *
+ * `per_page=200` is a page, not a promise. Cloudflare reports the real size in
+ * `result_info.total_count`, and until 2026-09-10 both callers took `.result` and threw the
+ * count away. That was survivable while `evaluateZone` made only negative statements about
+ * DNS: a truncated page can only make a *bad* record invisible, which is one silent false
+ * green. It stopped being survivable when the same array started feeding a **presence**
+ * assertion and, through `records()`, a **write** — every record sorted past the cut would
+ * be reported missing, and `--apply` would then POST a duplicate of a record that is
+ * already there, including a second SPF.
+ *
+ * So it fails closed. `observed.records` would have read a healthy 200 throughout, and the
+ * survey's empty-population guard tests for zero, which a truncation never is.
+ */
+export function wholeListing(body) {
+  const got = body?.result ?? [];
+  const total = body?.result_info?.total_count;
+
+  if (typeof total === 'number' && total > got.length) {
+    throw new Error(
+      `the zone has ${total} DNS records and this read returned ${got.length} — the listing ` +
+        `was truncated, so nothing computed from it is a statement about the whole zone. ` +
+        `Raise per_page or follow result_info.total_pages before trusting anything here.`
+    );
+  }
+
+  return got;
+}
+
+async function dnsRecords(zoneId) {
+  return wholeListing(
+    await cfCall(`/zones/${zoneId}/dns_records?per_page=200`, { needs: NEEDS.dnsRead })
+  );
+}
+
 export async function readZone(zoneId) {
   const [settings, records, bots] = await Promise.all([
     readSettings(zoneId),
-    cfCall(`/zones/${zoneId}/dns_records?per_page=200`, { needs: NEEDS.dnsRead }),
+    dnsRecords(zoneId),
     tryCall(`/zones/${zoneId}/bot_management`, { needs: NEEDS.bots }),
   ]);
 
   return {
     settings,
-    records: records.result,
+    records,
     botManagement: bots.ok
       ? { available: true, fightMode: bots.body.result?.fight_mode }
       : { available: false, why: bots.error },
@@ -464,7 +648,12 @@ async function status(apex) {
 
   heading('Posture');
   const { findings, observed: counts } = evaluateZone({ ...observed, apex });
+  // The required-records ratio is printed for the same reason the settings ratio is: an
+  // operator has to be able to see the population was not empty. An emptied `ensure` list
+  // produces no findings at all, and "green — every posture item holds" over a zone nothing
+  // was asserted about is the failure this whole file is organised against.
   out(`${counts.settings}/${ZONE_SETTINGS.length} target settings matched, ` +
+      `${counts.required}/${DNS_ENSURE.length} required records held, ` +
       `${counts.records} DNS records observed`);
   if (findings.length === 0) out('green — every posture item holds');
   else for (const f of findings) out(`  ✗ ${f}`);
@@ -546,7 +735,8 @@ async function harden(apex) {
   heading('Read-back');
   const after = await readZone(zone.id);
   const { findings, observed } = evaluateZone({ ...after, apex });
-  out(`${observed.settings}/${ZONE_SETTINGS.length} target settings matched`);
+  out(`${observed.settings}/${ZONE_SETTINGS.length} target settings matched, ` +
+      `${observed.required}/${DNS_ENSURE.length} required records held`);
   if (findings.length === 0) out('green — the posture holds after applying it');
   else for (const f of findings) out(`  ✗ ${f}`);
 }
@@ -570,27 +760,75 @@ function txtValue(content) {
 }
 
 /**
+ * A DNS name as the protocol means it, not as one source happened to spell it.
+ *
+ * Names are case-insensitive and the root label is optional, so `ORDOIA.COM`, `ordoia.com.`
+ * and `ordoia.com` are one name. Cloudflare returns the lowercased form with no trailing
+ * dot; the other side of the comparison is `apex`, which comes from `site.json` through
+ * `siteRecord()`, and `siteOrigin()`'s validator rejects only a scheme or a path — either
+ * other spelling passes it.
+ *
+ * Worth stating why no fixture caught this: `goodRecords()` builds the zone from the same
+ * `DNS_ENSURE` and the same `apex` the evaluator then compares against, so every
+ * must-permit case is `sameRecord(x, x)` and reflexive by construction. A comparison that
+ * is only ever exercised against itself cannot disagree with itself.
+ */
+const dnsName = (n) => String(n).toLowerCase().replace(/\.$/, '');
+
+/**
  * A record in the plan matches one on the zone when type, name and value agree — and, for
  * MX, the priority too: two mail exchangers differing only in preference are two different
  * records, and treating them as one would silently drop a fallback.
+ *
+ * `a` comes from the API and may be anything, which is why every rule in `evaluateZone`
+ * reads records through `r?.`. This is reached from there too, so it guards the same way:
+ * one null entry in a DNS listing must not turn a zone report into a TypeError.
  */
 function sameRecord(a, b) {
-  if (a.type !== b.type || a.name !== b.name) return false;
+  if (!a || a.type !== b.type || dnsName(a.name) !== dnsName(b.name)) return false;
   if (a.type === 'MX' && Number(a.priority) !== Number(b.priority)) return false;
   const value = a.type === 'TXT' ? txtValue : String;
   return value(a.content) === value(b.content);
+}
+
+/**
+ * A record whose *name already exists on the zone with different content*, for the record
+ * types where a second copy is a fault rather than an addition.
+ *
+ * `records()` only ever POSTs what is missing and only ever deletes what matches the plan's
+ * `remove` list, so a plan-managed record that DRIFTS rather than disappears — a
+ * hand-widened SPF include, a rotated DKIM key, both of which `DEPLOY.md` describes taking
+ * by hand — makes `sameRecord` fail, which reads as absent, which POSTs a second record
+ * beside the drifted one.
+ *
+ * That is not a near-miss. It is the exact RFC 7208 permerror the SPF rule in
+ * `evaluateZone` exists to report, created by the command that same rule's finding tells
+ * the operator to run. A check that walks you into the failure it then reports is worse
+ * than no check, so the applier refuses instead.
+ *
+ * Reconciling properly — PATCH the drifted record to the plan's content — is the better
+ * fix and is not this one. Refusing is small, has no way to destroy a record, and turns a
+ * silent mail outage into a sentence.
+ */
+export function wouldDuplicate(want, live) {
+  if (want.type !== 'TXT') return null;
+
+  const isSpf = (r) => txtValue(r.content).toLowerCase().startsWith('v=spf1');
+  const sameName = live.filter((r) => r?.type === 'TXT' && dnsName(r?.name) === dnsName(want.name));
+
+  if (isSpf(want)) return sameName.find(isSpf) ?? null;
+  if (dnsName(want.name).includes('._domainkey')) return sameName[0] ?? null;
+  return null;
 }
 
 async function records(apex) {
   const zone = await findZone(apex);
   if (!zone) throw new Error(`${apex} is not a zone on this account yet — run zone-create first`);
 
-  const plan = JSON.parse(await readFile(DNS_PLAN, 'utf8'));
-  const live = (await cfCall(`/zones/${zone.id}/dns_records?per_page=200`, { needs: NEEDS.dnsRead }))
-    .result;
+  const live = await dnsRecords(zone.id);
 
   const toDelete = live.filter((r) =>
-    (plan.remove ?? []).some(
+    (PLAN.remove ?? []).some(
       (m) =>
         r.type === m.type &&
         r.name === (m.name === '@' ? apex : m.name) &&
@@ -598,9 +836,12 @@ async function records(apex) {
     )
   );
 
-  const toAdd = (plan.ensure ?? [])
-    .map((r) => ({ ...r, name: r.name === '@' ? apex : r.name }))
-    .filter((want) => !live.some((have) => sameRecord(have, want)));
+  // `DNS_ENSURE`, not a second `PLAN.ensure ?? []`, so the applier and `evaluateZone` read
+  // the required-records table through one binding. Two derivations of the same list is the
+  // drift the "one table, two consumers" docblock exists to prevent, one level smaller.
+  const toAdd = DNS_ENSURE.map((r) => ({ ...r, name: r.name === '@' ? apex : r.name })).filter(
+    (want) => !live.some((have) => sameRecord(have, want))
+  );
 
   heading(`DNS plan for ${apex}${APPLY ? '' : ' (DRY RUN)'}`);
 
@@ -612,6 +853,29 @@ async function records(apex) {
   for (const r of toAdd) {
     out(`  add     ${r.type.padEnd(6)} ${r.name}  ${r.content}` +
         `${r.priority !== undefined ? `  priority=${r.priority}` : ''}`);
+  }
+
+  // Refuse before writing, not partway through: an add that would put a second SPF or a
+  // second DKIM selector on the zone is the drift case, and adding beside it breaks the
+  // mail this command was run to protect. Reported in the dry run too, so the operator
+  // learns it before typing --apply rather than after.
+  const clashes = toAdd
+    .map((want) => ({ want, clash: wouldDuplicate(want, live) }))
+    .filter(({ clash }) => clash);
+
+  if (clashes.length > 0) {
+    out('');
+    for (const { want, clash } of clashes) {
+      out(`  REFUSED ${want.type} ${want.name}`);
+      out(`    on the zone: "${txtValue(clash.content)}"`);
+      out(`    in the plan: "${txtValue(want.content)}"`);
+    }
+    throw new Error(
+      `${clashes.length} record(s) in the plan already exist at that name with different ` +
+        `content. This applier only adds, so it would leave BOTH — and two SPF records, or ` +
+        `two keys on one DKIM selector, break the mail this plan exists to protect. ` +
+        `Edit or delete the existing record in the Cloudflare dashboard first, then re-run.`
+    );
   }
 
   if (!APPLY) return out('\nRe-run with --apply to make these changes.');
