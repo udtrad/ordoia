@@ -198,6 +198,15 @@ hardening does not have to win a race against the first request.
    `tools/dns-plan.json`: it removes the parking address record and the registrar's mail
    records, and adds DMARC. The mailbox's own MX, SPF and DKIM go in the plan first — see
    *Still open before launch*.
+
+   **`records` only adds, so it refuses rather than duplicate.** It POSTs what is missing
+   and deletes only what the plan's `remove` list matches, which means a plan record that
+   has *drifted* on the zone rather than disappeared — a hand-widened SPF include, a
+   rotated DKIM key, both of which this page describes taking by hand — reads as absent and
+   would get a second copy beside it. Two SPF records, or two keys on one DKIM selector,
+   break the mail the plan exists to protect. So it stops first and prints both values, in
+   the dry run as well as under `--apply`: fix the existing record in the dashboard, then
+   re-run.
 4. **Harden.** `node tools/zone-setup.mjs harden` to see the diff, then `--apply`. It
    re-reads and re-asserts afterwards, because a `PATCH` returning 200 is not evidence the
    value stuck. The table is `ZONE_SETTINGS` in that file, and **check 22 asserts the same
@@ -347,9 +356,41 @@ headers and for the same reason. A setting in the table that Cloudflare's respon
 contain at all is a **failure**, not a silent pass: that is how a renamed or plan-gated
 setting would otherwise turn this check into lesson 8 with a new denominator.
 
+**Since 2026-09-10 it reads the DNS records back as well**, from a second table with the
+same shape: `tools/dns-plan.json`'s `ensure` list, which `records` applies and
+`evaluateZone` asserts. Before that every DNS rule here was a *negative* one — no address
+record at the apex, the CNAME points at this project, CAA does not block issuance — so the
+six records the plan applies, five of them the mail records that let `ordoia.com` send and
+receive, were written and read back by nothing. Deleting all six from the dashboard left
+this suite green. Three assertions close that:
+
+- **Every record in `ensure` is present**, sourced from the plan rather than a list copied
+  into the check, so a record added to the plan is asserted the moment it is applied.
+  `status` and `harden` print the ratio next to the settings one (`6/6 required records
+  held`), because a plan someone emptied produces no findings at all, and "green" over a
+  zone nothing was asserted about is the failure this file is organised against.
+- **Exactly one SPF record.** RFC 7208 §4.5 makes a domain publishing two permerror on
+  *both* rather than merging them, so the intuitive way to authorise a second sender
+  silently unauthorises the first, and the mail that breaks is the mail that was working.
+- **Exclusivity for MX and DKIM.** Presence only catches deletion, and deletion is the
+  gentler half. An undeclared exchanger at a lower preference number receives everything
+  sent to this domain at somebody else's server; an undeclared `._domainkey` selector lets
+  whoever holds its private half sign mail that passes DMARC alignment for `ordoia.com`.
+  Neither touches a planned record, so presence and the SPF count both stay green. Each is
+  a finding, and `records --apply` will not remove it for you.
+
+A short DNS listing now fails rather than under-report: `per_page=200` is a page, not a
+promise, and a truncated one would report present records as missing and then have
+`--apply` POST duplicates of records already there.
+
 Both run weekly in `canary.yml`, on one `npm test`. Between them they are the only thing
 that would notice a Cloudflare zone setting being switched on years from now, long after
 anyone remembers why it was off.
+
+**The 60-day hole covers the mail records too.** `canary.yml` is the only scheduled reader
+of the DNS assertions above, and the external monitor that partly covers that gap for the
+web pages watches HTTP bodies for `mailto:` and `/cdn-cgi/` — it cannot see an MX, SPF,
+DKIM or DMARC record. See *Uptime and certificate monitoring* below.
 
 ---
 
