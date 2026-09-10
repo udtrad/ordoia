@@ -465,6 +465,140 @@ written on 2026-08-09 and it did: Baseline D went from 38 failures to 39, and th
 here because a baseline that moves for a known reason and is not written down is
 indistinguishable from one that moved for an unknown one.
 
+### The records the check applied and never read back — 2026-09-10
+
+Namecheap emailed to say Private Email was *"almost set"* and still needed MX and SPF
+records. It was wrong, and finding out why exposed a gap that had nothing to do with
+Namecheap.
+
+The records were already live and correct. Measured against the zone directly:
+
+| Fact | Measured |
+|---|---|
+| MX at the apex | `mx1` and `mx2.privateemail.com`, both priority 10 |
+| SPF records at the apex | 1 |
+| SPF DNS lookups | 4 of the 10 RFC 7208 permits |
+| DKIM at `privateemail._domainkey` | valid 2048-bit RSA public key |
+| DMARC | `p=none`, `rua=mailto:hello@ordoia.com` |
+| `RCPT TO:<hello@ordoia.com>`, both exchangers | `250 2.1.5 Ok` |
+| `RCPT TO:` a non-existent mailbox | `450 4.1.1` — no catch-all |
+
+The notice is stale: it reflects the state before the nameservers moved to Cloudflare, and
+Namecheap does not re-check a domain it does not serve DNS for.
+
+**The gap.** `evaluateZone` made only *negative* statements about DNS — no address record at
+the apex, the CNAME points at this Pages project, CAA does not block issuance. The six
+records in `dns-plan.json` were applied by `records()` and read back by nothing. Deleting
+every one of them from the Cloudflare dashboard left this check green, `npm test` green, and
+the weekly canary green — the canary being the one mechanism in this repository whose stated
+job is noticing zone drift years from now. A disclosure with no reader is not a disclosure,
+and the same is true of a record.
+
+It is now asserted from the plan rather than from a list beside it, so a record added to
+`dns-plan.json` is checked the moment it is applied. Exactly one SPF record is asserted too:
+`dns-plan.json` said in prose that a second would make both fail rather than merge, and
+prose does not fail a build. RFC 7208 §4.5 makes a domain publishing two SPF records
+permerror on **both**, so the intuitive way to authorise a second sender silently
+unauthorises the first.
+
+The test fixture had the same hole in miniature. Written out by hand, it listed `mx1` but
+not `mx2`, and no DKIM record at all — invisible precisely because nothing asserted against
+it. It is derived from the plan now, for the reason `goodSettings()` is derived from
+`ZONE_SETTINGS`.
+
+**Green: 11/11 settings, 6/6 required records, 0 findings** against the live zone, and
+**152/152/0/0** with every credential exported.
+
+### What the review found that the first pass did not
+
+The first pass shipped the rule and a control per record, and reported seven mutants killed.
+Six reviewers on the diff then found eleven more things, and the pattern in them is worth
+more than the list: **every one was a claim the first pass made about its own scope.**
+
+- The SPF count folds case, and both duplicate controls wrote their second record
+  lowercase. Deleting `.toLowerCase()` left the check green — so `V=spf1`, which every
+  resolver reads as a second SPF record, was uncounted.
+- `observed.required` was asserted only at its full value. Hoisting the increment out of
+  its `if` so every entry counted as met survived, which means the denominator the live
+  check's population guard reads could not shrink. A denominator that cannot shrink is not
+  a denominator.
+- `sameRecord` compared names byte-exactly. **No fixture could have caught this**, because
+  `goodRecords()` builds the zone from the same plan and the same apex the evaluator then
+  compares against — every must-permit case was `sameRecord(x, x)`, reflexive by
+  construction. `ORDOIA.COM` or a trailing dot would have reported every record missing.
+- Normalising `sameRecord` alone was not enough either: `apexRecords` filtered on the same
+  exact match, and an empty `apexRecords` does not report a problem, it silently disarms
+  the address-record rule, the CNAME rule and the SPF count together. The must-permit case
+  for uppercase names could not defend it — a disarmed rule reads exactly like a clean
+  zone — so that control plants a real parking record in the same fixture.
+- Two of the plan's six entries spell the domain out instead of using `@`, so `apex` was a
+  lie for a third of the plan and a domain change would have left them red forever. Now a
+  named finding, witnessed by evaluating against a different apex.
+
+The prose was wrong in the same way the code was. The docblock said "four records" over a
+list of six; this section said "six new controls, seven mutants" over a file that by then
+held far more. Check 22 now carries **34 must-catch and 12 must-not-flag controls**, plus a
+third test for the two guards `evaluateZone` never reaches.
+
+Mutation, run in four sweeps rather than claimed in one: **seven** against the original
+plan loop and SPF rule, **eight** from the coverage audit, **seven** against the guards
+added after review, and **six** against exclusivity and the applier. Every mutant in the
+first, third and fourth sweeps was killed by its own named control, verified in this
+session; of the coverage audit's eight, the `sameRecord` null guard was re-verified here
+and the other seven are that audit's own report.
+
+### Addition, not deletion — the half the first pass missed entirely
+
+The threat model the rule was written against was *deletion*: someone removes the records
+and mail stops. Deletion is the gentler half. **Addition is the attack**, and presence
+assertions are blind to it by construction.
+
+An `MX` at preference 5 outranks both planned exchangers at 10 and receives every message
+sent to the domain, at somebody else's server. A second DKIM selector lets whoever holds
+its private half sign mail that passes DMARC alignment for ordoia.com. Neither touches a
+planned record: `required` still reads 6/6, the SPF count is still 1, and every check in
+this repository stays green while inbound mail is being intercepted.
+
+Both are now findings. Only these two types — cardinality is the wrong question for TXT
+generally, since domain-verification strings are added legitimately all the time, and the
+SPF rule already covers the one TXT where a second record is a fault by construction.
+Against the live zone the rule passes, which is a measurement rather than a formality: it
+says ordoia.com carries no exchanger and no selector the plan does not name.
+
+### The repair command created the failure the check reports
+
+`records()` only ever POSTs what is missing and deletes only what matches the plan's
+`remove` list. So when a plan-managed record **drifts** rather than disappears — a
+hand-widened SPF include, a rotated DKIM key, both of which `DEPLOY.md` describes taking by
+hand — `sameRecord` fails, which reads as *absent*, and the finding says "restore it with
+`records --apply`". That command then adds a **second** record beside the drifted one:
+exactly the RFC 7208 permerror the SPF rule fourteen lines above exists to report.
+
+A check that walks the operator into the failure it then reports is worse than no check.
+The applier now refuses instead, in the dry run as well as under `--apply`, printing both
+values and stopping. Reconciling properly — PATCH the drifted record to the plan's content
+— is the better fix and is deliberately not this one: refusing is small, cannot destroy a
+record, and turns a silent mail outage into a sentence.
+
+### A page is not a zone
+
+`per_page=200` was read as though it were the whole listing, and `result_info.total_count`
+was discarded by both callers. Survivable while the DNS rules were negative — a truncated
+page can only hide a *bad* record, one silent false green. Not survivable once the same
+array feeds a presence assertion and, through `records()`, a write: every record sorted
+past the cut reads as missing, and `--apply` then POSTs a duplicate of a record that is
+already there. `observed.records` would have read a healthy 200 throughout, and the
+survey's population guard tests for zero, which a truncation never is. It fails closed now.
+
+### Still open, deliberately
+
+- **The apex CNAME has two sources.** `dns-plan.json` hardcodes `ordoia.pages.dev`; the
+  pre-existing CNAME rule uses `pagesTarget()`, which reads `CLOUDFLARE_PAGES_PROJECT`.
+  Set that variable to anything else and the two rules become mutually unsatisfiable. Inert
+  today because nothing sets it.
+- **`records()` has no test coverage at all.** It is not exported and no check reaches it.
+  The two guards above are tested as pure functions; the apply path around them is not.
+
 ## Baseline B — the verbatim handover, 2026-08-08
 
 Commit `3b93f1b`, before any build code existed. **45 tests, 32 pass, 8 fail, 5
